@@ -6,11 +6,22 @@
  * has no business shipping a front end beside them.
  */
 
+import type { PluginState } from './supervisor.ts';
+
 export type PluginView = {
   /** The Plugin Name, which is also its address. */
   readonly name: string;
   /** Whether the Plugin ships a Plugin Page for the Host to link to. */
   readonly hasPage: boolean;
+  /** What the Host knows about this Plugin's Plugin Server right now. */
+  readonly state: PluginState;
+};
+
+/** The one word the Index Page says about a Plugin Server. */
+const STATE_WORDS: Readonly<Record<PluginState, string>> = {
+  running: 'Running',
+  stopped: 'Stopped',
+  'no-plugin-server': 'no Plugin Server',
 };
 
 export function indexPage(plugins: readonly PluginView[], registryPath: string): string {
@@ -34,6 +45,8 @@ li {
 }
 li :first-child { flex: 1; }
 .quiet { opacity: .6; }
+.state { font-variant: tabular-nums; }
+.state.stopped { color: #b3261e; }
 p { color: inherit; opacity: .7; }
 code { font-size: .9em; }
 </style>
@@ -54,11 +67,13 @@ ${plugins.map(row).join('\n')}
 
 function row(plugin: PluginView): string {
   const name = escapeHtml(plugin.name);
+  // A Stopped Plugin still serves its Plugin Page, so it keeps its link.
   const link = plugin.hasPage
     ? `<a href="/p/${encodeURIComponent(plugin.name)}/">${name}</a>`
     : `<span>${name}</span>`;
   const note = plugin.hasPage ? '' : '<span class="quiet">no Plugin Page</span>';
-  return `<li>${link}${note}</li>`;
+  const state = `<span class="state ${plugin.state}">${STATE_WORDS[plugin.state]}</span>`;
+  return `<li>${link}${note}${state}</li>`;
 }
 
 function emptyRegistry(registryPath: string): string {

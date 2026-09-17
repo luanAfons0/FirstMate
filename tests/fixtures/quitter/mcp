@@ -1,0 +1,5 @@
+#!/bin/sh
+# A fixture Plugin Server that dies the moment it is started. Its Plugin is
+# Stopped, and the Host never starts it again.
+echo "quitter: the Plugin Server gave up" >&2
+exit 3

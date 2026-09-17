@@ -12,6 +12,31 @@ has nothing to show.
 The words this project uses are defined in [`CONTEXT.md`](CONTEXT.md). The
 decisions that are expensive to reverse are in [`docs/adr/`](docs/adr).
 
+## What a Plugin is
+
+A directory, named in the Registry. There is no manifest and no schema.
+
+| In the directory   | What the Host does with it                                  |
+| ------------------ | ----------------------------------------------------------- |
+| `web/`             | Serves it at `/p/<name>/`, byte for byte.                   |
+| `mcp` (executable) | Runs it, and speaks MCP to it over stdin and stdout.        |
+
+The shebang of `mcp` decides the language, so a Plugin Server can be written in
+anything. Its output goes to the Host's own output, which under systemd is the
+journal.
+
+A Plugin is in one of three states, and the Index Page shows which:
+
+| State              | What it means                                              |
+| ------------------ | ---------------------------------------------------------- |
+| `Running`          | The Plugin Server is up and answered the MCP handshake.     |
+| `Stopped`          | The Plugin Server exited, or could not be run at all.       |
+| `no Plugin Server` | The Plugin ships no `mcp` file. This is allowed.            |
+
+The Host never starts a Stopped Plugin again, so a broken Plugin stays visible
+instead of spinning in a restart loop. A Stopped Plugin still serves its Plugin
+Page.
+
 ## Run the Host
 
 ```sh
