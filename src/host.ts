@@ -1,6 +1,6 @@
 /**
- * The Host's HTTP surface: the Index Page, every Plugin Page, and nothing
- * else yet.
+ * The Host's HTTP surface: the Index Page, the same list as JSON, every Plugin
+ * Page, and nothing else yet.
  *
  * It binds the loopback address alone, so nothing else on the network reaches
  * it, and it is the one seam this project is tested through.
@@ -36,6 +36,13 @@ export type HostOptions = {
 
 /** Where a Plugin Page calls its own Plugin's tools. */
 const RPC_PATH = '/rpc';
+
+/**
+ * What the Index Page lists, as JSON. The Tray is a Windows process and cannot
+ * read a page meant for a person, so the Host says the same thing twice: once
+ * in HTML and once here (ADR-0007).
+ */
+const PLUGINS_PATH = '/plugins.json';
 
 export type Host = {
   /** The port the Host actually listened on. */
@@ -91,7 +98,13 @@ async function handle(
 
   if (path === '/') {
     if (!readOnly(response, method)) return;
-    sendIndexPage(response, plugins, options, method === 'HEAD');
+    sendHtml(response, indexPage(pluginViews(plugins, options), options.registryPath),
+      method === 'HEAD');
+    return;
+  }
+  if (path === PLUGINS_PATH) {
+    if (!readOnly(response, method)) return;
+    sendJson(response, { plugins: pluginViews(plugins, options) }, method === 'HEAD');
     return;
   }
   const address = PLUGIN_PATH.exec(path);
@@ -139,18 +152,13 @@ function readOnly(response: ServerResponse, method: string): boolean {
   return false;
 }
 
-function sendIndexPage(
-  response: ServerResponse,
-  plugins: Map<string, PluginRow>,
-  options: HostOptions,
-  headOnly: boolean,
-): void {
-  const views: PluginView[] = [...plugins.values()].map((plugin) => ({
+/** Every Plugin the Host knows, as the Index Page and the Tray both see it. */
+function pluginViews(plugins: Map<string, PluginRow>, options: HostOptions): PluginView[] {
+  return [...plugins.values()].map((plugin) => ({
     name: plugin.name,
     hasPage: existsSync(webRoot(plugin.directory)),
     state: options.stateOf(plugin.name),
   }));
-  sendHtml(response, indexPage(views, options.registryPath), headOnly);
 }
 
 async function sendPluginPage(
@@ -196,6 +204,15 @@ function sendHtml(response: ServerResponse, html: string, headOnly: boolean): vo
   const body = Buffer.from(html, 'utf8');
   response.writeHead(200, {
     'content-type': 'text/html; charset=utf-8',
+    'content-length': String(body.byteLength),
+  });
+  response.end(headOnly ? undefined : body);
+}
+
+function sendJson(response: ServerResponse, value: unknown, headOnly: boolean): void {
+  const body = Buffer.from(`${JSON.stringify(value)}\n`, 'utf8');
+  response.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
     'content-length': String(body.byteLength),
   });
   response.end(headOnly ? undefined : body);

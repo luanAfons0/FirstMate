@@ -76,8 +76,13 @@ It listens on `http://127.0.0.1:4747/` and on no other address.
 | Address              | What it serves                                     |
 | -------------------- | -------------------------------------------------- |
 | `/`                  | The Index Page: every Plugin, and its state.       |
+| `/plugins.json`      | The same list, for the Tray. Nothing is written.   |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
+
+A Plugin Page is a whole page: the Host links to it and the browser goes there,
+rather than framing it under chrome of its own
+([ADR-0008](docs/adr/0008-a-plugin-page-is-a-whole-page.md)).
 
 ## Call a Plugin's tools
 
@@ -141,7 +146,13 @@ scripts/uninstall-service.sh        # remove it
 
 The Tray is a notification-area icon that opens the Index Page in one click. It
 holds the Host's port and token in memory, so opening makes no `wsl.exe` call
-and no file read. Install it with `windows/install-tray.ps1`, remove it with
+and no file read.
+
+Its **Plugins** submenu lists every Plugin with its state and opens any one of
+them directly, so moving between Plugins never goes through the Index Page. The
+list is asked for when the menu opens, so it is never stale.
+
+Install it with `windows/install-tray.ps1`, remove it with
 `windows/uninstall-tray.ps1`; both are in
 [`docs/deploy.md`](docs/deploy.md).
 

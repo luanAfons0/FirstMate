@@ -1,5 +1,6 @@
 <#
-    The Tray: the Windows notification-area icon that opens the Index Page.
+    The Tray: the Windows notification-area icon that opens the Index Page,
+    and any one Plugin Page from a menu of every Plugin.
 
     It exists on Windows because WSLg hosts no notification area, so an icon
     inside the distribution would have nowhere to appear.
@@ -122,7 +123,7 @@ function Update-State {
     } else {
         'FirstMate - the Host is not running'
     }
-    $copyItem.Enabled = ($script:State -eq 'running')
+    $pluginsItem.Enabled = ($script:State -eq 'running')
 }
 
 # --- the icon -------------------------------------------------------------
@@ -151,6 +152,38 @@ function New-StateIcon {
 $script:Icons = @{
     running = New-StateIcon ([System.Drawing.Color]::FromArgb(46, 160, 67))
     stopped = New-StateIcon ([System.Drawing.Color]::FromArgb(130, 134, 139))
+}
+
+function New-StateDot {
+    <#
+        One Plugin's state, as a dot beside its name in the menu. Drawn for the
+        same reason the icon is: the repository holds no binary asset. A Plugin
+        with no Plugin Server gets a ring rather than a disc, so the state is
+        shape as well as colour, exactly as the Index Page shows it.
+    #>
+    param([System.Drawing.Color] $Color, [bool] $Hollow = $false)
+    $bitmap = New-Object System.Drawing.Bitmap 16, 16
+    $canvas = [System.Drawing.Graphics]::FromImage($bitmap)
+    $canvas.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $canvas.Clear([System.Drawing.Color]::Transparent)
+    if ($Hollow) {
+        $pen = New-Object System.Drawing.Pen $Color, 1.5
+        $canvas.DrawEllipse($pen, 5, 5, 6, 6)
+        $pen.Dispose()
+    } else {
+        $fill = New-Object System.Drawing.SolidBrush $Color
+        $canvas.FillEllipse($fill, 5, 5, 6, 6)
+        $fill.Dispose()
+    }
+    $canvas.Dispose()
+    return $bitmap
+}
+
+# The Index Page's three colours, so one FirstMate says one thing.
+$script:Dots = @{
+    running            = New-StateDot ([System.Drawing.Color]::FromArgb(46, 160, 67))
+    stopped            = New-StateDot ([System.Drawing.Color]::FromArgb(179, 38, 30))
+    'no-plugin-server' = New-StateDot ([System.Drawing.Color]::FromArgb(140, 146, 154)) $true
 }
 
 # --- start at logon -------------------------------------------------------
@@ -200,7 +233,11 @@ $menu = New-Object System.Windows.Forms.ContextMenuStrip
 # double-click does.
 $openItem = $menu.Items.Add('Open FirstMate')
 $openItem.Font = New-Object System.Drawing.Font($menu.Font, [System.Drawing.FontStyle]::Bold)
-$copyItem = $menu.Items.Add('Copy address')
+# Every Plugin, one click from the notification area. A Plugin Page is a whole
+# page and the Host frames nothing (ADR-0008), so the Tray is where moving
+# between Plugins without going through the Index Page belongs. It is a
+# submenu rather than a run of items so that Quit never moves under the cursor.
+$pluginsItem = $menu.Items.Add('Plugins')
 $menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 $logonItem = $menu.Items.Add('Start at logon')
 $logonItem.Checked = (Test-Path -LiteralPath (Get-StartupShortcutPath))
@@ -238,22 +275,76 @@ function Invoke-Open {
     }
 }
 
-function Invoke-CopyAddress {
+function Get-PluginLabel {
     <#
-        The address, token and all, on the clipboard. That is the one place the
-        token goes on the Windows side, and it goes there because the person
-        asked: it is written to no file.
+        What the menu says about one Plugin: its name, and the Host's own word
+        for it when that word is worth saying. A Running Plugin with a page has
+        nothing surprising to report, so it reports nothing.
     #>
-    if ($script:State -ne 'running' -or $null -eq $script:Runtime) { return }
+    param([Parameter(Mandatory = $true)] $Plugin)
+    if (-not $Plugin.hasPage) { return "$($Plugin.name)    no Plugin Page" }
+    if ($Plugin.state -eq 'stopped') { return "$($Plugin.name)    Stopped" }
+    if ($Plugin.state -eq 'no-plugin-server') { return "$($Plugin.name)    no Plugin Server" }
+    return [string] $Plugin.name
+}
+
+function Invoke-OpenPlugin {
+    <#
+        One Plugin Page in the Windows default browser. The address is built
+        from what is already in memory, so this costs what Open costs: one
+        Start-Process, no wsl.exe call and no file read.
+    #>
+    param([Parameter(Mandatory = $true)] [string] $Name)
+    if ($script:State -ne 'running' -or $null -eq $script:Runtime) {
+        Invoke-Open
+        return
+    }
     try {
-        [System.Windows.Forms.Clipboard]::SetText((Get-IndexAddress -Runtime $script:Runtime))
+        Start-Process (Get-PluginAddress -Runtime $script:Runtime -Name $Name)
     } catch {
-        Show-Fault 'FirstMate could not reach the clipboard.'
+        Show-Fault "FirstMate could not open the Plugin Page of $Name."
+    }
+}
+
+function Update-PluginMenu {
+    <#
+        Fill the Plugins submenu from the Host, every time the menu opens.
+
+        Asking on open rather than on the poll means the list is never stale
+        and a Tray nobody clicks asks nothing. It is one loopback GET.
+    #>
+    $pluginsItem.DropDownItems.Clear()
+
+    if ($script:State -ne 'running' -or $null -eq $script:Runtime) {
+        $pluginsItem.Enabled = $false
+        return
+    }
+    $plugins = @(Read-Plugins -Runtime $script:Runtime)
+    if ($plugins.Count -eq 0) {
+        # An empty Registry, or a Host that would not say. Either way there is
+        # nothing to open, and a menu with nothing in it should not invite one.
+        $pluginsItem.Enabled = $false
+        return
+    }
+    $pluginsItem.Enabled = $true
+
+    foreach ($plugin in $plugins) {
+        $item = $pluginsItem.DropDownItems.Add((Get-PluginLabel -Plugin $plugin))
+        $item.Image = $script:Dots[[string] $plugin.state]
+        if (-not $plugin.hasPage) {
+            # A Plugin with no Plugin Page has no address, so there is nowhere
+            # for this item to go. It is still listed, because it still exists.
+            $item.Enabled = $false
+            continue
+        }
+        # A Stopped Plugin still serves its Plugin Page, so it keeps its item.
+        $name = [string] $plugin.name
+        $item.Add_Click({ Invoke-OpenPlugin -Name $name }.GetNewClosure())
     }
 }
 
 $openItem.Add_Click({ Invoke-Open })
-$copyItem.Add_Click({ Invoke-CopyAddress })
+$menu.Add_Opening({ Update-PluginMenu })
 $logonItem.Add_Click({
     try {
         Set-StartAtLogon (-not $logonItem.Checked)
@@ -288,6 +379,7 @@ try {
     $timer.Dispose()
     $tray.Dispose()
     foreach ($icon in $script:Icons.Values) { $icon.Dispose() }
+    foreach ($dot in $script:Dots.Values) { $dot.Dispose() }
     $script:Instance.ReleaseMutex()
     $script:Instance.Dispose()
 }

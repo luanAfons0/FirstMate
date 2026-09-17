@@ -112,7 +112,7 @@ What the icon does:
 | Action              | What happens                                             |
 | ------------------- | -------------------------------------------------------- |
 | Double-click, Open  | Opens the Index Page in the default browser.              |
-| Copy address        | Puts the address, token and all, on the clipboard.        |
+| Plugins             | Every Plugin and its state. Opens any one of them.        |
 | Start at logon      | Writes or removes the Startup shortcut.                   |
 | Quit                | Removes the icon. The Host keeps running.                 |
 

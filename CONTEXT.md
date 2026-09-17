@@ -19,7 +19,8 @@ The Host's record of which Plugins exist, where their directories are, and what 
 _Avoid_: manifest, catalogue, config, lockfile
 
 **Tray**:
-The Windows notification-area icon that opens the Index Page.
+The Windows notification-area icon that opens the Index Page, or any one
+Plugin Page directly.
 _Avoid_: systray, notification icon, menu bar
 
 ### Plugins

@@ -152,3 +152,53 @@ function Get-IndexAddress {
     param([Parameter(Mandatory = $true)] $Runtime)
     return "http://127.0.0.1:$($Runtime.Port)/?token=$($Runtime.Token)"
 }
+
+function Get-PluginAddress {
+    <#
+        The address of one Plugin Page, with the token on it once, exactly as
+        the Index Page address carries it.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] $Runtime,
+        [Parameter(Mandatory = $true)] [string] $Name
+    )
+    $escaped = [System.Uri]::EscapeDataString($Name)
+    return "http://127.0.0.1:$($Runtime.Port)/p/$escaped/?token=$($Runtime.Token)"
+}
+
+function Read-Plugins {
+    <#
+        Every Plugin the Host knows, or $null when it will not say.
+
+        The Host serves the Index Page for a person and /plugins.json for the
+        Tray, which cannot read a page. This is one loopback GET, the same trip
+        the poll already makes: no wsl.exe call and no file read.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] $Runtime,
+        [int] $TimeoutMs = 2000
+    )
+
+    $address = "http://127.0.0.1:$($Runtime.Port)/plugins.json?token=$($Runtime.Token)"
+    $request = [System.Net.HttpWebRequest]::Create($address)
+    $request.Method            = 'GET'
+    $request.Proxy             = $null
+    $request.Timeout           = $TimeoutMs
+    $request.ReadWriteTimeout  = $TimeoutMs
+    $request.AllowAutoRedirect = $false
+    try {
+        $response = $request.GetResponse()
+        $reader = New-Object System.IO.StreamReader $response.GetResponseStream()
+        $text = $reader.ReadToEnd()
+        $reader.Close()
+        $response.Close()
+        $answer = $text | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+    # Strict mode makes a missing property an error, so the name is looked for
+    # rather than read, exactly as the runtime file is.
+    if ($null -eq $answer) { return $null }
+    if (@($answer.PSObject.Properties.Name) -notcontains 'plugins') { return $null }
+    return @($answer.plugins)
+}
