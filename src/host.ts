@@ -10,9 +10,11 @@ import { existsSync } from 'node:fs';
 import { BIND_ADDRESS } from './config.ts';
 import { indexPage, type PluginView } from './index-page.ts';
 import type { PluginRow } from './registry.ts';
-import { checkRequest } from './security.ts';
+import { checkRequest, startedByOwnPage } from './security.ts';
 import { serveStatic, webRoot } from './static-files.ts';
 import type { PluginState } from './supervisor.ts';
+import type { PluginServer } from './mcp.ts';
+import { callTools } from './tool-call.ts';
 
 /** Every Plugin address starts here: /p/<name>/. */
 const PLUGIN_PATH = /^\/p\/([^/]+)(\/.*)?$/;
@@ -28,7 +30,12 @@ export type HostOptions = {
   readonly token: string;
   /** What the Supervisor knows about a Plugin Server right now. */
   readonly stateOf: (name: string) => PluginState;
+  /** The Plugin Server of a Plugin, while it is running. */
+  readonly serverOf: (name: string) => PluginServer | null;
 };
+
+/** Where a Plugin Page calls its own Plugin's tools. */
+const RPC_PATH = '/rpc';
 
 export type Host = {
   /** The port the Host actually listened on. */
@@ -80,14 +87,10 @@ async function handle(
   }
 
   const method = request.method ?? 'GET';
-  if (method !== 'GET' && method !== 'HEAD') {
-    response.setHeader('allow', 'GET, HEAD');
-    sendText(response, 405, `${method} is not allowed here.`);
-    return;
-  }
   const path = url.pathname;
 
   if (path === '/') {
+    if (!readOnly(response, method)) return;
     sendIndexPage(response, plugins, options, method === 'HEAD');
     return;
   }
@@ -96,7 +99,44 @@ async function handle(
     sendText(response, 404, `Nothing is served at ${path}.`);
     return;
   }
-  await sendPluginPage(response, plugins, address, method === 'HEAD');
+
+  const name = decodeName(address[1] ?? '');
+  const plugin = name === null ? undefined : plugins.get(name);
+  if (plugin === undefined) {
+    sendText(response, 404, `No Plugin is named ${address[1]}.`);
+    return;
+  }
+  const rest = address[2];
+
+  if (rest === RPC_PATH) {
+    if (method !== 'POST') {
+      response.setHeader('allow', 'POST');
+      sendText(response, 405, `A tool call is a POST, not a ${method}.`);
+      return;
+    }
+    if (!startedByOwnPage(request, plugin.name)) {
+      sendText(response, 403, `Only the Plugin Page of ${plugin.name} may call its tools.`);
+      return;
+    }
+    await callTools(
+      request,
+      response,
+      plugin.name,
+      options.serverOf(plugin.name),
+      options.stateOf(plugin.name),
+    );
+    return;
+  }
+
+  if (!readOnly(response, method)) return;
+  await sendPluginPage(response, plugin, rest, method === 'HEAD');
+}
+
+function readOnly(response: ServerResponse, method: string): boolean {
+  if (method === 'GET' || method === 'HEAD') return true;
+  response.setHeader('allow', 'GET, HEAD');
+  sendText(response, 405, `${method} is not allowed here.`);
+  return false;
 }
 
 function sendIndexPage(
@@ -115,17 +155,10 @@ function sendIndexPage(
 
 async function sendPluginPage(
   response: ServerResponse,
-  plugins: Map<string, PluginRow>,
-  address: RegExpExecArray,
+  plugin: PluginRow,
+  rest: string | undefined,
   headOnly: boolean,
 ): Promise<void> {
-  const name = decodeName(address[1] ?? '');
-  const rest = address[2];
-  const plugin = name === null ? undefined : plugins.get(name);
-  if (plugin === undefined) {
-    sendText(response, 404, `No Plugin is named ${address[1]}.`);
-    return;
-  }
   if (rest === undefined) {
     // Without the trailing slash every relative path inside the Plugin Page
     // would resolve one directory too high.

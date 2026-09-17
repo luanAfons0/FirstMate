@@ -61,10 +61,31 @@ It listens on `http://127.0.0.1:4747/` and on no other address.
 
 ## Addresses
 
-| Address           | What it serves                                |
-| ----------------- | --------------------------------------------- |
-| `/`               | The Index Page: every Plugin, and its state.  |
-| `/p/<name>/`      | That Plugin's `web/` directory, byte for byte. |
+| Address              | What it serves                                     |
+| -------------------- | -------------------------------------------------- |
+| `/`                  | The Index Page: every Plugin, and its state.       |
+| `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
+| `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
+
+## Call a Plugin's tools
+
+A Plugin Page calls its own tools with one ordinary request. There is no bridge
+API to learn:
+
+```js
+const answer = await fetch('rpc', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+});
+```
+
+The Host forwards that body to the Plugin's Plugin Server and returns the
+answer. A Plugin Page may reach only its own Plugin. From a terminal:
+
+```sh
+curl -X POST -H 'content-type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'   "http://127.0.0.1:4747/p/<name>/rpc?token=<token>"
+```
 
 ## Reach it
 
