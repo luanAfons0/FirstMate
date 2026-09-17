@@ -60,7 +60,7 @@ test('the Host serves nexus as a Plugin Page, byte for byte', async (t) => {
   }
 });
 
-test('nexus appears on the Index Page as shipping no Plugin Server yet', async (t) => {
+test('nexus appears on the Index Page in whatever state it is in', async (t) => {
   if (!(await isThere(join(NEXUS, 'web', 'index.html')))) {
     t.skip('this machine has no ~/.nexus to prove anything against');
     return;
@@ -68,8 +68,37 @@ test('nexus appears on the Index Page as shipping no Plugin Server yet', async (
   const host = await bootHost(t, [{ name: 'nexus', directory: NEXUS }]);
 
   const page = await (await host.fetch('/')).text();
-
   assert.ok(page.includes('href="/p/nexus/"'), 'it is one click away');
-  // Writing nexus's own mcp is the work that remains in the nexus repository.
-  assert.ok(page.includes('no Plugin Server'), 'and it ships no tools yet');
+
+  // Which state is right depends on the nexus repository, not on this one,
+  // so this asks the same question the Host asked and expects the same
+  // answer. Asserting one state here would tie a green suite to the contents
+  // of another repository.
+  const shipsServer = await isThere(join(NEXUS, 'mcp'));
+  assert.ok(
+    page.includes(shipsServer ? 'Running' : 'no Plugin Server'),
+    shipsServer ? 'it ships an mcp, so it runs' : 'it ships no mcp yet',
+  );
+});
+
+test('nexus answers its own tools, once it ships a Plugin Server', async (t) => {
+  if (!(await isThere(join(NEXUS, 'mcp')))) {
+    t.skip('this nexus ships no Plugin Server yet');
+    return;
+  }
+  const host = await bootHost(t, [{ name: 'nexus', directory: NEXUS }]);
+
+  const answer = await host.fetch('/p/nexus/rpc', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      referer: `${host.origin}/p/nexus/`,
+      'sec-fetch-site': 'same-origin',
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+  });
+  const said = (await answer.json()) as { result: { tools: { name: string }[] } };
+
+  assert.equal(answer.status, 200);
+  assert.ok(said.result.tools.length > 0, 'a real Plugin answers with real tools');
 });
