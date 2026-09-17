@@ -125,6 +125,14 @@ journalctl --user -u firstmate -f   # read it
 scripts/uninstall-service.sh        # remove it
 ```
 
+## Open it from Windows
+
+The Tray is a notification-area icon that opens the Index Page in one click. It
+holds the Host's port and token in memory, so opening makes no `wsl.exe` call
+and no file read. Install it with `windows/install-tray.ps1`, remove it with
+`windows/uninstall-tray.ps1`; both are in
+[`docs/deploy.md`](docs/deploy.md).
+
 ## Test it
 
 ```sh
