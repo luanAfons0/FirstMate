@@ -145,6 +145,15 @@ and no file read. Install it with `windows/install-tray.ps1`, remove it with
 `windows/uninstall-tray.ps1`; both are in
 [`docs/deploy.md`](docs/deploy.md).
 
+## The first Plugin
+
+`~/.nexus` is FirstMate's first Plugin. The Host serves its existing `web/`
+directory as a Plugin Page with every relative path unchanged, and nexus keeps
+its own server and tray until the migration is finished.
+
+What remains in the nexus repository is written down in
+[`docs/nexus-migration.md`](docs/nexus-migration.md).
+
 ## Test it
 
 ```sh
