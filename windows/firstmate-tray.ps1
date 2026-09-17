@@ -90,28 +90,32 @@ $script:LastRead = [DateTime]::MinValue
 
 function Update-State {
     <#
-        Ask the Host's port, and go back to the runtime file only when the port
-        says nothing. A run that restarted on another port is found by the
-        re-read; a distribution that is down is found by Read-Runtime without
-        being started.
+        Ask the Host whether it is up and whether the token still opens it.
+
+        A refused token means the run was replaced, so the runtime file is
+        read again at once rather than at the next interval: the person is one
+        click away from an address that would be refused. A Host that does not
+        answer at all is read again no more than every RereadIntervalMs,
+        because reading it crosses into the distribution.
     #>
-    if ($null -ne $script:Runtime -and (Test-HostListening -Port $script:Runtime.Port)) {
-        $script:State = 'running'
-    } else {
-        $since = ([DateTime]::UtcNow - $script:LastRead).TotalMilliseconds
-        if ($null -eq $script:Runtime -or $since -ge $script:RereadIntervalMs) {
-            $script:LastRead = [DateTime]::UtcNow
-            $found = Read-Runtime -Distro $Distro -FirstMateHome $FirstMateHome
-            if ($null -ne $found) { $script:Runtime = $found }
-        }
-        $script:State =
-            if ($null -ne $script:Runtime -and (Test-HostListening -Port $script:Runtime.Port)) {
-                'running'
-            } else {
-                'stopped'
-            }
+    $answer = 'absent'
+    if ($null -ne $script:Runtime) {
+        $answer = Test-HostAdmits -Port $script:Runtime.Port -Token $script:Runtime.Token
     }
 
+    if ($answer -ne 'running') {
+        $since = ([DateTime]::UtcNow - $script:LastRead).TotalMilliseconds
+        if ($answer -eq 'stale' -or $null -eq $script:Runtime -or $since -ge $script:RereadIntervalMs) {
+            $script:LastRead = [DateTime]::UtcNow
+            $found = Read-Runtime -Distro $Distro -FirstMateHome $FirstMateHome
+            if ($null -ne $found) {
+                $script:Runtime = $found
+                $answer = Test-HostAdmits -Port $found.Port -Token $found.Token
+            }
+        }
+    }
+
+    $script:State = if ($answer -eq 'running') { 'running' } else { 'stopped' }
     $tray.Icon = $script:Icons[$script:State]
     $tray.Text = if ($script:State -eq 'running') {
         "FirstMate - running (port $($script:Runtime.Port))"
@@ -226,6 +230,8 @@ function Invoke-Open {
         return
     }
     try {
+        # What is in memory was admitted by the poll moments ago, so this is
+        # one Start-Process and nothing else: no wsl.exe call and no file read.
         Start-Process (Get-IndexAddress -Runtime $script:Runtime)
     } catch {
         Show-Fault "FirstMate could not open the Index Page."
