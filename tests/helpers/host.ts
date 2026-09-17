@@ -70,6 +70,15 @@ export function fixture(name: string): string {
 }
 
 /**
+ * A home directory for one test, removed when the test ends.
+ */
+export async function makeHome(t: TestContext): Promise<string> {
+  const home = await mkdtemp(join(tmpdir(), 'firstmate-test-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  return home;
+}
+
+/**
  * Boot a Host with a Registry written for this test. It is stopped and its
  * home directory removed when the test ends, whatever the test did.
  */
@@ -78,9 +87,17 @@ export async function bootHost(
   rows: readonly Row[] = [],
   env: Readonly<Record<string, string>> = {},
 ): Promise<Booted> {
-  const home = await mkdtemp(join(tmpdir(), 'firstmate-test-'));
+  const home = await makeHome(t);
   await writeRegistry(home, rows);
+  return bootHostIn(t, home, env);
+}
 
+/** Boot a Host against a home directory that already holds what it needs. */
+export async function bootHostIn(
+  t: TestContext,
+  home: string,
+  env: Readonly<Record<string, string>> = {},
+): Promise<Booted> {
   const child = spawn(process.execPath, [join(REPOSITORY, 'src', 'main.ts')], {
     cwd: REPOSITORY,
     env: { ...process.env, FIRSTMATE_HOME: home, FIRSTMATE_PORT: '0', ...env },
@@ -97,7 +114,6 @@ export async function bootHost(
   t.after(async () => {
     child.kill('SIGTERM');
     await once(child);
-    await rm(home, { recursive: true, force: true });
   });
 
   const runtime = await waitForRuntimeFile(home, () => exited, () => output);
@@ -151,6 +167,35 @@ async function waitForRuntimeFile(
     }
     await new Promise((done) => setTimeout(done, 20));
   }
+}
+
+export type CommandResult = {
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+};
+
+/**
+ * One run of the command line, against a home directory of this test's own.
+ * It is a real process, like everything else a test drives here.
+ */
+export function firstmate(
+  home: string,
+  argv: readonly string[],
+): Promise<CommandResult> {
+  return new Promise((done, fail) => {
+    const child = spawn(process.execPath, [join(REPOSITORY, 'src', 'cli.ts'), ...argv], {
+      cwd: REPOSITORY,
+      env: { ...process.env, FIRSTMATE_HOME: home },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout!.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
+    child.stderr!.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+    child.once('error', fail);
+    child.once('exit', (code) => done({ code, stdout, stderr }));
+  });
 }
 
 /** The cookie the Host admits an already-admitted browser with. */

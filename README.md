@@ -37,6 +37,18 @@ The Host never starts a Stopped Plugin again, so a broken Plugin stays visible
 instead of spinning in a restart loop. A Stopped Plugin still serves its Plugin
 Page.
 
+## Add a Plugin
+
+```sh
+node src/cli.ts add <name> /absolute/path/to/the/directory
+node src/cli.ts remove <name>
+node src/cli.ts list
+```
+
+Adding neither copies nor symlinks the directory: the Registry holds the path,
+so a Plugin stays in its own repository wherever it already lives. The Registry
+is read when the Host starts, so restart the Host to pick up a change.
+
 ## Run the Host
 
 ```sh
