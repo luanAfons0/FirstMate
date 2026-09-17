@@ -112,6 +112,19 @@ carrying an `Origin` that is not its own, one carrying the literal `Origin` of
 `null`, and one a foreign site started. Each refusal is a 403 that says which
 check it failed.
 
+## Keep it running
+
+The Host is a systemd user service inside WSL Debian, with a Windows Task
+Scheduler entry at logon that starts WSL and holds the distribution up. Both
+halves, with the exact commands to install and to remove them, are in
+[`docs/deploy.md`](docs/deploy.md).
+
+```sh
+scripts/install-service.sh          # install and start it
+journalctl --user -u firstmate -f   # read it
+scripts/uninstall-service.sh        # remove it
+```
+
 ## Test it
 
 ```sh
