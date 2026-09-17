@@ -66,6 +66,22 @@ $trayHome  = Join-Path $env:LOCALAPPDATA 'FirstMate\Tray'
 $startup   = Join-Path ([Environment]::GetFolderPath('Startup')) 'FirstMate Tray.lnk'
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'FirstMate.lnk'
 
+# A running Tray holds the one-instance mutex and its own copy of these
+# files, so it is stopped before they are replaced. Without this an install
+# over a running Tray would copy the new files, start a second copy that
+# leaves at once, and leave the old one running: an upgrade that silently
+# does nothing.
+$trayScript = Join-Path $trayHome 'firstmate-tray.ps1'
+foreach ($process in @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+    Where-Object { $_.CommandLine -and $_.CommandLine.Contains($trayScript) })) {
+    try {
+        Stop-Process -Id $process.ProcessId -Force
+        Write-Output "stopped the running Tray (pid $($process.ProcessId))"
+    } catch {
+        Write-Output "could not stop the Tray (pid $($process.ProcessId)): $_"
+    }
+}
+
 New-Item -ItemType Directory -Path $trayHome -Force | Out-Null
 foreach ($file in 'firstmate-tray.ps1', 'firstmate-open.ps1', 'firstmate-runtime.ps1',
                   'firstmate-hidden.vbs') {

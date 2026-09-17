@@ -18,7 +18,7 @@ Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'firstmate-runtime.ps1')
 
 $runtime = Read-Runtime -Distro $Distro -FirstMateHome $FirstMateHome
-if ($null -ne $runtime -and (Test-HostListening -Port $runtime.Port)) {
+if ($null -ne $runtime -and (Test-HostAdmits -Port $runtime.Port -Token $runtime.Token) -eq 'running') {
     Start-Process (Get-IndexAddress -Runtime $runtime)
     exit 0
 }

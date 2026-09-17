@@ -93,29 +93,53 @@ function Read-Runtime {
     return [pscustomobject]@{ Port = [int] $runtime.port; Token = [string] $runtime.token }
 }
 
-function Test-HostListening {
+function Test-HostAdmits {
     <#
-        True when something answers on the Host's port.
+        Whether the Host answers on this port and admits this token.
 
-        WSL2 forwards 127.0.0.1 into the distribution, so this asks the Host
-        itself, from Windows, with no wsl.exe call and no file read. It is what
-        the Tray polls on, so that opening the Index Page is instant.
+        A TCP connection proves that something is listening. It does not prove
+        that the token in hand still opens it, and those are different
+        questions: the Host mints a new token at every start and keeps the
+        same port, so a run can end and be replaced without the port ever
+        stopping answering. Asking the Host itself is the only honest check.
+
+        Returns one of:
+
+          running  the Host answered and let us in
+          stale    the Host answered and refused the token: a new run
+          absent   nothing answered
+
+        WSL2 forwards 127.0.0.1 into the distribution, so this asks from
+        Windows with no wsl.exe call and no file read.
     #>
     param(
         [Parameter(Mandatory = $true)] [int] $Port,
-        [int] $TimeoutMs = 500
+        [Parameter(Mandatory = $true)] [string] $Token,
+        [int] $TimeoutMs = 2000
     )
 
-    $client = New-Object System.Net.Sockets.TcpClient
+    $request = [System.Net.HttpWebRequest]::Create("http://127.0.0.1:$Port/?token=$Token")
+    # A HEAD asks the question without carrying the page back, and no proxy
+    # stands between this process and its own loopback.
+    $request.Method           = 'HEAD'
+    $request.Proxy            = $null
+    $request.Timeout          = $TimeoutMs
+    $request.ReadWriteTimeout = $TimeoutMs
+    $request.AllowAutoRedirect = $false
     try {
-        $connecting = $client.BeginConnect('127.0.0.1', $Port, $null, $null)
-        if (-not $connecting.AsyncWaitHandle.WaitOne($TimeoutMs)) { return $false }
-        $client.EndConnect($connecting)
-        return $true
+        $request.GetResponse().Close()
+        return 'running'
+    } catch [System.Net.WebException] {
+        $response = $_.Exception.Response
+        if ($null -eq $response) { return 'absent' }
+        $code = [int] $response.StatusCode
+        $response.Close()
+        if ($code -eq 403) { return 'stale' }
+        # It answered. Whatever it disliked about that one address, the Host
+        # is up and this token reaches it.
+        return 'running'
     } catch {
-        return $false
-    } finally {
-        $client.Close()
+        return 'absent'
     }
 }
 

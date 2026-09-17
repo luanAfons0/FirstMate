@@ -116,8 +116,13 @@ What the icon does:
 | Start at logon      | Writes or removes the Startup shortcut.                   |
 | Quit                | Removes the icon. The Host keeps running.                 |
 
-Green means the Host answers on its port. Grey means it does not, and Open then
-says so and names the command that starts it.
+Green means the Host answered and admitted the Tray's token. Grey means it did
+not, and Open then says so and names the command that starts it.
+
+The Tray asks the Host itself rather than only asking whether the port is open,
+because the port is fixed and the token is not: the Host mints a new one at
+every start, so a run can end and be replaced without the port ever stopping
+answering. A refused token sends the Tray back to the runtime file at once.
 
 On Windows 11 a new notification-area icon starts hidden: click the chevron
 (`^`) beside the clock and drag the FirstMate icon out to keep it on the
