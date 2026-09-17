@@ -54,6 +54,8 @@ export type RawRequest = {
   readonly path: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: string;
+  /** Send no cookie, as a stranger would. The Host refuses such a request. */
+  readonly anonymous?: boolean;
 };
 
 export type RawResponse = {
@@ -109,8 +111,11 @@ export async function bootHost(
       fetch(new URL(path, `http://127.0.0.1:${runtime.port}`), {
         redirect: 'manual',
         ...init,
+        // An admitted browser holds the cookie. A test that wants to be a
+        // stranger says so, with its own headers or with `raw`.
+        headers: { cookie: cookieFor(runtime.token), ...init?.headers },
       }),
-    raw: (request) => rawRequest(runtime.port, request),
+    raw: (request) => rawRequest(runtime.port, runtime.token, request),
   };
 }
 
@@ -148,11 +153,19 @@ async function waitForRuntimeFile(
   }
 }
 
-function rawRequest(port: number, request: RawRequest): Promise<RawResponse> {
+/** The cookie the Host admits an already-admitted browser with. */
+export function cookieFor(token: string): string {
+  return `firstmate_token=${token}`;
+}
+
+function rawRequest(port: number, token: string, request: RawRequest): Promise<RawResponse> {
   const method = request.method ?? 'GET';
   const body = request.body ?? '';
+  const admitted: Record<string, string> =
+    request.anonymous === true ? {} : { cookie: cookieFor(token) };
   const headers: Record<string, string> = {
     host: `127.0.0.1:${port}`,
+    ...admitted,
     ...request.headers,
     connection: 'close',
   };
@@ -165,9 +178,13 @@ function rawRequest(port: number, request: RawRequest): Promise<RawResponse> {
   ];
 
   return new Promise((done, fail) => {
-    const socket = connect(port, '127.0.0.1', () => socket.end(lines.join('\r\n')));
+    // Write without closing this end. A client that half-closes makes the
+    // server end its own side at once, which would cut a response the Host is
+    // still reading off disk. `Connection: close` is what ends this socket.
+    const socket = connect(port, '127.0.0.1', () => socket.write(lines.join('\r\n')));
     let received = '';
     socket.setEncoding('utf8');
+    socket.setTimeout(5000, () => socket.destroy(new Error('the Host did not answer')));
     socket.on('data', (chunk: string) => (received += chunk));
     socket.once('error', fail);
     socket.once('close', () => done(parseRawResponse(received)));

@@ -41,6 +41,31 @@ It listens on `http://127.0.0.1:4747/` and on no other address.
 | `/`               | The Index Page: every Plugin, and its state.  |
 | `/p/<name>/`      | That Plugin's `web/` directory, byte for byte. |
 
+## Reach it
+
+The Host mints a token when it starts and refuses every request that does not
+carry it. The address it prints at startup carries the token once:
+
+```
+FirstMate: http://127.0.0.1:4747/?token=<token>
+```
+
+Open that address and the Host answers with a host-only `SameSite=Strict`
+cookie and sends the browser to the same address without the parameter, so the
+relative paths inside a Plugin Page are never disturbed. Every later request is
+admitted on the cookie alone.
+
+From a terminal, pass the token on every call:
+
+```sh
+curl "http://127.0.0.1:4747/p/<name>/?token=<token>"
+```
+
+The Host also refuses a request whose `Host` header it does not answer to, one
+carrying an `Origin` that is not its own, one carrying the literal `Origin` of
+`null`, and one a foreign site started. Each refusal is a 403 that says which
+check it failed.
+
 ## Test it
 
 ```sh

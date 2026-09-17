@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import { BIND_ADDRESS } from './config.ts';
 import { indexPage, type PluginView } from './index-page.ts';
 import type { PluginRow } from './registry.ts';
+import { checkRequest } from './security.ts';
 import { serveStatic, webRoot } from './static-files.ts';
 
 /** Every Plugin address starts here: /p/<name>/. */
@@ -22,6 +23,8 @@ export type HostOptions = {
   readonly plugins: readonly PluginRow[];
   /** Where the Registry lives, so that an empty Index Page can say so. */
   readonly registryPath: string;
+  /** The token minted at startup. Every request carries it or is refused. */
+  readonly token: string;
 };
 
 export type Host = {
@@ -32,12 +35,16 @@ export type Host = {
 
 export async function startHost(options: HostOptions): Promise<Host> {
   const plugins = new Map(options.plugins.map((plugin) => [plugin.name, plugin]));
+  // The security check names this Host by the port it answers on, which is
+  // known only once it is listening.
+  let listening = 0;
   const server = createServer((request, response) => {
-    handle(request, response, plugins, options).catch((fault: unknown) => {
+    handle(request, response, plugins, options, listening).catch((fault: unknown) => {
       fail(response, fault);
     });
   });
   const port = await listen(server, options.port);
+  listening = port;
   return {
     port,
     close: () =>
@@ -53,14 +60,29 @@ async function handle(
   response: ServerResponse,
   plugins: Map<string, PluginRow>,
   options: HostOptions,
+  port: number,
 ): Promise<void> {
+  const url = new URL(request.url ?? '/', 'http://firstmate.invalid');
+
+  const admission = checkRequest(request, url, { port, token: options.token });
+  if (admission.kind === 'refuse') {
+    sendText(response, 403, `FirstMate refused this request: ${admission.reason}.`);
+    return;
+  }
+  if (admission.kind === 'admit') {
+    response
+      .writeHead(303, { 'set-cookie': admission.cookie, location: admission.location })
+      .end();
+    return;
+  }
+
   const method = request.method ?? 'GET';
   if (method !== 'GET' && method !== 'HEAD') {
     response.setHeader('allow', 'GET, HEAD');
     sendText(response, 405, `${method} is not allowed here.`);
     return;
   }
-  const path = new URL(request.url ?? '/', 'http://firstmate.invalid').pathname;
+  const path = url.pathname;
 
   if (path === '/') {
     sendIndexPage(response, plugins, options, method === 'HEAD');
