@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { readConfig } from './config.ts';
 import { startHost } from './host.ts';
 import { readRegistry, registryPath } from './registry.ts';
-import { removeRuntimeFile, writeRuntimeFile } from './runtime.ts';
+import { removeRuntimeFile, runtimePath, writeRuntimeFile } from './runtime.ts';
 import { superviseAll, type Supervisor } from './supervisor.ts';
 
 async function main(): Promise<void> {
@@ -32,9 +32,7 @@ async function main(): Promise<void> {
   });
   writeRuntimeFile(config.home, { port: host.port, token });
 
-  // The address that admits a browser. The token is on it once: the Host
-  // answers with a cookie and sends the browser to the clean address.
-  console.log(`FirstMate: http://127.0.0.1:${host.port}/?token=${token}`);
+  announce(host.port, token, config.home);
   console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -42,6 +40,23 @@ async function main(): Promise<void> {
       void stop(host, supervisor, config.home);
     });
   }
+}
+
+/**
+ * The address, for whoever started the Host.
+ *
+ * A person at a terminal gets the whole address, token and all, because the
+ * token is what admits their browser. A service gets the address alone: its
+ * output is the journal, and a journal is no place for a credential. The Tray
+ * reads the token from the runtime file, which is written for this user only.
+ */
+function announce(port: number, token: string, home: string): void {
+  if (process.stdout.isTTY) {
+    console.log(`FirstMate: http://127.0.0.1:${port}/?token=${token}`);
+    return;
+  }
+  console.log(`FirstMate: http://127.0.0.1:${port}/`);
+  console.log(`FirstMate: the token to open it with is in ${runtimePath(home)}`);
 }
 
 async function stop(

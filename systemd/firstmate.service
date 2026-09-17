@@ -1,0 +1,43 @@
+# The Host as a systemd user service inside WSL Debian (ADR-0007).
+#
+# This file is a template: @NODE@ and @REPOSITORY@ are filled in by
+# scripts/install-service.sh, which writes the result to
+# ~/.config/systemd/user/firstmate.service. Install it with:
+#
+#   scripts/install-service.sh
+#
+# and remove it with:
+#
+#   scripts/uninstall-service.sh
+
+[Unit]
+Description=FirstMate Host
+Documentation=https://github.com/luanAfons0/FirstMate
+After=default.target
+
+# A failure that repeats is left alone, so a broken Host is visible rather than
+# spinning behind the operator's back.
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=@REPOSITORY@
+ExecStart=@NODE@ @REPOSITORY@/src/main.ts
+
+# The Host keeps no logs of its own, and neither do its Plugin Servers: their
+# output passes through to the Host's, and the journal takes it (ADR-0005).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=firstmate
+
+# The Host itself may be restarted; a Plugin Server may not (issue #6).
+Restart=on-failure
+RestartSec=5
+
+# Stopping closes the Plugin Servers and removes the runtime file.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
