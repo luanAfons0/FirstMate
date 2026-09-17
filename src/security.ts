@@ -131,6 +131,27 @@ function header(request: IncomingMessage, name: string): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/**
+ * Whether a request for a Plugin's tools came from that Plugin's own page.
+ *
+ * A Plugin Page may reach only its own Plugin. Every Plugin Page is same-origin
+ * with every other, so the address alone does not say which page is calling:
+ * the Referer does, and a browser sends the whole path of it for a same-origin
+ * request. A terminal sends no Referer at all and is answered, because
+ * exercising the endpoint with curl is the point of it.
+ */
+export function startedByOwnPage(request: IncomingMessage, name: string): boolean {
+  const referer = header(request, 'referer');
+  if (referer === undefined) return true;
+  let path: string;
+  try {
+    path = new URL(referer).pathname;
+  } catch {
+    return false;
+  }
+  return path.startsWith(`/p/${encodeURIComponent(name)}/`);
+}
+
 function refuse(reason: string): Admission {
   return { kind: 'refuse', reason };
 }

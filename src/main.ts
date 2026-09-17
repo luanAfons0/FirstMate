@@ -28,6 +28,7 @@ async function main(): Promise<void> {
     registryPath: registryPath(config.home),
     token,
     stateOf: (name) => supervisor.stateOf(name),
+    serverOf: (name) => supervisor.serverOf(name),
   });
   writeRuntimeFile(config.home, { port: host.port, token });
 
