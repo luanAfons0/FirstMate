@@ -1,0 +1,19 @@
+{
+  "name": "firstmate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A local plugin host: one process that gives any Plugin a process, a page and an address.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}
