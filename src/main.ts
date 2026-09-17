@@ -10,6 +10,7 @@ import { readConfig } from './config.ts';
 import { startHost } from './host.ts';
 import { readRegistry, registryPath } from './registry.ts';
 import { removeRuntimeFile, writeRuntimeFile } from './runtime.ts';
+import { superviseAll, type Supervisor } from './supervisor.ts';
 
 async function main(): Promise<void> {
   const config = readConfig();
@@ -18,11 +19,15 @@ async function main(): Promise<void> {
   // every start, so yesterday's address is worth nothing today.
   const token = randomBytes(32).toString('hex');
 
+  // Every Plugin Server starts before the first request can reach one.
+  const supervisor = await superviseAll(plugins);
+
   const host = await startHost({
     port: config.port,
     plugins,
     registryPath: registryPath(config.home),
     token,
+    stateOf: (name) => supervisor.stateOf(name),
   });
   writeRuntimeFile(config.home, { port: host.port, token });
 
@@ -33,14 +38,19 @@ async function main(): Promise<void> {
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
-      void stop(host, config.home);
+      void stop(host, supervisor, config.home);
     });
   }
 }
 
-async function stop(host: { close(): Promise<void> }, home: string): Promise<void> {
+async function stop(
+  host: { close(): Promise<void> },
+  supervisor: Supervisor,
+  home: string,
+): Promise<void> {
   // The runtime file describes a run. This one is over, so it goes with it.
   removeRuntimeFile(home);
+  supervisor.stopAll();
   await host.close();
 }
 

@@ -1,0 +1,4 @@
+#!/bin/sh
+# A fixture Plugin Server that is never run, because this file carries no
+# executable bit. Its Plugin is Stopped.
+echo "unrunnable: this line is never printed" >&2

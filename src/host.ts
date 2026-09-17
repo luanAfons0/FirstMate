@@ -12,6 +12,7 @@ import { indexPage, type PluginView } from './index-page.ts';
 import type { PluginRow } from './registry.ts';
 import { checkRequest } from './security.ts';
 import { serveStatic, webRoot } from './static-files.ts';
+import type { PluginState } from './supervisor.ts';
 
 /** Every Plugin address starts here: /p/<name>/. */
 const PLUGIN_PATH = /^\/p\/([^/]+)(\/.*)?$/;
@@ -25,6 +26,8 @@ export type HostOptions = {
   readonly registryPath: string;
   /** The token minted at startup. Every request carries it or is refused. */
   readonly token: string;
+  /** What the Supervisor knows about a Plugin Server right now. */
+  readonly stateOf: (name: string) => PluginState;
 };
 
 export type Host = {
@@ -105,6 +108,7 @@ function sendIndexPage(
   const views: PluginView[] = [...plugins.values()].map((plugin) => ({
     name: plugin.name,
     hasPage: existsSync(webRoot(plugin.directory)),
+    state: options.stateOf(plugin.name),
   }));
   sendHtml(response, indexPage(views, options.registryPath), headOnly);
 }
