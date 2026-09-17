@@ -5,7 +5,7 @@
  * It is one file in the Host's home directory. There is no scanning and no
  * plugins folder: a Plugin is registered or it does not exist.
  */
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
 /** The Registry file, inside the Host's home directory. */
@@ -51,6 +51,25 @@ export function readRegistry(home: string): PluginRow[] {
     throw new Error(`Cannot read the Registry at ${path}.`, { cause });
   }
   return parseRegistry(text, path);
+}
+
+/**
+ * Replace the Registry with these rows. It is written whole and moved into
+ * place, so a Host reading it always sees one Registry or the one before it.
+ */
+export function writeRegistry(home: string, rows: readonly PluginRow[]): void {
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  const path = registryPath(home);
+  const pending = `${path}.pending`;
+  const plugins = rows.map((row) => ({
+    name: row.name,
+    directory: row.directory,
+    // Grants are stored and never enforced in v1, and are kept untouched
+    // through every add and every remove (issue #1).
+    grants: [...row.grants],
+  }));
+  writeFileSync(pending, `${JSON.stringify({ plugins }, null, 2)}\n`, { mode: 0o600 });
+  renameSync(pending, path);
 }
 
 function parseRegistry(text: string, path: string): PluginRow[] {
