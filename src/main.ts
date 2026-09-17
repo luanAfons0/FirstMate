@@ -22,10 +22,13 @@ async function main(): Promise<void> {
     port: config.port,
     plugins,
     registryPath: registryPath(config.home),
+    token,
   });
   writeRuntimeFile(config.home, { port: host.port, token });
 
-  console.log(`FirstMate: http://127.0.0.1:${host.port}/`);
+  // The address that admits a browser. The token is on it once: the Host
+  // answers with a cookie and sends the browser to the clean address.
+  console.log(`FirstMate: http://127.0.0.1:${host.port}/?token=${token}`);
   console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
