@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+// A fixture Plugin Server in JavaScript, with no Plugin Page beside it.
+// It speaks MCP over stdin and stdout: one JSON-RPC message per line.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const result = (id, value) => reply({ jsonrpc: '2.0', id, result: value });
+
+process.stderr.write('server-only: the Plugin Server is up\n');
+
+for await (const line of createInterface({ input: process.stdin })) {
+  if (line.trim() === '') continue;
+  const request = JSON.parse(line);
+  if (request.id === undefined || request.id === null) continue;
+  switch (request.method) {
+    case 'initialize':
+      result(request.id, {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'server-only', version: '1.0.0' },
+      });
+      break;
+    case 'tools/list':
+      result(request.id, {
+        tools: [{
+          name: 'ping',
+          description: 'Answer pong.',
+          inputSchema: { type: 'object', properties: {} },
+        }],
+      });
+      break;
+    case 'tools/call':
+      result(request.id, { content: [{ type: 'text', text: 'pong from server-only' }] });
+      break;
+    default:
+      reply({
+        jsonrpc: '2.0',
+        id: request.id,
+        error: { code: -32601, message: `no such method: ${request.method}` },
+      });
+  }
+}
