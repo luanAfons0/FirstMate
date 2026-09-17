@@ -16,9 +16,13 @@ const EVERY_FIXTURE = [
 
 /** The one word the Index Page says about a Plugin, read back off the page. */
 function stateOf(page: string, name: string): string {
-  const row = new RegExp(`<li>.*?>${name}<.*?class="state [^"]*">([^<]+)</span></li>`).exec(page);
-  assert.ok(row !== null, `the Index Page has a row for ${name}`);
-  return row[1] ?? '';
+  // The row, not its markup: find the list item that names the Plugin, then
+  // read the state out of it. How the Index Page dresses a row is its own.
+  const row = page.split('</li>').find((chunk) => chunk.includes(`>${name}<`));
+  assert.ok(row !== undefined, `the Index Page has a row for ${name}`);
+  const state = /class="state [^"]*">([^<]+)</.exec(row);
+  assert.ok(state !== null, `the row for ${name} says one state`);
+  return state[1] ?? '';
 }
 
 test('the Index Page shows each Plugin as Running, Stopped, or shipping no Plugin Server', async (t) => {
