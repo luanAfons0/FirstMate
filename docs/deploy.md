@@ -85,6 +85,44 @@ Get-ScheduledTask -TaskName 'FirstMate Host'
 Get-ScheduledTaskInfo -TaskName 'FirstMate Host'
 ```
 
+## Windows: the Tray
+
+The Tray is the notification-area icon that opens the Index Page in one click.
+Install it the same way, from this repository over `\\wsl.localhost\`:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  \\wsl.localhost\Debian\home\<user>\.first-mate\windows\install-tray.ps1
+```
+
+It copies the Tray into `%LOCALAPPDATA%\FirstMate\Tray`, writes a Startup
+shortcut and a Start Menu shortcut, and starts the icon at once. It asks the
+distribution once where the Host's home directory is; that is the only
+`wsl.exe` call anywhere in the Tray, and it happens here.
+
+Remove it:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  \\wsl.localhost\Debian\home\<user>\.first-mate\windows\uninstall-tray.ps1
+```
+
+What the icon does:
+
+| Action              | What happens                                             |
+| ------------------- | -------------------------------------------------------- |
+| Double-click, Open  | Opens the Index Page in the default browser.              |
+| Copy address        | Puts the address, token and all, on the clipboard.        |
+| Start at logon      | Writes or removes the Startup shortcut.                   |
+| Quit                | Removes the icon. The Host keeps running.                 |
+
+Green means the Host answers on its port. Grey means it does not, and Open then
+says so and names the command that starts it.
+
+On Windows 11 a new notification-area icon starts hidden: click the chevron
+(`^`) beside the clock and drag the FirstMate icon out to keep it on the
+taskbar.
+
 ## Prove it
 
 After logging out of Windows and back in, with nothing started by hand:
