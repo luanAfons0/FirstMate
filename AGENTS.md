@@ -178,8 +178,8 @@ and drives it over HTTP, exactly as a browser does.
 - Give the Host a scheduler (ADR-0004), a build step, or a front-end framework.
 - Print or commit the token, `runtime.json`, or anything from
   `$FIRSTMATE_HOME`.
-- Rewrite, wrap, inject into or frame a Plugin Page. The bytes are the
-  Plugin's own.
+- Rewrite, wrap, inject into or frame a Plugin Page (ADR-0008). The bytes are
+  the Plugin's own.
 
 ## Agent skills
 
