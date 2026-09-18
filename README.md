@@ -59,10 +59,11 @@ It listens on `http://127.0.0.1:4747/` and on no other address.
 
 ## Configure it
 
-| Variable          | Default        | What it moves                                   |
-| ----------------- | -------------- | ----------------------------------------------- |
-| `FIRSTMATE_HOME`  | `~/.firstmate` | Where the Registry and the runtime file live.   |
-| `FIRSTMATE_PORT`  | `4747`         | The port. Zero asks the system for a free one.  |
+| Variable                | Default        | What it moves                                     |
+| ----------------------- | -------------- | ------------------------------------------------- |
+| `FIRSTMATE_HOME`        | `~/.firstmate` | Where the Registry and the runtime file live.     |
+| `FIRSTMATE_PORT`        | `4747`         | The port. Zero asks the system for a free one.    |
+| `FIRSTMATE_HANDSHAKE_MS`| `10000`        | How long a Plugin Server has to answer the handshake. |
 
 ## The home directory
 

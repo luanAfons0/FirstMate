@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   const token = randomBytes(32).toString('hex');
 
   // Every Plugin Server starts before the first request can reach one.
-  const supervisor = await superviseAll(plugins);
+  const supervisor = await superviseAll(plugins, config.handshakeMs);
 
   const host = await startHost({
     port: config.port,

@@ -31,9 +31,10 @@ Run every command from the repository root.
 | `scripts/install-service.sh`         | Install and start the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
-Two environment variables move the Host: `FIRSTMATE_HOME` (default
-`~/.firstmate`) and `FIRSTMATE_PORT` (default `4747`; zero asks the system for
-a free port). Tests use both.
+Three environment variables move the Host: `FIRSTMATE_HOME` (default
+`~/.firstmate`), `FIRSTMATE_PORT` (default `4747`; zero asks the system for a
+free port) and `FIRSTMATE_HANDSHAKE_MS` (default `10000`, how long a Plugin
+Server has to answer the handshake). Tests use all three.
 
 `npm test` and `npm run typecheck` must both pass before you call work done.
 

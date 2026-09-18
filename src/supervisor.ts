@@ -20,9 +20,6 @@ export const SERVER_FILE = 'mcp';
 /** The MCP version the Host asks for when it starts a Plugin Server. */
 const PROTOCOL_VERSION = '2025-06-18';
 
-/** How long a Plugin Server has to answer `initialize` before it is Stopped. */
-const HANDSHAKE_TIMEOUT_MS = 10_000;
-
 export type PluginState =
   /** The Plugin Server is up and has answered the handshake. */
   | 'running'
@@ -37,13 +34,16 @@ export type Supervisor = {
   stopAll(): void;
 };
 
-export async function superviseAll(plugins: readonly PluginRow[]): Promise<Supervisor> {
+export async function superviseAll(
+  plugins: readonly PluginRow[],
+  handshakeMs: number,
+): Promise<Supervisor> {
   const servers = new Map<string, PluginServer>();
   const shipsNone = new Set<string>();
 
   await Promise.all(
     plugins.map(async (plugin) => {
-      const server = await startOne(plugin, shipsNone);
+      const server = await startOne(plugin, shipsNone, handshakeMs);
       if (server !== null) servers.set(plugin.name, server);
     }),
   );
@@ -67,6 +67,7 @@ export async function superviseAll(plugins: readonly PluginRow[]): Promise<Super
 async function startOne(
   plugin: PluginRow,
   shipsNone: Set<string>,
+  handshakeMs: number,
 ): Promise<PluginServer | null> {
   const path = join(plugin.directory, SERVER_FILE);
   const say = onceOnly(plugin.name);
@@ -88,6 +89,8 @@ async function startOne(
   }
 
   const child = spawn(path, [], {
+    // A Plugin Server runs in its own Plugin's directory, so that it reaches
+    // its own files by the relative paths its author already wrote.
     cwd: plugin.directory,
     // stdin and stdout carry MCP. stderr is the Plugin Server's own output and
     // goes straight to the Host's, which under systemd is the journal.
@@ -98,7 +101,7 @@ async function startOne(
   child.once('exit', (code, signal) => say(signal ?? `exit ${code ?? 0}`));
 
   try {
-    await handshake(server);
+    await handshake(server, handshakeMs);
   } catch (cause) {
     say(cause instanceof Error ? cause.message : String(cause));
     server.stop();
@@ -112,9 +115,11 @@ async function startOne(
 
 /**
  * The MCP handshake. A Plugin Server that will not answer it is not a Plugin
- * Server the Host can forward a tool call to, so the Plugin is Stopped.
+ * Server the Host can forward a tool call to, so the Plugin is Stopped. One
+ * that is merely slow is given until `handshakeMs`, because a slow Plugin is
+ * not a broken one.
  */
-async function handshake(server: PluginServer): Promise<void> {
+async function handshake(server: PluginServer, handshakeMs: number): Promise<void> {
   await server.call(
     {
       jsonrpc: '2.0',
@@ -126,7 +131,7 @@ async function handshake(server: PluginServer): Promise<void> {
         clientInfo: { name: 'firstmate', version: '1.0.0' },
       },
     },
-    HANDSHAKE_TIMEOUT_MS,
+    handshakeMs,
   );
   server.notify({ jsonrpc: '2.0', method: 'notifications/initialized' });
 }
