@@ -37,6 +37,9 @@ The Host never starts a Stopped Plugin again, so a broken Plugin stays visible
 instead of spinning in a restart loop. A Stopped Plugin still serves its Plugin
 Page.
 
+Writing one? [`docs/plugin-guide.md`](docs/plugin-guide.md) states the whole
+contract: what the Host enforces, and what it only advises.
+
 ## Add a Plugin
 
 ```sh
@@ -165,7 +168,8 @@ a Plugin Server. Nexus deleted its own listener, its Run File and its tray once
 this replaced them, and keeps no copy of any of the three.
 
 The migration is finished. What moved, and what it proved, is written down in
-[`docs/nexus-migration.md`](docs/nexus-migration.md).
+[`docs/nexus-migration.md`](docs/nexus-migration.md). What it taught the next
+Plugin is in [`docs/plugin-guide.md`](docs/plugin-guide.md).
 
 ## Test it
 

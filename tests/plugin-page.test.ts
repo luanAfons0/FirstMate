@@ -49,6 +49,41 @@ test('a Plugin address without its trailing slash is redirected to one', async (
   assert.equal(answer.headers.get('location'), '/p/both/');
 });
 
+test('so is a directory inside the Plugin Page', async (t) => {
+  const host = await bootHost(t, REGISTRY);
+
+  // Without this every relative path inside the page would resolve one
+  // directory too high, which is the whole reason the redirect exists.
+  const answer = await host.fetch('/p/both/nested');
+
+  assert.equal(answer.status, 308);
+  assert.equal(answer.headers.get('location'), '/p/both/nested/');
+});
+
+test('a file the Host has no type for is sent as bytes', async (t) => {
+  const host = await bootHost(t, REGISTRY);
+
+  for (const path of ['/p/both/LICENSE', '/p/both/thing.bin']) {
+    const answer = await host.fetch(path);
+
+    assert.equal(answer.status, 200, path);
+    assert.equal(
+      answer.headers.get('content-type'),
+      'application/octet-stream',
+      `${path}: no extension and an unknown one are both bytes`,
+    );
+  }
+});
+
+test('a Plugin Page is read-only', async (t) => {
+  const host = await bootHost(t, REGISTRY);
+
+  const answer = await host.fetch('/p/both/app.js', { method: 'POST' });
+
+  assert.equal(answer.status, 405);
+  assert.equal(answer.headers.get('allow'), 'GET, HEAD');
+});
+
 test('a request that leaves the web directory does not', async (t) => {
   const host = await bootHost(t, REGISTRY);
   const secret = await readFile(join(fixture('both'), 'private.txt'), 'utf8');
@@ -63,6 +98,7 @@ test('a request that leaves the web directory does not', async (t) => {
     '/p/both/%2e%2e/private.txt',
     '/p/both/nested/%2e%2e/%2e%2e/private.txt',
     '/p/both//../private.txt',
+    '/p/both/index.html%00.txt',
   ]) {
     const answer = await host.fetch(path);
     const body = await answer.text();

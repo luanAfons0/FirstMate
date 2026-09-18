@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that writes one line of rubbish to stdout before it
+// says anything sensible. stdout carries MCP and nothing else, so the Host
+// reports the line and drops it — and the Plugin Server goes on working.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const result = (id, value) => reply({ jsonrpc: '2.0', id, result: value });
+
+process.stdout.write('noisy: this belongs on stderr\n');
+process.stderr.write('noisy: the Plugin Server is up\n');
+
+for await (const line of createInterface({ input: process.stdin })) {
+  if (line.trim() === '') continue;
+  const request = JSON.parse(line);
+  if (request.id === undefined || request.id === null) continue;
+  switch (request.method) {
+    case 'initialize':
+      result(request.id, {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'noisy', version: '1.0.0' },
+      });
+      break;
+    default:
+      result(request.id, { content: [{ type: 'text', text: 'noisy still answers' }] });
+  }
+}
