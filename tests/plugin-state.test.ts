@@ -85,6 +85,17 @@ test('a Plugin Server that never answers the handshake is Stopped', async (t) =>
   );
 });
 
+test('a line on stdout that is not MCP is reported and dropped', async (t) => {
+  const host = await bootHost(t, [{ name: 'noisy', directory: 'noisy' }]);
+
+  const page = await (await host.fetch('/')).text();
+
+  // stdout carries MCP and nothing else, so a stray line breaks nothing but
+  // its own silence: the Host says what it saw and the handshake still lands.
+  assert.match(host.output(), /the Plugin Server of noisy wrote a line that is not JSON/);
+  assert.equal(stateOf(page, 'noisy'), 'Running', 'and the Plugin Server goes on working');
+});
+
 test('a Plugin Server that exits is never started again', async (t) => {
   const host = await bootHost(t, EVERY_FIXTURE);
 
