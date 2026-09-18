@@ -84,7 +84,7 @@ foreach ($process in @(Get-CimInstance Win32_Process -Filter "Name = 'powershell
 
 New-Item -ItemType Directory -Path $trayHome -Force | Out-Null
 foreach ($file in 'firstmate-tray.ps1', 'firstmate-open.ps1', 'firstmate-runtime.ps1',
-                  'firstmate-hidden.vbs') {
+                  'firstmate-hidden.vbs', 'firstmate-running.ico', 'firstmate-stopped.ico') {
     Copy-Item -Path (Join-Path $here $file) -Destination $trayHome -Force
 }
 $shim = Join-Path $trayHome 'firstmate-hidden.vbs'

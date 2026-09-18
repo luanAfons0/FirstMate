@@ -179,38 +179,45 @@ function Restart-Host {
 
 # --- the icon -------------------------------------------------------------
 
-function New-StateIcon {
+function Read-StateIcon {
     <#
-        One icon, drawn here rather than shipped, so the repository holds no
-        binary asset. Both are made at startup and kept for the life of the
-        process; nothing draws one per poll.
+        One state's icon: the FirstMate anchor, read from the file beside this
+        script. It was drawn in code until it had to be legible; a circle
+        survives sixteen pixels and an anchor only survives being drawn at
+        sixteen pixels, so the shape is now a file with a frame for every size
+        Windows asks for.
+
+        Windows is asked which size it wants rather than told, so the icon is
+        sharp at the 16 pixels of a 100 per cent display and sharp again at the
+        24 the same taskbar asks for at 150.
+
+        Both are read once at startup and kept for the life of the process;
+        nothing reads one per poll.
     #>
-    param([System.Drawing.Color] $Color)
-    $bitmap = New-Object System.Drawing.Bitmap 16, 16
-    $canvas = [System.Drawing.Graphics]::FromImage($bitmap)
-    $canvas.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-    $canvas.Clear([System.Drawing.Color]::Transparent)
-    $fill = New-Object System.Drawing.SolidBrush $Color
-    $edge = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(140, 0, 0, 0)), 1
-    $canvas.FillEllipse($fill, 1, 1, 14, 14)
-    $canvas.DrawEllipse($edge, 1, 1, 13, 13)
-    $fill.Dispose(); $edge.Dispose(); $canvas.Dispose()
-    $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
-    $bitmap.Dispose()
-    return $icon
+    param([string] $State)
+    $path = Join-Path $PSScriptRoot "firstmate-$State.ico"
+    if (-not (Test-Path -LiteralPath $path)) {
+        Show-Fault ("FirstMate cannot find its icon.`n`n$path`n`n" +
+            'Install the Tray again with install-tray.ps1.')
+        exit 2
+    }
+    return New-Object System.Drawing.Icon $path,
+        ([System.Windows.Forms.SystemInformation]::SmallIconSize)
 }
 
 $script:Icons = @{
-    running = New-StateIcon ([System.Drawing.Color]::FromArgb(46, 160, 67))
-    stopped = New-StateIcon ([System.Drawing.Color]::FromArgb(130, 134, 139))
+    running = Read-StateIcon 'running'
+    stopped = Read-StateIcon 'stopped'
 }
 
 function New-StateDot {
     <#
-        One Plugin's state, as a dot beside its name in the menu. Drawn for the
-        same reason the icon is: the repository holds no binary asset. A Plugin
-        with no Plugin Server gets a ring rather than a disc, so the state is
-        shape as well as colour, exactly as the Index Page shows it.
+        One Plugin's state, as a dot beside its name in the menu. A dot is a
+        colour and a shape and nothing else, so it stays drawn here while the
+        anchor is a file: shipping six more files to say this much would cost
+        more than it explains. A Plugin with no Plugin Server gets a ring
+        rather than a disc, so the state is shape as well as colour, exactly
+        as the Index Page shows it.
     #>
     param([System.Drawing.Color] $Color, [bool] $Hollow = $false)
     $bitmap = New-Object System.Drawing.Bitmap 16, 16

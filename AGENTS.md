@@ -71,9 +71,10 @@ src/         the Host. Every file is one job.
 tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
 docs/adr/    the decisions that are expensive to reverse.
 docs/agents/ how an agent works in this repo. See "Agent skills" below.
+docs/brand/  the anchor, at the sizes GitHub asks for.
 scripts/     install and uninstall the systemd user service.
 systemd/     the unit file.
-windows/     the Tray and the logon task, in PowerShell.
+windows/     the Tray and the logon task, in PowerShell, with its two icons.
 ```
 
 ## Code style
