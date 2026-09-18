@@ -1,74 +1,69 @@
-# What remains in the nexus repository
+# The nexus migration
 
-FirstMate v1 proves itself against nexus: `~/.nexus` is registered as a Plugin
-named `nexus`, and the Host serves its existing `web/` directory as a Plugin
-Page with every relative path unchanged.
+`~/.nexus` is FirstMate's first Plugin, and the migration that made it one is
+finished. This records what moved, what proved it, and what nexus deleted, so
+that the second Plugin has a worked example and nobody reopens a decision that
+is already closed.
 
-Nexus keeps its own server and its own tray throughout. Deleting them is the
-last step of the migration, not part of v1, and a working tool is never broken
-by the migration (stories 35 to 37).
+## What moved
+
+Nexus once owned everything a tool needs to put a page on screen. It owned one
+of each because nothing else would give it one. That is the reason FirstMate
+exists, and the migration is the argument made once, in full:
+
+| Nexus once shipped                          | The Host ships one, for every Plugin |
+| ------------------------------------------- | ------------------------------------ |
+| a loopback listener, `scripts/lib/ui_server.py` | `src/host.ts`                    |
+| a static allowlist                          | `src/static-files.ts`                |
+| a Run Token, a Run File, a stale-run probe  | `src/runtime.ts`, `src/security.ts`  |
+| five PowerShell files of its own tray       | the Tray, in `windows/`              |
+| `nexus ui`, with `--status`, `--stop`, `--open` | the Tray, and the address `/p/nexus/` |
 
 ## What v1 proved
 
 Served from `~/.nexus/web/`, unchanged, with the Host running as a systemd
-service:
+service: `index.html`, `app.css`, `app.js` and `vendor/marked.min.js` all
+loaded from `/p/nexus/`, byte for byte, with every relative path exactly as the
+page had written it. The Host had rewritten nothing, which is the whole of what
+a Plugin is promised.
 
-| Address                        | Answer                                     |
-| ------------------------------ | ------------------------------------------ |
-| `/p/nexus/`                     | `index.html`, 3087 bytes, byte for byte    |
-| `/p/nexus/app.css`              | 11637 bytes, byte for byte                 |
-| `/p/nexus/app.js`               | 36094 bytes, byte for byte                 |
-| `/p/nexus/vendor/marked.min.js` | 39903 bytes, byte for byte                 |
+Nexus was untouched at that point: its working tree had no change of any kind.
+The proof came first, and the deletions came after.
 
-`scripts/lib/ui_server.py` and `windows/` are byte for byte what they were, and
-the nexus working tree has no change of any kind.
+## What nexus then did
 
-## What remains, in the nexus repository
+Two pieces of work, both in the nexus repository, both done:
 
-Two pieces of work, neither of which belongs to FirstMate:
+1. **An `mcp` executable.** Nexus ships one, so the Host starts it and the
+   Index Page shows nexus as Running. Its Plugin Server answers `tools/list`
+   with five tools: `list_skills`, `show_global_instructions`,
+   `edit_global_instructions`, `update_skill` and `remove_skill`. Those are
+   everything the Plugin Page can do.
 
-### 1. Write nexus's `mcp` executable
+2. **`web/app.js` calls `rpc`.** One address, and an MCP JSON-RPC request in
+   the body, rather than a REST call per endpoint. The Run Token is gone from
+   the path: the Host sets a cookie on the first navigation and the page
+   carries nothing.
 
-Nexus ships no `mcp` file, so the Index Page shows it as having **no Plugin
-Server**. Its page loads and its buttons reach nothing.
+And then the step that cannot be undone: `scripts/lib/ui_server.py`,
+`scripts/ui.sh` and the whole `windows/` directory are deleted, and the
+`nexus ui` command with them. Nexus records that in its own ADR 0008, which
+supersedes the three ADRs that are why it once owned a listener, a Run File and
+a tray. Its suite went from 129 tests to 95: the thirty-four that went drove a
+server nexus no longer owns, and the boundary they protected is tested here
+now, through the Host's own HTTP surface.
 
-The Plugin Server is an ordinary MCP server over stdio, in any language the
-shebang names. It exposes what `scripts/lib/ui_server.py` exposes today as
-tools: listing skills, reading and writing the Global Instructions, installing,
-updating and removing a skill, and relinking.
+## What this cost nexus
 
-### 2. Point `web/app.js` at `/p/nexus/rpc`
+Nothing that a person sees. The Plugin Page is the page it always was, at a new
+address. What it gained is a Plugin Server that any other Plugin could one day
+call over the Tool Bus, and a Tray it did not have to write.
 
-Today `web/app.js` builds its own base address from the Run Token in the path:
+## What FirstMate learned
 
-```js
-const BASE = location.pathname.replace(/^(\/t\/[0-9a-f]{32}\/).*$/, '$1');
-const API = location.origin + BASE + 'api/';
-```
-
-Under the Host the path is `/p/nexus/`, which that expression leaves alone, so
-`API` already resolves to `http://127.0.0.1:<port>/p/nexus/api/`. The shape is
-right and the address is wrong: there is one address, `rpc`, and the body is an
-MCP JSON-RPC request rather than a REST call per endpoint.
-
-```js
-const answer = await fetch('rpc', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    jsonrpc: '2.0', id: 1, method: 'tools/call',
-    params: { name: 'list_skills', arguments: {} },
-  }),
-});
-```
-
-The token is gone from the path: the Host sets a cookie on the first navigation
-and the page carries nothing. The header's `base-url`, the `Stop server` button
-and the stopped-run panel all belong to nexus's own run and have no meaning
-under the Host.
-
-### And only then
-
-Delete `scripts/lib/ui_server.py` and `windows/`, and the `nexus ui` command
-with them. That is the irreversible step, and it happens after the replacement
-is proven and not before.
+A Plugin is a directory, and nothing else is asked of it (ADR-0002). Nexus
+became one without adding a manifest, a schema or a build step, and its page
+kept every relative path it already had. A Plugin Page is a whole page: the
+Index Page links to it and the browser goes there, and the Host puts no chrome
+around it (ADR-0008). Moving between Plugins belongs to the Index Page and the
+Tray, which is why the Tray lists them.
