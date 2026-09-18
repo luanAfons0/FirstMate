@@ -158,11 +158,12 @@ Install it with `windows/install-tray.ps1`, remove it with
 
 ## The first Plugin
 
-`~/.nexus` is FirstMate's first Plugin. The Host serves its existing `web/`
-directory as a Plugin Page with every relative path unchanged, and nexus keeps
-its own server and tray until the migration is finished.
+`~/.nexus` is FirstMate's first Plugin. The Host serves its `web/` directory as
+a Plugin Page with every relative path unchanged, and starts its `mcp` file as
+a Plugin Server. Nexus deleted its own listener, its Run File and its tray once
+this replaced them, and keeps no copy of any of the three.
 
-What remains in the nexus repository is written down in
+The migration is finished. What moved, and what it proved, is written down in
 [`docs/nexus-migration.md`](docs/nexus-migration.md).
 
 ## Test it
