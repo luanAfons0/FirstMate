@@ -1,6 +1,7 @@
 <#
     The Tray: the Windows notification-area icon that opens the Index Page,
-    and any one Plugin Page from a menu of every Plugin.
+    or any one Plugin Page from a menu of every Plugin, and starts or restarts
+    the Host.
 
     It exists on Windows because WSLg hosts no notification area, so an icon
     inside the distribution would have nowhere to appear.
@@ -8,6 +9,8 @@
     It holds the Host's port and token in memory and opens the Index Page from
     there, so opening makes no wsl.exe call and no file read: nexus measured
     220-245 ms for one wsl.exe call, and opening a tool must not pay for it.
+    That budget guards the open path alone. Restarting the Host is a deliberate
+    click, and it spends one wsl.exe call knowingly.
 
     It polls by asking the Host's own port whether anything answers, which
     costs nothing. Only when that fails does it look at the runtime file again,
@@ -41,6 +44,9 @@ $script:PollIntervalMs = 5000
 # Reading the runtime file crosses into the distribution, so it is done only
 # when the port has stopped answering, and at most this often.
 $script:RereadIntervalMs = 30000
+# Longer than the probe that only asks a question: a restart stops every Plugin
+# Server and starts it again, and systemd is entitled to take a moment over it.
+$script:RestartTimeoutMs = 20000
 
 # --- where the Host is ----------------------------------------------------
 
@@ -124,6 +130,51 @@ function Update-State {
         'FirstMate - the Host is not running'
     }
     $pluginsItem.Enabled = ($script:State -eq 'running')
+}
+
+function Restart-Host {
+    <#
+        Ask systemd inside the distribution to restart the Host. Returns $null
+        when it did, and a sentence a person can act on when it did not.
+
+        This is the one place the Tray may start something rather than only
+        report it. Everywhere else it reflects a state it did not create, which
+        is why the runtime file is never read without asking wsl.exe first.
+        Here the person asked, so starting a stopped distribution is the point
+        rather than an accident.
+    #>
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName               = 'wsl.exe'
+    $psi.Arguments              =
+        ('-d "{0}" -- systemctl --user restart firstmate' -f $Distro)
+    $psi.UseShellExecute        = $false
+    $psi.CreateNoWindow         = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    # systemctl's own output comes through as the Linux process wrote it.
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
+
+    try {
+        $child = [System.Diagnostics.Process]::Start($psi)
+    } catch {
+        return "wsl.exe would not start: $($_.Exception.Message)"
+    }
+    # Read both streams while it runs. A unit that says a lot could otherwise
+    # fill a pipe and wait for a reader that is itself waiting for the exit.
+    $out = $child.StandardOutput.ReadToEndAsync()
+    $err = $child.StandardError.ReadToEndAsync()
+    if (-not $child.WaitForExit($script:RestartTimeoutMs)) {
+        try { $child.Kill() } catch { }
+        return 'systemctl did not answer in time.'
+    }
+    if ($child.ExitCode -ne 0) {
+        $why = $err.Result
+        if ([string]::IsNullOrWhiteSpace($why)) { $why = $out.Result }
+        if ([string]::IsNullOrWhiteSpace($why)) { $why = "exit $($child.ExitCode)" }
+        return $why.Trim()
+    }
+    return $null
 }
 
 # --- the icon -------------------------------------------------------------
@@ -233,6 +284,12 @@ $menu = New-Object System.Windows.Forms.ContextMenuStrip
 # double-click does.
 $openItem = $menu.Items.Add('Open FirstMate')
 $openItem.Font = New-Object System.Drawing.Font($menu.Font, [System.Drawing.FontStyle]::Bold)
+# The Registry is read when the Host starts, so `firstmate add` and
+# `firstmate remove` both end by saying to restart the Host. Until now the Tray
+# could only print that sentence in a box and leave the person to type it. The
+# label is settled when the menu opens, because which of the two it is depends
+# on the state. It starts as the state starts: stopped.
+$restartItem = $menu.Items.Add('Start FirstMate')
 # Every Plugin, one click from the notification area. A Plugin Page is a whole
 # page and the Host frames nothing (ADR-0008), so the Tray is where moving
 # between Plugins without going through the Index Page belongs. It is a
@@ -273,6 +330,27 @@ function Invoke-Open {
     } catch {
         Show-Fault "FirstMate could not open the Index Page."
     }
+}
+
+function Invoke-Restart {
+    <#
+        Start the Host, or restart it, from the notification area.
+
+        The Host mints a new token at every start, so the one held in memory is
+        worth nothing the moment this returns. The state is read again at once
+        rather than at the next poll, and LastRead is cleared first so that the
+        throttle guarding the runtime file does not hold that read back. The
+        poll behind it corrects anything a slow start still left wrong.
+    #>
+    $fault = Restart-Host
+    if ($null -ne $fault) {
+        Show-Fault ("FirstMate could not restart the Host.`n`n$fault`n`n" +
+            "Run it inside $Distro by hand with:`n`n" +
+            "    systemctl --user restart firstmate")
+        return
+    }
+    $script:LastRead = [DateTime]::MinValue
+    Update-State
 }
 
 function Get-PluginLabel {
@@ -343,8 +421,26 @@ function Update-PluginMenu {
     }
 }
 
+function Update-RestartLabel {
+    <#
+        What the restart item says, settled when the menu opens, exactly as the
+        Plugins submenu is filled there and for the same reason.
+
+        One item rather than two: a Host that is down is started and a Host
+        that is up is restarted, and two items would leave one of them wrong at
+        all times. It is enabled in both states, because starting a stopped
+        distribution is what it is for.
+    #>
+    $restartItem.Text = if ($script:State -eq 'running') {
+        'Restart FirstMate'
+    } else {
+        'Start FirstMate'
+    }
+}
+
 $openItem.Add_Click({ Invoke-Open })
-$menu.Add_Opening({ Update-PluginMenu })
+$restartItem.Add_Click({ Invoke-Restart })
+$menu.Add_Opening({ Update-PluginMenu; Update-RestartLabel })
 $logonItem.Add_Click({
     try {
         Set-StartAtLogon (-not $logonItem.Checked)
