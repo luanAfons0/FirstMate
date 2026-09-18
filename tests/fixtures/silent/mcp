@@ -1,0 +1,8 @@
+#!/bin/sh
+# A fixture Plugin Server that starts, stays up, and never answers a word. The
+# Host waits out the handshake and leaves its Plugin Stopped, which is the case
+# a real Plugin author writes by accident far more often than a crash.
+echo "silent: the Plugin Server is up and will say no more" >&2
+# Hold stdin open so the process lives. Closing stdin is how the Host asks an
+# MCP server over stdio to end, and that is what lets this one be stopped.
+cat > /dev/null

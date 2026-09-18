@@ -1,6 +1,7 @@
 /**
  * Every registered Plugin that ships a Plugin Server is running as soon as the
- * Host is, and the Index Page tells the truth about each one.
+ * Host is, the Index Page tells the truth about each one, and a Plugin Server
+ * is given the directory and the output stream its author may rely on.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -13,6 +14,9 @@ const EVERY_FIXTURE = [
   { name: 'quitter', directory: 'quitter' },
   { name: 'unrunnable', directory: 'unrunnable' },
 ];
+
+// `silent` is deliberately not in the list above. It is Stopped only once the
+// handshake runs out, so every test that registers it must shorten the wait.
 
 /** The one word the Index Page says about a Plugin, read back off the page. */
 function stateOf(page: string, name: string): string {
@@ -47,6 +51,38 @@ test('Plugin Server output reaches the Host\'s own output', async (t) => {
   assert.match(output, /server-only: the Plugin Server is up/, 'so is a JavaScript one');
   assert.match(output, /quitter: the Plugin Server gave up/, 'so are its last words');
   assert.match(output, /the Plugin named quitter is Stopped/, 'and the Host says what it saw');
+});
+
+test('a Plugin Server runs in its own Plugin\'s directory', async (t) => {
+  const host = await bootHost(t, EVERY_FIXTURE);
+
+  await host.fetch('/');
+
+  // The fixture opens `private.txt` by that name alone. The file is in the
+  // Plugin directory and outside the web directory, so a Plugin Server started
+  // anywhere else cannot read it, and no browser can reach it at all.
+  assert.match(
+    host.output(),
+    /both: private\.txt says this file is outside the web directory/,
+    'a Plugin Server reaches its own files by a relative path',
+  );
+});
+
+test('a Plugin Server that never answers the handshake is Stopped', async (t) => {
+  // A Plugin Server gets ten seconds by default, which is right for a language
+  // that starts slowly and far too long for a test to sit through.
+  const host = await bootHost(t, [{ name: 'silent', directory: 'silent' }], {
+    FIRSTMATE_HANDSHAKE_MS: '250',
+  });
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.equal(stateOf(page, 'silent'), 'Stopped', 'saying nothing is not running');
+  assert.match(
+    host.output(),
+    /the Plugin named silent is Stopped: .*did not answer in 250 ms/,
+    'and the Host says what it waited for',
+  );
 });
 
 test('a Plugin Server that exits is never started again', async (t) => {

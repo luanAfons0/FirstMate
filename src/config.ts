@@ -1,9 +1,10 @@
 /**
- * Where the Host keeps its state and which port it listens on.
+ * Where the Host keeps its state, which port it listens on, and how long a
+ * Plugin Server has to say hello.
  *
- * Both come from the environment. The home directory override is what lets a
- * test boot a real Host against a temporary directory, which is the single
- * seam this project tests through.
+ * All three come from the environment. The home directory override is what
+ * lets a test boot a real Host against a temporary directory, which is the
+ * single seam this project tests through.
  */
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -14,8 +15,21 @@ export const HOME_VARIABLE = 'FIRSTMATE_HOME';
 /** The environment variable that moves the Host's port. */
 export const PORT_VARIABLE = 'FIRSTMATE_PORT';
 
+/** The environment variable that moves the handshake a Plugin Server must answer. */
+export const HANDSHAKE_VARIABLE = 'FIRSTMATE_HANDSHAKE_MS';
+
 /** The fixed port, so that the address is predictable and can be bookmarked. */
 export const DEFAULT_PORT = 4747;
+
+/**
+ * How long a Plugin Server has to answer `initialize` before it is Stopped.
+ *
+ * Ten seconds is generous on purpose: a Plugin Server may be a script in a
+ * language that takes its time to start, and a slow Plugin is not a broken
+ * one. It moves for the same reason the port does — proving that a silent
+ * Plugin Server ends up Stopped would otherwise cost a test all ten seconds.
+ */
+export const DEFAULT_HANDSHAKE_MS = 10_000;
 
 /** The one address the Host answers on. Nothing else on the network reaches it. */
 export const BIND_ADDRESS = '127.0.0.1';
@@ -25,10 +39,12 @@ export type Config = {
   readonly home: string;
   /** The port to listen on. Zero asks the system for a free one. */
   readonly port: number;
+  /** How long a Plugin Server has to answer the handshake. */
+  readonly handshakeMs: number;
 };
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  return { home: readHome(env), port: readPort(env) };
+  return { home: readHome(env), port: readPort(env), handshakeMs: readHandshake(env) };
 }
 
 function readHome(env: NodeJS.ProcessEnv): string {
@@ -51,4 +67,19 @@ function readPort(env: NodeJS.ProcessEnv): number {
     );
   }
   return port;
+}
+
+function readHandshake(env: NodeJS.ProcessEnv): number {
+  const given = env[HANDSHAKE_VARIABLE];
+  if (given === undefined || given === '') {
+    return DEFAULT_HANDSHAKE_MS;
+  }
+  const ms = Number(given);
+  if (!Number.isInteger(ms) || ms <= 0) {
+    throw new Error(
+      `${HANDSHAKE_VARIABLE} must be a whole number of milliseconds above zero, ` +
+        `not ${JSON.stringify(given)}.`,
+    );
+  }
+  return ms;
 }

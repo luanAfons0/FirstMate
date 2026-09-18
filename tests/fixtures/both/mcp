@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """A fixture Plugin Server in Python, to prove the shebang decides the language.
 
-It speaks MCP over stdin and stdout: one JSON-RPC message per line.
+It speaks MCP over stdin and stdout: one JSON-RPC message per line, and it
+reads a file of its own by a relative path, to prove the Host starts it in its
+own Plugin's directory.
 """
 import json
 import sys
@@ -18,6 +20,11 @@ def result(request_id, value):
 
 def main():
     print("both: the Plugin Server is up", file=sys.stderr, flush=True)
+    # `private.txt` sits in the Plugin directory and outside `web/`, so only a
+    # Plugin Server started in the right directory reads it, and no browser
+    # ever does. Failing here is the point: a wrong directory must be loud.
+    with open("private.txt", encoding="utf-8") as own:
+        print("both: private.txt says " + own.read().strip(), file=sys.stderr, flush=True)
     for line in sys.stdin:
         line = line.strip()
         if not line:
