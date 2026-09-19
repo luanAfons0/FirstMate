@@ -123,6 +123,118 @@ test('removing a Plugin that is not registered is refused', async (t) => {
   assert.match(answer.stderr, /no Plugin named nobody/);
 });
 
+test('a Grant is recorded for one pair, in one direction', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'both', fixture('both')]);
+  await firstmate(home, ['add', 'page-only', fixture('page-only')]);
+
+  const granted = await firstmate(home, ['grant', 'both', 'page-only']);
+  assert.equal(granted.code, 0, granted.stderr);
+  assert.match(granted.stdout, /restart the Host/);
+
+  const written = await registry(home);
+  assert.deepEqual(written.plugins[0]?.grants, ['page-only'], 'both may call page-only');
+  assert.deepEqual(written.plugins[1]?.grants, [], 'the Grant does not run the other way');
+
+  const listed = await firstmate(home, ['list']);
+  assert.match(listed.stdout, /grants: page-only/);
+});
+
+test('granting the same pair twice leaves one Grant, not two', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'both', fixture('both')]);
+  await firstmate(home, ['add', 'page-only', fixture('page-only')]);
+  await firstmate(home, ['grant', 'both', 'page-only']);
+
+  const again = await firstmate(home, ['grant', 'both', 'page-only']);
+  assert.equal(again.code, 0, again.stderr);
+
+  const written = await registry(home);
+  assert.deepEqual(written.plugins[0]?.grants, ['page-only']);
+});
+
+test('a Grant is taken back, and the Registry says so', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'both', fixture('both')]);
+  await firstmate(home, ['add', 'page-only', fixture('page-only')]);
+  await firstmate(home, ['grant', 'both', 'page-only']);
+
+  const revoked = await firstmate(home, ['revoke', 'both', 'page-only']);
+  assert.equal(revoked.code, 0, revoked.stderr);
+  assert.match(revoked.stdout, /restart the Host/);
+
+  const written = await registry(home);
+  assert.deepEqual(written.plugins[0]?.grants, []);
+});
+
+test('taking back a Grant that was never given says so, and changes nothing', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'both', fixture('both')]);
+  await firstmate(home, ['add', 'page-only', fixture('page-only')]);
+
+  const revoked = await firstmate(home, ['revoke', 'both', 'page-only']);
+  assert.equal(revoked.code, 0, revoked.stderr);
+  assert.match(revoked.stdout, /never granted/);
+
+  const written = await registry(home);
+  assert.deepEqual(written.plugins[0]?.grants, []);
+});
+
+test('a Grant refuses a Plugin Name that is not registered', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'both', fixture('both')]);
+
+  const grantMissingTo = await firstmate(home, ['grant', 'both', 'nobody']);
+  assert.equal(grantMissingTo.code, 1);
+  assert.match(grantMissingTo.stderr, /no Plugin named nobody/);
+
+  const grantMissingFrom = await firstmate(home, ['grant', 'nobody', 'both']);
+  assert.equal(grantMissingFrom.code, 1);
+  assert.match(grantMissingFrom.stderr, /no Plugin named nobody/);
+
+  const revokeMissing = await firstmate(home, ['revoke', 'both', 'nobody']);
+  assert.equal(revokeMissing.code, 1);
+  assert.match(revokeMissing.stderr, /no Plugin named nobody/);
+
+  assert.deepEqual((await registry(home)).plugins[0]?.grants, [], 'nothing was written');
+});
+
+test('a Grant refuses a malformed Plugin Name', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'both', fixture('both')]);
+
+  const granted = await firstmate(home, ['grant', 'both', 'With Space']);
+  assert.equal(granted.code, 1);
+  assert.match(granted.stderr, /is not a Plugin Name/);
+
+  const revoked = await firstmate(home, ['revoke', 'With Space', 'both']);
+  assert.equal(revoked.code, 1);
+  assert.match(revoked.stderr, /is not a Plugin Name/);
+});
+
+test('every other Plugin, and its Grants, survive a grant and a revoke', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'both', fixture('both')]);
+  await firstmate(home, ['add', 'page-only', fixture('page-only')]);
+  await firstmate(home, ['add', 'server-only', fixture('server-only')]);
+  await firstmate(home, ['grant', 'page-only', 'server-only']);
+
+  await firstmate(home, ['grant', 'both', 'page-only']);
+  await firstmate(home, ['revoke', 'both', 'page-only']);
+
+  const written = await registry(home);
+  assert.deepEqual(
+    written.plugins.map((row) => [row.name, row.directory]),
+    [
+      ['both', fixture('both')],
+      ['page-only', fixture('page-only')],
+      ['server-only', fixture('server-only')],
+    ],
+    'every row survives untouched',
+  );
+  assert.deepEqual(written.plugins[1]?.grants, ['server-only'], "page-only's own Grant survives");
+});
+
 test('the Registry keeps room for Grants, which v1 never enforces', async (t) => {
   const home = await makeHome(t);
   await firstmate(home, ['add', 'both', fixture('both')]);
