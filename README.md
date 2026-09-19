@@ -46,11 +46,16 @@ contract: what the Host enforces, and what it only advises.
 node src/cli.ts add <name> /absolute/path/to/the/directory
 node src/cli.ts remove <name>
 node src/cli.ts list
+node src/cli.ts grant <from> <to>
+node src/cli.ts revoke <from> <to>
 ```
 
 Adding neither copies nor symlinks the directory: the Registry holds the path,
-so a Plugin stays in its own repository wherever it already lives. The Registry
-is read when the Host starts, so restart the Host to pick up a change.
+so a Plugin stays in its own repository wherever it already lives. `grant` lets
+`<from>` call `<to>`'s tools; a Grant is one way, so it does not let `<to>` call
+`<from>`. `revoke` takes that Grant back. Both refuse a Plugin Name that is not
+registered. The Registry is read when the Host starts, so restart the Host to
+pick up a change.
 
 ## Run the Host
 

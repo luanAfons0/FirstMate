@@ -57,7 +57,7 @@ Server has to answer the handshake). Tests use all three.
 ```
 src/         the Host. Every file is one job.
   main.ts          start-up: read the Registry, mint the token, supervise, listen.
-  cli.ts           the Registry from a terminal: add, remove, list.
+  cli.ts           the Registry from a terminal: add, remove, list, grant, revoke.
   config.ts        FIRSTMATE_HOME and FIRSTMATE_PORT, and nothing else.
   registry.ts      read and write registry.json, whole, through a rename.
   runtime.ts       write and remove runtime.json: the port and the token.

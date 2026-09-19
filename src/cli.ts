@@ -9,6 +9,8 @@
  *   node src/cli.ts add <name> <directory>
  *   node src/cli.ts remove <name>
  *   node src/cli.ts list
+ *   node src/cli.ts grant <from> <to>
+ *   node src/cli.ts revoke <from> <to>
  */
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
@@ -25,9 +27,12 @@ const USAGE = `usage:
   firstmate add <name> <directory>   register a Plugin. The directory is not copied.
   firstmate remove <name>            take a Plugin out of the Registry.
   firstmate list                     every Plugin in the Registry.
+  firstmate grant <from> <to>        let <from> call <to>'s tools.
+  firstmate revoke <from> <to>       take that Grant back.
 
 A Plugin Name is lower-case letters, digits and hyphens, because it names the
-Plugin in every address. A directory is an absolute path.
+Plugin in every address. A directory is an absolute path. A Grant is one way:
+granting <from> the right to call <to> does not let <to> call <from>.
 
 The Registry is read when the Host starts, so restart the Host to pick up a
 change: systemctl --user restart firstmate`;
@@ -46,6 +51,10 @@ function main(argv: readonly string[]): number {
       return remove(home, rest);
     case 'list':
       return list(home, rest);
+    case 'grant':
+      return grant(home, rest);
+    case 'revoke':
+      return revoke(home, rest);
     case undefined:
     case '-h':
     case '--help':
@@ -111,6 +120,89 @@ function remove(home: string, argv: readonly string[]): number {
   console.log(`firstmate: removed ${name}`);
   console.log('firstmate: restart the Host to pick it up. The directory is untouched.');
   return 0;
+}
+
+function grant(home: string, argv: readonly string[]): number {
+  const [from, to] = argv;
+  if (from === undefined || to === undefined || argv.length > 2) {
+    console.error(`firstmate: grant takes two Plugin Names: <from> <to>.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+
+  const rows = readRegistry(home);
+  const pair = findPair(rows, from, to);
+  if (pair === undefined) return 1;
+  const { fromRow, fromIndex } = pair;
+
+  if (fromRow.grants.includes(to)) {
+    console.log(`firstmate: ${from} can already call ${to}'s tools.`);
+    return 0;
+  }
+
+  const rewritten = rows.slice();
+  rewritten[fromIndex] = { ...fromRow, grants: [...fromRow.grants, to] };
+  writeRegistry(home, rewritten);
+  console.log(`firstmate: granted ${from} the right to call ${to}'s tools.`);
+  console.log('firstmate: restart the Host to pick it up.');
+  return 0;
+}
+
+function revoke(home: string, argv: readonly string[]): number {
+  const [from, to] = argv;
+  if (from === undefined || to === undefined || argv.length > 2) {
+    console.error(`firstmate: revoke takes two Plugin Names: <from> <to>.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+
+  const rows = readRegistry(home);
+  const pair = findPair(rows, from, to);
+  if (pair === undefined) return 1;
+  const { fromRow, fromIndex } = pair;
+
+  if (!fromRow.grants.includes(to)) {
+    console.log(`firstmate: ${from} was never granted the right to call ${to}'s tools.`);
+    return 0;
+  }
+
+  const rewritten = rows.slice();
+  rewritten[fromIndex] = {
+    ...fromRow,
+    grants: fromRow.grants.filter((name) => name !== to),
+  };
+  writeRegistry(home, rewritten);
+  console.log(`firstmate: took back ${from}'s right to call ${to}'s tools.`);
+  console.log('firstmate: restart the Host to pick it up.');
+  return 0;
+}
+
+/**
+ * Both Plugin Names of a Grant, checked and resolved against the Registry. A
+ * Grant that named a Plugin that does not exist would be a Grant the operator
+ * misreads later, so both commands refuse before they write anything.
+ */
+function findPair(
+  rows: readonly PluginRow[],
+  from: string,
+  to: string,
+): { readonly fromRow: PluginRow; readonly fromIndex: number } | undefined {
+  for (const name of [from, to]) {
+    if (!isPluginName(name)) {
+      console.error(
+        `firstmate: ${name} is not a Plugin Name. Use lower-case letters, digits and hyphens.`,
+      );
+      return undefined;
+    }
+  }
+  const fromRow = rows.find((row) => row.name === from);
+  if (fromRow === undefined) {
+    console.error(`firstmate: no Plugin named ${from} is registered.`);
+    return undefined;
+  }
+  if (!rows.some((row) => row.name === to)) {
+    console.error(`firstmate: no Plugin named ${to} is registered.`);
+    return undefined;
+  }
+  return { fromRow, fromIndex: rows.indexOf(fromRow) };
 }
 
 function list(home: string, argv: readonly string[]): number {
