@@ -8,13 +8,48 @@
  * A Plugin Page and the Host share this one connection, so every request is
  * renumbered on the way out and given its own number back on the way in. Two
  * callers can then use the same Plugin Server without ever seeing each other.
+ *
+ * The pipe is two-way. A Plugin Server may speak on its own account, and the
+ * Host answers it here. Each side numbers its own requests, so an inbound
+ * message is read as a question whenever it names a method, and only then as
+ * an answer (issue #40).
  */
 import type { ChildProcess } from 'node:child_process';
 
 /** How long a call waits before it gives up on a Plugin Server. */
 export const CALL_TIMEOUT_MS = 30_000;
 
+/** JSON-RPC's own number for a method the answering side does not carry. */
+const METHOD_NOT_FOUND = -32601;
+
+/** The range JSON-RPC leaves to the application. This one is the Host's. */
+const HOST_ERROR = -32000;
+
 export type JsonRpcMessage = Record<string, unknown>;
+
+/** One answer to a Plugin Server's own question: a result, or an error. */
+export type Answer =
+  | { readonly result: unknown }
+  | { readonly error: { readonly code: number; readonly message: string } };
+
+/**
+ * What the Host answers a Plugin Server that asks it for something.
+ *
+ * It is given the method and the params and never the id, because the id
+ * belongs to the Plugin Server alone: whatever answers must not be able to
+ * renumber the question it was asked.
+ */
+export type Answering = (method: string, params: unknown) => Promise<Answer>;
+
+/** The one sentence a Plugin Server gets for a method the Host does not carry. */
+export function noSuchMethod(method: string): Answer {
+  return {
+    error: { code: METHOD_NOT_FOUND, message: `The Host carries no method named ${method}.` },
+  };
+}
+
+/** A Host that has been given nothing to answer with carries nothing. */
+const CARRIES_NOTHING: Answering = (method) => Promise.resolve(noSuchMethod(method));
 
 export type PluginServer = {
   /** True while the process is alive. */
@@ -34,7 +69,11 @@ type Pending = {
   readonly timer: NodeJS.Timeout;
 };
 
-export function speak(child: ChildProcess, name: string): PluginServer {
+export function speak(
+  child: ChildProcess,
+  name: string,
+  answering: Answering = CARRIES_NOTHING,
+): PluginServer {
   const pending = new Map<number, Pending>();
   let counter = 0;
   let alive = true;
@@ -51,7 +90,7 @@ export function speak(child: ChildProcess, name: string): PluginServer {
     rest += chunk;
     let newline = rest.indexOf('\n');
     while (newline >= 0) {
-      receive(rest.slice(0, newline), pending, name);
+      receive(rest.slice(0, newline), pending, name, asked);
       rest = rest.slice(newline + 1);
       newline = rest.indexOf('\n');
     }
@@ -84,6 +123,28 @@ export function speak(child: ChildProcess, name: string): PluginServer {
     } catch {
       return false;
     }
+  };
+
+  /**
+   * A Plugin Server asking the Host for something. The answer goes back down
+   * the same pipe, carrying the id the Plugin Server gave and never one of the
+   * Host's own, so the two sides keep their own numbers (issue #40).
+   *
+   * A message with no id is a notification: there is nothing to answer, so it
+   * is dropped, as it always was.
+   */
+  const asked = (method: string, message: JsonRpcMessage): void => {
+    const id = message['id'];
+    if (id === undefined || id === null) return;
+    answering(method, message['params']).then(
+      (answer) => send({ jsonrpc: '2.0', id, ...answer }),
+      // Whatever answers is the Host's own code. A fault in it is the Host's
+      // to say out loud, not a silence for the Plugin Server to wait through.
+      (cause: unknown) => {
+        const why = cause instanceof Error ? cause.message : String(cause);
+        send({ jsonrpc: '2.0', id, error: { code: HOST_ERROR, message: why } });
+      },
+    );
   };
 
   return {
@@ -122,7 +183,12 @@ export function speak(child: ChildProcess, name: string): PluginServer {
   };
 }
 
-function receive(line: string, pending: Map<number, Pending>, name: string): void {
+function receive(
+  line: string,
+  pending: Map<number, Pending>,
+  name: string,
+  asked: (method: string, message: JsonRpcMessage) => void,
+): void {
   if (line.trim() === '') return;
   let message: JsonRpcMessage;
   try {
@@ -131,6 +197,16 @@ function receive(line: string, pending: Map<number, Pending>, name: string): voi
     // A Plugin Server that writes something other than JSON on stdout has
     // broken the transport. Say so where the journal keeps it.
     console.error(`FirstMate: the Plugin Server of ${name} wrote a line that is not JSON.`);
+    return;
+  }
+  // A message that names a method is the Plugin Server speaking on its own
+  // account, and is never an answer to the Host. This is tested before the id
+  // is looked up because each side numbers its own requests: a Plugin Server's
+  // id 3 is not the Host's id 3, and reading it as one would hand a waiting
+  // caller somebody else's question in place of its answer (issue #40).
+  const method = message['method'];
+  if (typeof method === 'string') {
+    asked(method, message);
     return;
   }
   const ours = message['id'];
