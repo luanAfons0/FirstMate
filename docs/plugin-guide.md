@@ -137,6 +137,38 @@ The Host forwards it to your Plugin Server and returns the answer.
   error `-32700` for a body that is not JSON, `501` for a Plugin that ships
   no Plugin Server, `503` for a Plugin that is Stopped.
 
+## Calling another Plugin's tools
+
+Your Plugin Server can call the tools of another Plugin, over the same
+pipe it already speaks MCP on. Write one JSON-RPC request on your stdout
+and read the answer on your stdin
+([ADR-0009](adr/0009-the-tool-bus-runs-over-the-pipe-the-host-owns.md)):
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"firstmate/tools/call",
+ "params":{"plugin":"other","name":"its-tool","arguments":{}}}
+```
+
+`firstmate/tools/list` takes `{"plugin":"other"}` and lists that Plugin's
+tools. Both hand you the other Plugin's own answer, unchanged.
+
+- **The Host carries it only under a Grant.** The operator records one with
+  `firstmate grant <you> <other>`. A Grant is one way and covers one pair,
+  and there is no exception: to call yourself, you are granted yourself.
+- **You are never asked who you are.** The Host spawned your process and
+  owns your pipe, so it already knows. You hold no token and no port, and
+  there is nothing for you to leak.
+- **Your own request numbers stay yours.** The Host answers with the id you
+  gave and never one of its own, so number your requests however you like.
+- **The handshake tells you it is there.** The `initialize` the Host sends
+  you carries `capabilities.experimental.firstmate.toolBus`.
+- **Every refusal is a sentence**, as a JSON-RPC error: you hold no Grant
+  for that Plugin, no Plugin is registered under that name, it is Stopped,
+  it ships no Plugin Server, or the chain has passed through too many
+  Plugins.
+- **A Plugin Page cannot do this.** The Tool Bus is on the pipe, and a
+  browser holds no end of it. Your page reaches your Plugin and no other.
+
 ## The token, which your page never handles
 
 The Host mints a token when it starts and refuses every request that does
@@ -203,9 +235,6 @@ None of this is enforced. All of it is what the first Plugin learned.
 - **Expect no scheduler.** The Host runs nothing on a timer
   ([ADR-0004](adr/0004-the-host-owns-no-scheduler.md)). If your Plugin
   needs one, it brings its own.
-- **Expect to reach no other Plugin.** v1 stores Grants and enforces none,
-  and the Tool Bus is not built. Design as though you are alone, because
-  you are.
 - **Do not read the Host's runtime file, and do not print the token.**
   Nothing in `$FIRSTMATE_HOME` is yours.
 - **Say nothing when nothing is wrong.** Your stderr is the operator's

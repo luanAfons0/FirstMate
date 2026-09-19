@@ -11,8 +11,9 @@ import { spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { speak, type PluginServer } from './mcp.ts';
+import { speak, type Answering, type PluginServer } from './mcp.ts';
 import type { PluginRow } from './registry.ts';
+import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */
 export const SERVER_FILE = 'mcp';
@@ -41,23 +42,31 @@ export async function superviseAll(
   const servers = new Map<string, PluginServer>();
   const shipsNone = new Set<string>();
 
+  const stateOf = (name: string): PluginState => {
+    if (shipsNone.has(name)) return 'no-plugin-server';
+    const server = servers.get(name);
+    return server !== undefined && server.alive() ? 'running' : 'stopped';
+  };
+  const serverOf = (name: string): PluginServer | null => {
+    const server = servers.get(name);
+    return server !== undefined && server.alive() ? server : null;
+  };
+
+  // The Tool Bus is opened over this same map, which is still empty. A call is
+  // resolved when it arrives, so every Plugin Server can reach every other one
+  // however they were ordered at start.
+  const bus = openToolBus(plugins, { stateOf, serverOf });
+
   await Promise.all(
     plugins.map(async (plugin) => {
-      const server = await startOne(plugin, shipsNone, handshakeMs);
+      const server = await startOne(plugin, shipsNone, handshakeMs, bus.answering(plugin.name));
       if (server !== null) servers.set(plugin.name, server);
     }),
   );
 
   return {
-    stateOf(name) {
-      if (shipsNone.has(name)) return 'no-plugin-server';
-      const server = servers.get(name);
-      return server !== undefined && server.alive() ? 'running' : 'stopped';
-    },
-    serverOf(name) {
-      const server = servers.get(name);
-      return server !== undefined && server.alive() ? server : null;
-    },
+    stateOf,
+    serverOf,
     stopAll() {
       for (const server of servers.values()) server.stop();
     },
@@ -68,6 +77,7 @@ async function startOne(
   plugin: PluginRow,
   shipsNone: Set<string>,
   handshakeMs: number,
+  answering: Answering,
 ): Promise<PluginServer | null> {
   const path = join(plugin.directory, SERVER_FILE);
   const say = onceOnly(plugin.name);
@@ -96,7 +106,9 @@ async function startOne(
     // goes straight to the Host's, which under systemd is the journal.
     stdio: ['pipe', 'pipe', 'inherit'],
   });
-  const server = speak(child, plugin.name);
+  // The calling Plugin Name is this pipe's, closed over here and never taken
+  // from anything the Plugin Server says.
+  const server = speak(child, plugin.name, answering);
   child.once('error', (cause) => say(cause.message));
   child.once('exit', (code, signal) => say(signal ?? `exit ${code ?? 0}`));
 
@@ -128,10 +140,10 @@ async function handshake(server: PluginServer, handshakeMs: number): Promise<voi
       params: {
         protocolVersion: PROTOCOL_VERSION,
         // MCP keeps what its specification does not name under `experimental`.
-        // The Host answers a Plugin Server that speaks on its own account, so
-        // it says so here: a Plugin Server can tell what this Host carries
-        // before it asks for anything.
-        capabilities: { experimental: { firstmate: {} } },
+        // The Host answers a Plugin Server that speaks on its own account, and
+        // what it carries is the Tool Bus, so it says both here: a Plugin
+        // Server can tell what this Host offers before it asks for anything.
+        capabilities: { experimental: { firstmate: { toolBus: {} } } },
         clientInfo: { name: 'firstmate', version: '1.0.0' },
       },
     },
