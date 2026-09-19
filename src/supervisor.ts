@@ -127,7 +127,11 @@ async function handshake(server: PluginServer, handshakeMs: number): Promise<voi
       method: 'initialize',
       params: {
         protocolVersion: PROTOCOL_VERSION,
-        capabilities: {},
+        // MCP keeps what its specification does not name under `experimental`.
+        // The Host answers a Plugin Server that speaks on its own account, so
+        // it says so here: a Plugin Server can tell what this Host carries
+        // before it asks for anything.
+        capabilities: { experimental: { firstmate: {} } },
         clientInfo: { name: 'firstmate', version: '1.0.0' },
       },
     },

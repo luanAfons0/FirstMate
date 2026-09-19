@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that speaks back. It asks the Host for a method the
+// Host does not carry, and says on stderr what came back, so that a test reads
+// the answer off the Host's own output.
+//
+// It asks twice. Once with a number of its own, and once with the very number
+// the Host is waiting on, because the two sides number their own requests and
+// those numbers must never be read as each other's.
+//
+// It serves the Host on the `line` event rather than in a `for await` loop.
+// Its own answer arrives on a later line, and a loop that awaited would be
+// waiting for the line it is stopping itself from reading.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const result = (id, value) => reply({ jsonrpc: '2.0', id, result: value });
+const say = (text) => process.stderr.write(`speaker: ${text}\n`);
+
+/** Whoever here is waiting for the Host, by the id it asked with. */
+const owed = new Map();
+
+/** Ask the Host something on this Plugin Server's own account. */
+function ask(id, method) {
+  return new Promise((answered) => {
+    owed.set(id, answered);
+    reply({ jsonrpc: '2.0', id, method });
+  });
+}
+
+/** Ask, and say what came back, so that a test can read it. */
+async function askAndSay(id) {
+  const answer = await ask(id, 'firstmate/nothing');
+  say(`asked with id ${id}, answered id ${answer.id}: ${answer.error?.message ?? 'no error'}`);
+}
+
+async function serve(request) {
+  switch (request.method) {
+    case 'initialize':
+      result(request.id, {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'speaker', version: '1.0.0' },
+      });
+      // What this Host said it carries, so that a test can read the handshake.
+      say(`the Host offers ${JSON.stringify(request.params.capabilities)}`);
+      // A number of this Plugin Server's own, which the Host is not using.
+      await askAndSay(99);
+      break;
+    case 'tools/list':
+      result(request.id, {
+        tools: [{
+          name: 'speak-back',
+          description: 'Ask the Host for a method it does not carry.',
+          inputSchema: { type: 'object', properties: {} },
+        }],
+      });
+      break;
+    case 'tools/call':
+      // The number the Host renumbered this call to is outstanding right now.
+      // Asking with it proves a question is never taken for an answer.
+      say(`the Host is waiting on id ${request.id}`);
+      await askAndSay(request.id);
+      result(request.id, { content: [{ type: 'text', text: 'speaker asked and was answered' }] });
+      break;
+    default:
+      reply({
+        jsonrpc: '2.0',
+        id: request.id,
+        error: { code: -32601, message: `no such method: ${request.method}` },
+      });
+  }
+}
+
+say('the Plugin Server is up');
+// A notification has no answer to wait for. The Host drops it, and dropping it
+// must cost this Plugin Server nothing at all.
+reply({ jsonrpc: '2.0', method: 'notifications/speaker' });
+
+createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.trim() === '') return;
+  const message = JSON.parse(line);
+  // A message that names no method is the Host answering something asked here.
+  // Everything else is the Host asking. It is the same rule the Host uses.
+  if (message.method === undefined) {
+    const answered = owed.get(message.id);
+    if (answered === undefined) return;
+    owed.delete(message.id);
+    answered(message);
+    return;
+  }
+  if (message.id === undefined || message.id === null) return;
+  void serve(message);
+});
