@@ -23,8 +23,8 @@ export type PluginRow = {
   /** The absolute path of the Plugin's directory. It is never copied. */
   readonly directory: string;
   /**
-   * The Plugin Names this Plugin may call the tools of. v1 stores Grants and
-   * never enforces them, because nothing calls across Plugins yet.
+   * The Plugin Names this Plugin may call the tools of. The Tool Bus carries a
+   * call only when the target is named here (ADR-0009).
    */
   readonly grants: readonly string[];
 };
@@ -64,8 +64,8 @@ export function writeRegistry(home: string, rows: readonly PluginRow[]): void {
   const plugins = rows.map((row) => ({
     name: row.name,
     directory: row.directory,
-    // Grants are stored and never enforced in v1, and are kept untouched
-    // through every add and every remove (issue #1).
+    // A Grant is the operator's to give and to take back, so it is kept
+    // untouched through every add and every remove.
     grants: [...row.grants],
   }));
   writeFileSync(pending, `${JSON.stringify({ plugins }, null, 2)}\n`, { mode: 0o600 });

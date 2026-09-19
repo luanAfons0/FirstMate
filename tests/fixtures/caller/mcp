@@ -1,0 +1,132 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that calls another Plugin over the Tool Bus.
+//
+// It hands back whatever the Host handed it, result or error, so that a test
+// reads the target Plugin's own answer, and every refusal, off the HTTP
+// response. It is told which Plugin to reach in the arguments, so one fixture
+// serves as either end of a pair, and as both ends of a cycle.
+//
+// It serves on the `line` event and not in a `for await` loop. Its own answer
+// arrives on a later line, and a loop that awaited would be waiting for the
+// line it is stopping itself from reading.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const result = (id, value) => reply({ jsonrpc: '2.0', id, result: value });
+
+/** Whoever here is waiting for the Host, by the id it asked with. */
+const owed = new Map();
+let counter = 0;
+
+/** Ask the Host something on this Plugin Server's own account. */
+function ask(method, params) {
+  const id = `own-${(counter += 1)}`;
+  return new Promise((answered) => {
+    owed.set(id, answered);
+    reply({ jsonrpc: '2.0', id, method, params });
+  });
+}
+
+/** Hand the Host's answer straight on, adding nothing to either shape. */
+function handOn(id, answer) {
+  if (answer.error !== undefined) reply({ jsonrpc: '2.0', id, error: answer.error });
+  else result(id, answer.result);
+}
+
+const TOOLS = [
+  {
+    name: 'reach',
+    description: "Call one tool of another Plugin.",
+    inputSchema: {
+      type: 'object',
+      properties: { plugin: { type: 'string' }, tool: { type: 'string' } },
+      required: ['plugin', 'tool'],
+    },
+  },
+  {
+    name: 'catalogue',
+    description: "List another Plugin's tools.",
+    inputSchema: {
+      type: 'object',
+      properties: { plugin: { type: 'string' } },
+      required: ['plugin'],
+    },
+  },
+  {
+    name: 'bounce',
+    description: 'Call the other Plugin, which calls this one, and so on.',
+    inputSchema: {
+      type: 'object',
+      properties: { there: { type: 'string' }, back: { type: 'string' } },
+      required: ['there', 'back'],
+    },
+  },
+];
+
+async function called(id, name, given) {
+  switch (name) {
+    case 'reach':
+      handOn(id, await ask('firstmate/tools/call', {
+        plugin: given.plugin,
+        name: given.tool,
+        arguments: given.arguments ?? {},
+      }));
+      return;
+    case 'catalogue':
+      handOn(id, await ask('firstmate/tools/list', { plugin: given.plugin }));
+      return;
+    case 'bounce':
+      // Each end sends the call straight back to the other, for ever, unless
+      // the Host counts the Plugins the chain has passed through and stops it.
+      handOn(id, await ask('firstmate/tools/call', {
+        plugin: given.there,
+        name: 'bounce',
+        arguments: { there: given.back, back: given.there },
+      }));
+      return;
+    default:
+      reply({ jsonrpc: '2.0', id, error: { code: -32602, message: `no such tool: ${name}` } });
+  }
+}
+
+async function serve(request) {
+  switch (request.method) {
+    case 'initialize':
+      result(request.id, {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'caller', version: '1.0.0' },
+      });
+      return;
+    case 'tools/list':
+      result(request.id, { tools: TOOLS });
+      return;
+    case 'tools/call':
+      await called(request.id, request.params.name, request.params.arguments ?? {});
+      return;
+    default:
+      reply({
+        jsonrpc: '2.0',
+        id: request.id,
+        error: { code: -32601, message: `no such method: ${request.method}` },
+      });
+  }
+}
+
+process.stderr.write('caller: the Plugin Server is up\n');
+
+createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.trim() === '') return;
+  const message = JSON.parse(line);
+  // A message that names no method is the Host answering something asked here.
+  // Everything else is the Host asking. It is the rule the Host uses too.
+  if (message.method === undefined) {
+    const answered = owed.get(message.id);
+    if (answered === undefined) return;
+    owed.delete(message.id);
+    answered(message);
+    return;
+  }
+  if (message.id === undefined || message.id === null) return;
+  void serve(message);
+});

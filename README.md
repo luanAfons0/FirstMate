@@ -54,8 +54,8 @@ Adding neither copies nor symlinks the directory: the Registry holds the path,
 so a Plugin stays in its own repository wherever it already lives. `grant` lets
 `<from>` call `<to>`'s tools; a Grant is one way, so it does not let `<to>` call
 `<from>`. `revoke` takes that Grant back. Both refuse a Plugin Name that is not
-registered. The Registry is read when the Host starts, so restart the Host to
-pick up a change.
+registered. The Host enforces a Grant on every Tool Bus call. The Registry is
+read when the Host starts, so restart the Host to pick up a change.
 
 ## Run the Host
 
@@ -112,6 +112,24 @@ answer. A Plugin Page may reach only its own Plugin. From a terminal:
 ```sh
 curl -X POST -H 'content-type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'   "http://127.0.0.1:4747/p/<name>/rpc?token=<token>"
 ```
+
+## Call another Plugin's tools
+
+A Plugin Server calls another Plugin's tools over the pipe it already speaks
+MCP on, and the Host carries the call only under a Grant
+([ADR-0009](docs/adr/0009-the-tool-bus-runs-over-the-pipe-the-host-owns.md)).
+One JSON-RPC request on its own stdout:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"firstmate/tools/call",
+ "params":{"plugin":"other","name":"its-tool","arguments":{}}}
+```
+
+`firstmate/tools/list` takes `{"plugin":"other"}` and lists that Plugin's
+tools. Both hand back the other Plugin's own answer, unchanged. No Plugin is
+ever given the token or the port, because the Host owns the pipe and already
+knows who is calling. A Plugin Page holds no end of that pipe and still reaches
+its own Plugin and no other.
 
 ## Reach it
 

@@ -68,6 +68,7 @@ src/         the Host. Every file is one job.
   supervisor.ts    start every Plugin Server, and hold the truth about each.
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
+  tool-bus.ts      carry a call from one Plugin to another, under a Grant.
 tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
 docs/adr/    the decisions that are expensive to reverse.
 docs/agents/ how an agent works in this repo. See "Agent skills" below.
@@ -176,7 +177,8 @@ and drives it over HTTP, exactly as a browser does.
   in a restart loop.
 - Read or write a Plugin's data, or keep run history, logs or settings for it
   (ADR-0005).
-- Let a Plugin Page reach another Plugin. v1 stores Grants and enforces none.
+- Let a Plugin Page reach another Plugin. The Tool Bus is on the pipe, under
+  a Grant, and a browser holds no end of it (ADR-0009).
 - Give the Host a scheduler (ADR-0004), a build step, or a front-end framework.
 - Print or commit the token, `runtime.json`, or anything from
   `$FIRSTMATE_HOME`.

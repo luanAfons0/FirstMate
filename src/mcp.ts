@@ -23,14 +23,20 @@ export const CALL_TIMEOUT_MS = 30_000;
 const METHOD_NOT_FOUND = -32601;
 
 /** The range JSON-RPC leaves to the application. This one is the Host's. */
-const HOST_ERROR = -32000;
+export const HOST_ERROR = -32000;
 
 export type JsonRpcMessage = Record<string, unknown>;
 
-/** One answer to a Plugin Server's own question: a result, or an error. */
+/**
+ * One answer to a Plugin Server's own question: a result, or an error.
+ *
+ * Both carry whatever the answering side produced. The Tool Bus hands back the
+ * target Plugin's own answer unchanged, so the Host must be able to pass on a
+ * shape it did not write and add nothing the caller has to strip off.
+ */
 export type Answer =
   | { readonly result: unknown }
-  | { readonly error: { readonly code: number; readonly message: string } };
+  | { readonly error: unknown };
 
 /**
  * What the Host answers a Plugin Server that asks it for something.
