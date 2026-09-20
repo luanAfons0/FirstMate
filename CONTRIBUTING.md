@@ -70,6 +70,44 @@ Give the Tray an anchor
 One commit is one whole, working change: code, tests and documentation
 together.
 
+## Cutting a release
+
+Written down here so that it is not one person's knowledge. It is three
+commands, and a machine does the rest.
+
+The package is `@luan-afonso/firstmate` on npm. The plain `firstmate` is
+refused as too similar to `first-mate`, an unrelated package. The command it
+installs is still `firstmate`, because `bin` is independent of the package
+name.
+
+1. Set the version in `package.json`, and commit it with everything else the
+   release carries.
+2. Tag it and push the tag:
+
+   ```sh
+   git tag -a v1.2.3 -m "FirstMate v1.2.3"
+   git push origin main
+   git push origin v1.2.3
+   ```
+
+3. Write the GitHub release against that tag. Say what a Plugin is, what the
+   Host does, and what the version still does not do.
+
+Pushing the tag starts the [Release](.github/workflows/release.yml) workflow.
+It refuses a tag that disagrees with `package.json`, checks the types, runs the
+whole suite, and only then publishes.
+
+**There is no npm token anywhere.** npm accepts GitHub Actions as a trusted
+publisher over OIDC, so the job asks for an identity token minted for that one
+run. Nothing is stored in the repository, and npm attaches a provenance
+attestation saying which workflow and which commit built the tarball. If
+publishing ever fails with an authentication fault, the trust is configured on
+the npm package page, against this repository and `.github/workflows/release.yml`
+— not by adding a secret here.
+
+Packing always builds, so a published package can never be stale against the
+source. A clone still holds no built output ([ADR-0010](docs/adr/0010-the-published-package-is-built-the-repository-is-not.md)).
+
 ## Where to help
 
 Issues labelled `help wanted` are the ones the maintainer cannot close alone.

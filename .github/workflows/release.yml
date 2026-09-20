@@ -1,0 +1,60 @@
+# Publish a version from a tag, with no secret in the repository.
+#
+# npm accepts GitHub Actions as a trusted publisher over OIDC: the job asks for
+# an identity token that is minted for this one run and expires in minutes, so
+# there is no NPM_TOKEN to store, leak or rotate. npm attaches a provenance
+# attestation on its own, which says which workflow, which commit and which
+# repository built the tarball.
+#
+# The types check and the whole suite run before anything is published, so a
+# broken release cannot leave the machine. The tag and the version in
+# package.json have to agree, because a tag that lies is worse than no tag.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Read-only is this repository's default, so the identity token is asked for
+# here and nowhere else.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: The tag and the version must agree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "The tag says $tag and package.json says $version." >&2
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # Trusted publishing wants npm 11.5.1 or newer. Node 24 ships a newer one
+      # already; this keeps a release from resting on that staying true.
+      - run: npm install --global npm@latest
+
+      # No NODE_AUTH_TOKEN. npm sees the identity token, mints its own for this
+      # run, and generates the provenance without being asked.
+      - run: npm publish --access public
