@@ -404,10 +404,22 @@ function Update-PluginMenu {
         $pluginsItem.Enabled = $false
         return
     }
-    $plugins = @(Read-Plugins -Runtime $script:Runtime)
+    # Read-Plugins answers $null when the Host will not say, and @($null) is a
+    # list holding one null rather than an empty list, so the two are told
+    # apart here before anything counts them.
+    $answer = Read-Plugins -Runtime $script:Runtime
+    if ($null -eq $answer) {
+        # The Host would not say. Most often the Host restarted since the last
+        # poll and refused a token this menu still held; the next poll reads
+        # the runtime file again and the menu fills itself.
+        $pluginsItem.Enabled = $false
+        return
+    }
+
+    $plugins = @($answer)
     if ($plugins.Count -eq 0) {
-        # An empty Registry, or a Host that would not say. Either way there is
-        # nothing to open, and a menu with nothing in it should not invite one.
+        # An empty Registry. There is nothing to open, and a menu with nothing
+        # in it should not invite one.
         $pluginsItem.Enabled = $false
         return
     }
