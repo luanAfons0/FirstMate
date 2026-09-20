@@ -41,7 +41,9 @@ Server has to answer the handshake). Tests use all three.
 ## Tech stack
 
 - **Node 24**, which runs TypeScript with no build step. There is no bundler,
-  no transpiler and no watcher.
+  no transpiler and no watcher. Publishing to npm compiles, because Node strips
+  no types under `node_modules`; that build is on the publish path alone, and a
+  clone never holds its output (ADR-0010).
 - **TypeScript 5.8**, `strict`, `noUncheckedIndexedAccess`,
   `erasableSyntaxOnly`. `typescript` is a dev dependency and is used only to
   check the types.
@@ -179,7 +181,8 @@ and drives it over HTTP, exactly as a browser does.
   (ADR-0005).
 - Let a Plugin Page reach another Plugin. The Tool Bus is on the pipe, under
   a Grant, and a browser holds no end of it (ADR-0009).
-- Give the Host a scheduler (ADR-0004), a build step, or a front-end framework.
+- Give the Host a scheduler (ADR-0004), a front-end framework, or a build step
+  anywhere but the publish path (ADR-0010).
 - Print or commit the token, `runtime.json`, or anything from
   `$FIRSTMATE_HOME`.
 - Rewrite, wrap, inject into or frame a Plugin Page (ADR-0008). The bytes are
