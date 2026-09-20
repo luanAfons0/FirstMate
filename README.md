@@ -1,5 +1,7 @@
 # FirstMate
 
+[![Check](https://github.com/luanAfons0/FirstMate/actions/workflows/check.yml/badge.svg)](https://github.com/luanAfons0/FirstMate/actions/workflows/check.yml)
+
 FirstMate is a local plugin host. It runs a person's own tools on their own
 machine and gives each one a process, a page and an address, so that no tool has
 to build a runtime of its own.
