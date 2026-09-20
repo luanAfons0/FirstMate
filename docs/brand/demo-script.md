@@ -81,8 +81,11 @@ firstmate remove notes
 systemctl --user restart firstmate
 ```
 
-Save the recording as `docs/brand/demo.gif`: silent, about 1280 px wide, about
-twenty seconds, under 10 MB. Then replace the demo slot in `README.md` with:
+Save the recording as `docs/brand/demo.gif`: silent, about twenty seconds,
+under 10 MB, and at the width you recorded at. Never upscale a screencast: the
+terminal is most of the frame, and enlarged text is the one thing a viewer
+reads as blurred. The GIF in the README is 1120 px for that reason. Then
+replace the demo slot in `README.md` with:
 
 ```md
 ![Registering a Plugin and opening its Plugin Page](docs/brand/demo.gif)
