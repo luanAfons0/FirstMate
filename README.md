@@ -63,9 +63,13 @@ read when the Host starts, so restart the Host to pick up a change.
 
 ```sh
 node src/main.ts
+node src/cli.ts start   # the same Host, from the command line
 ```
 
-It listens on `http://127.0.0.1:4747/` and on no other address.
+It listens on `http://127.0.0.1:4747/` and on no other address. `start` boots
+the Host that `node src/main.ts` boots: the same environment variables move it,
+and it prints the same output. One command line does the whole job, so whoever
+installs FirstMate can run what they installed.
 
 ## Configure it
 

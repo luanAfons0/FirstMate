@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * The Registry from a terminal: add a Plugin, remove one, list them.
+ * FirstMate from a terminal: run the Host, and keep the Registry it reads.
  *
  * Adding a Plugin neither copies nor symlinks its directory. The Registry
  * holds the path and nothing else, so a Plugin stays in its own repository
  * wherever it already lives.
  *
+ *   node src/cli.ts start
  *   node src/cli.ts add <name> <directory>
  *   node src/cli.ts remove <name>
  *   node src/cli.ts list
@@ -24,6 +25,7 @@ import {
 } from './registry.ts';
 
 const USAGE = `usage:
+  firstmate start                    run the Host until it is stopped.
   firstmate add <name> <directory>   register a Plugin. The directory is not copied.
   firstmate remove <name>            take a Plugin out of the Registry.
   firstmate list                     every Plugin in the Registry.
@@ -40,11 +42,13 @@ change: systemctl --user restart firstmate`;
 /** What the operator did wrong, as against what went wrong. */
 const USAGE_FAULT = 2;
 
-function main(argv: readonly string[]): number {
+async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
   const home = readConfig().home;
 
   switch (command) {
+    case 'start':
+      return start(rest);
     case 'add':
       return add(home, rest);
     case 'remove':
@@ -64,6 +68,26 @@ function main(argv: readonly string[]): number {
       console.error(`firstmate: no such command: ${command}\n\n${USAGE}`);
       return USAGE_FAULT;
   }
+}
+
+/**
+ * Run the Host in this process.
+ *
+ * The Host's entry point starts the Host as it is imported, so importing it is
+ * the whole of this command. Nothing is copied out of `src/main.ts`, which is
+ * what keeps `firstmate start` and `node src/main.ts` the same Host, reading
+ * the same environment variables and printing the same output.
+ */
+async function start(argv: readonly string[]): Promise<number> {
+  if (argv.length > 0) {
+    console.error(`firstmate: start takes nothing.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+
+  await import('./main.ts');
+  // The Host is listening and owns the process now. It ends on a signal, and
+  // reports its own fault if it could not start at all.
+  return 0;
 }
 
 function add(home: string, argv: readonly string[]): number {
@@ -221,7 +245,7 @@ function describe(row: PluginRow): string {
 }
 
 try {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 } catch (fault: unknown) {
   console.error(`firstmate: ${fault instanceof Error ? fault.message : String(fault)}`);
   process.exitCode = 1;

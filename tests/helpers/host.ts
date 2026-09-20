@@ -27,6 +27,15 @@ export type Row = {
   readonly grants?: readonly string[];
 };
 
+export type BootOptions = {
+  /**
+   * Start the Host through `firstmate start` rather than through the Host's
+   * own entry point. The Host is the same either way, and proving that is the
+   * only reason this option exists.
+   */
+  readonly viaCommandLine?: boolean;
+};
+
 export type Booted = {
   /** The port the Host actually listened on. */
   readonly port: number;
@@ -86,10 +95,11 @@ export async function bootHost(
   t: TestContext,
   rows: readonly Row[] = [],
   env: Readonly<Record<string, string>> = {},
+  options: BootOptions = {},
 ): Promise<Booted> {
   const home = await makeHome(t);
   await writeRegistry(home, rows);
-  return bootHostIn(t, home, env);
+  return bootHostIn(t, home, env, options);
 }
 
 /** Boot a Host against a home directory that already holds what it needs. */
@@ -97,8 +107,13 @@ export async function bootHostIn(
   t: TestContext,
   home: string,
   env: Readonly<Record<string, string>> = {},
+  options: BootOptions = {},
 ): Promise<Booted> {
-  const child = spawn(process.execPath, [join(REPOSITORY, 'src', 'main.ts')], {
+  const entry =
+    options.viaCommandLine === true
+      ? [join(REPOSITORY, 'src', 'cli.ts'), 'start']
+      : [join(REPOSITORY, 'src', 'main.ts')];
+  const child = spawn(process.execPath, entry, {
     cwd: REPOSITORY,
     env: { ...process.env, FIRSTMATE_HOME: home, FIRSTMATE_PORT: '0', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
