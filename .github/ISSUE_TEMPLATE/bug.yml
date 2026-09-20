@@ -1,0 +1,65 @@
+name: Something is broken
+description: The Host, a Plugin Page or the Tray does not do what it says it does.
+labels: ['bug', 'needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found a security fault? Close this and read
+        [SECURITY.md](https://github.com/luanAfons0/FirstMate/blob/main/SECURITY.md)
+        instead. Do not report it here.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what happened, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: host-output
+    attributes:
+      label: What the Host said
+      description: >
+        Its output. Under systemd that is `journalctl --user -u firstmate -n 200`.
+        Started from a terminal, it is what the terminal printed. Remove the
+        token before you paste: it is a credential.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: plugin-state
+    attributes:
+      label: What the Index Page showed for the Plugin
+      description: The state beside the Plugin at `http://127.0.0.1:4747/`.
+      options:
+        - Running
+        - Stopped
+        - no Plugin Server
+        - The Plugin was not listed
+        - The Index Page did not load
+        - The fault has nothing to do with a Plugin
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      description: The output of `node --version`.
+      placeholder: v24.15.0
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: >
+        FirstMate is developed on WSL Debian and only there. Say where you ran
+        it, so nobody guesses.
+      placeholder: WSL Debian 12 on Windows 11
+    validations:
+      required: true

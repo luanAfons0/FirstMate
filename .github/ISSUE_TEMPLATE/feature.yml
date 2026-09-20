@@ -1,0 +1,43 @@
+name: Something is missing
+description: FirstMate should do something it does not do.
+labels: ['enhancement', 'needs-triage']
+body:
+  - type: textarea
+    id: what-for
+    attributes:
+      label: What you are trying to do
+      description: >
+        The job, not the solution. Use the project's words for it —
+        [CONTEXT.md](https://github.com/luanAfons0/FirstMate/blob/main/CONTEXT.md)
+        defines them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would have FirstMate do
+    validations:
+      required: true
+
+  - type: input
+    id: adr
+    attributes:
+      label: Which ADR does this touch
+      description: >
+        Read [docs/adr](https://github.com/luanAfons0/FirstMate/tree/main/docs/adr)
+        and name the decision your idea sits against, even where it agrees with
+        one. Write "none that I can find" if none does.
+      placeholder: ADR-0004, because this asks the Host to run something on a timer.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contradiction
+    attributes:
+      label: Does it contradict that ADR
+      options:
+        - label: >
+            Yes, and I say so here rather than leaving it to be discovered. A
+            contradiction argued in the open is welcome.
+          required: false

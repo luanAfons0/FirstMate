@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A question about FirstMate
+    url: https://github.com/luanAfons0/FirstMate/discussions
+    about: >
+      Ask in Discussions. The issue tracker is for a fault to fix or something
+      missing to build.
+  - name: A security fault
+    url: https://github.com/luanAfons0/FirstMate/blob/main/SECURITY.md
+    about: Report it in private. Never in the tracker.
