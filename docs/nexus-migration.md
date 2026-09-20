@@ -67,3 +67,4 @@ kept every relative path it already had. A Plugin Page is a whole page: the
 Index Page links to it and the browser goes there, and the Host puts no chrome
 around it (ADR-0008). Moving between Plugins belongs to the Index Page and the
 Tray, which is why the Tray lists them.
+
