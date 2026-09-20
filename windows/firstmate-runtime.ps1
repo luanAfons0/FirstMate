@@ -43,8 +43,11 @@ function Test-DistroRunning {
     $psi.CreateNoWindow         = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
-    # wsl.exe writes its own listings in UTF-16. Reading as UTF-8 and dropping
-    # NULs reads the ASCII of a distribution name correctly.
+    # WSL_UTF8 asks wsl.exe for UTF-8 rather than the UTF-16 it writes by
+    # default. A wsl.exe too old to know the variable still answers in UTF-16,
+    # so the NULs are dropped below as well, which reads an ASCII name either
+    # way.
+    $psi.EnvironmentVariables['WSL_UTF8'] = '1'
     $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
 
     try {

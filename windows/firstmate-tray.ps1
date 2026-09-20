@@ -145,13 +145,20 @@ function Restart-Host {
     #>
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName               = 'wsl.exe'
+    # wsl.exe parses its own command line and never takes the quotes off a
+    # value, so `-d "Debian"` is looked up with the quotes still in the name
+    # and answers WSL_E_DISTRO_NOT_FOUND. The name goes in bare.
     $psi.Arguments              =
-        ('-d "{0}" -- systemctl --user restart firstmate' -f $Distro)
+        ('-d {0} -- systemctl --user restart firstmate' -f $Distro)
     $psi.UseShellExecute        = $false
     $psi.CreateNoWindow         = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
     # systemctl's own output comes through as the Linux process wrote it.
+    # wsl.exe reports its own faults in UTF-16 unless WSL_UTF8 asks otherwise,
+    # and such a sentence read as UTF-8 ends at its first NUL, which leaves a
+    # single letter where the reason should be.
+    $psi.EnvironmentVariables['WSL_UTF8'] = '1'
     $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
     $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
 
