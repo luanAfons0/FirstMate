@@ -1,10 +1,69 @@
+<p align="center">
+  <img src="docs/brand/firstmate-mark-512.png" alt="" width="120">
+</p>
+
 # FirstMate
 
 [![Check](https://github.com/luanAfons0/FirstMate/actions/workflows/check.yml/badge.svg)](https://github.com/luanAfons0/FirstMate/actions/workflows/check.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE.md)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2024-5FA04E)](https://nodejs.org)
 
 FirstMate is a local plugin host. It runs a person's own tools on their own
 machine and gives each one a process, a page and an address, so that no tool has
 to build a runtime of its own.
+
+<!-- DEMO SLOT. The recording is not made yet.
+     docs/brand/demo-script.md is the take, start to finish.
+     When the GIF exists, replace this comment with exactly this line:
+     ![Registering a Plugin and opening its Plugin Page](docs/brand/demo.gif)
+-->
+
+## Install it
+
+```sh
+npx firstmate start
+```
+
+That is the whole of it. The Host listens on `http://127.0.0.1:4747/` and
+prints the address to open, token and all. To keep the command around:
+
+```sh
+npm install -g firstmate
+firstmate start
+```
+
+From a clone instead, which is how you work on the Host itself:
+
+```sh
+git clone https://github.com/luanAfons0/FirstMate.git
+cd FirstMate
+node src/main.ts
+```
+
+Node 24 or newer, and nothing else. FirstMate has no runtime dependencies, and
+a clone needs no build step.
+
+## Where it runs
+
+Evidence, not a promise. "Proved" means someone has run it.
+
+| Platform        | Host and command line | Plugin Server    | Service           | Tray      |
+| --------------- | --------------------- | ---------------- | ----------------- | --------- |
+| WSL Debian      | proved                | proved           | proved, systemd   | proved    |
+| Linux, native   | should work, untried  | should work, untried | should work, untried | not built |
+| macOS           | should work, untried  | should work, untried | not built      | not built |
+| Windows, native | should work, untried  | **will not run** | not built         | not built |
+
+**Native Windows will not run a Plugin Server.** That is a fact about the code,
+not a guess: the Supervisor checks the executable bit with `access(path, X_OK)`
+and then spawns the Plugin's `mcp` file directly, and Windows reads no shebang.
+The other half is unaffected — the Host still serves that Plugin's `web/`
+directory byte for byte, so its Plugin Page works.
+
+The service is a systemd unit, so it is Linux only. The Tray is Windows
+PowerShell and reads the runtime file over a `\\wsl.localhost\` path, so it is
+WSL-bound by construction. Neither is a judgement about the other platforms;
+nobody has written those halves (ADR-0007).
 
 A Plugin is a directory and nothing more. Put a `web/` folder in it and the Host
 serves it as a Plugin Page. Put an executable named `mcp` in it and the Host
