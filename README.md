@@ -216,5 +216,6 @@ npm install
 npx tsc --noEmit
 ```
 
-Node 24 runs TypeScript without a build step, so `typescript` is needed only to
-check the types.
+Node 24 runs TypeScript without a build step, so a clone never holds built
+output and nothing here compiles. `typescript` checks the types, and compiles
+the package on the way to npm and nowhere else (ADR-0010).

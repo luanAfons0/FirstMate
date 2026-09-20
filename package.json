@@ -1,18 +1,38 @@
 {
   "name": "firstmate",
   "version": "1.0.0",
-  "private": true,
   "description": "A local plugin host: one process that gives any Plugin a process, a page and an address.",
   "license": "MIT",
+  "keywords": [
+    "plugin-host",
+    "mcp",
+    "model-context-protocol",
+    "local-first",
+    "localhost",
+    "self-hosted"
+  ],
+  "homepage": "https://github.com/luanAfons0/FirstMate#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luanAfons0/FirstMate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luanAfons0/FirstMate/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "bin": {
-    "firstmate": "src/cli.ts"
+    "firstmate": "dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "start": "node src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "test": "node --test",
     "typecheck": "tsc --noEmit"
   },

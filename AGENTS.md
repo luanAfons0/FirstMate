@@ -24,6 +24,7 @@ Run every command from the repository root.
 | `node --test`                        | Every test. This is the whole test suite.       |
 | `node --test tests/security.test.ts` | One test file, while you work on it.            |
 | `npm install && npx tsc --noEmit`    | Check the types. `npm run typecheck` is the same. |
+| `npm run build`                      | Compile into `dist/`. Packing does this; you do not. |
 | `node src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node src/cli.ts start`              | The same Host, from the command line.           |
 | `node src/cli.ts list`               | Every Plugin in the Registry.                   |

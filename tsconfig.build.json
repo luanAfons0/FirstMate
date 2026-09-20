@@ -1,0 +1,17 @@
+// The only build in this project, and it runs on the publish path alone.
+//
+// Node refuses to strip types under node_modules, so a published FirstMate has
+// to be JavaScript (ADR-0010). Development keeps no build: tsconfig.json still
+// says noEmit, and a clone never holds dist/.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    // A local import here carries the .ts extension, because Node runs the
+    // TypeScript directly. Without this the emitted JavaScript would still
+    // import ./config.ts, and nothing would resolve.
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src/**/*.ts"]
+}
