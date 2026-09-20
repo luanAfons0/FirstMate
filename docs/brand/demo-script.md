@@ -32,7 +32,7 @@ tarball, which behaves exactly as the published one will:
 ```sh
 cd ~/.first-mate
 npm pack --pack-destination /tmp
-npm install -g /tmp/firstmate-1.0.0.tgz
+npm install -g /tmp/luan-afonso-firstmate-1.0.0.tgz
 firstmate --help          # proves it is on PATH
 ```
 

@@ -74,7 +74,7 @@ check() {
   if ! command -v firstmate >/dev/null; then
     printf 'firstmate: firstmate is not on the PATH. The take uses the real command.\n' >&2
     printf '           cd %s && npm pack --pack-destination /tmp\n' "$repository" >&2
-    printf '           npm install -g /tmp/firstmate-%s.tgz\n' \
+    printf '           npm install -g /tmp/luan-afonso-firstmate-%s.tgz\n' \
       "$(node -p "require('$repository/package.json').version")" >&2
     faults=1
   fi

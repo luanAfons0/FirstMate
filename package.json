@@ -1,5 +1,5 @@
 {
-  "name": "firstmate",
+  "name": "@luan-afonso/firstmate",
   "version": "1.0.0",
   "description": "A local plugin host: one process that gives any Plugin a process, a page and an address.",
   "license": "MIT",

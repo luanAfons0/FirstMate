@@ -17,14 +17,14 @@ to build a runtime of its own.
 ## Install it
 
 ```sh
-npx firstmate start
+npx @luan-afonso/firstmate start
 ```
 
 That is the whole of it. The Host listens on `http://127.0.0.1:4747/` and
 prints the address to open, token and all. To keep the command around:
 
 ```sh
-npm install -g firstmate
+npm install -g @luan-afonso/firstmate
 firstmate start
 ```
 
