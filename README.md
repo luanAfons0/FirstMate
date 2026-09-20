@@ -12,11 +12,7 @@ FirstMate is a local plugin host. It runs a person's own tools on their own
 machine and gives each one a process, a page and an address, so that no tool has
 to build a runtime of its own.
 
-<!-- DEMO SLOT. The recording is not made yet.
-     docs/brand/demo-script.md is the take, start to finish.
-     When the GIF exists, replace this comment with exactly this line:
-     ![Registering a Plugin and opening its Plugin Page](docs/brand/demo.gif)
--->
+![Registering a Plugin and opening its Plugin Page](docs/brand/demo.gif)
 
 ## Install it
 

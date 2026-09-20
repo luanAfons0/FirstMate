@@ -7,6 +7,11 @@ changes what it prints or what the Index Page looks like.
 A GIF, not a video. A GIF plays wherever the README is rendered. An uploaded
 video plays on github.com alone, and is blank on npm and on every mirror.
 
+`docs/brand/demo.sh` types this script for you, so that a take never needs a
+second screen: `check` before you record, `take` while you record, `reset` when
+the recording is saved. The beats below stay the source. The script follows
+them, and has to be changed with them.
+
 ## What it has to show
 
 Five things, in this order, and nothing else:
@@ -18,6 +23,8 @@ Five things, in this order, and nothing else:
 5. **A Plugin Page is a whole page**, and it calls its own tools.
 
 ## Before you record
+
+`docs/brand/demo.sh check` proves every line of this section in one go.
 
 Get a real `firstmate` command. Until the package is on npm, install the
 tarball, which behaves exactly as the published one will:
@@ -66,7 +73,8 @@ systemctl --user restart firstmate
 
 ## Afterwards
 
-Take the demo Plugin back out. It was a prop:
+Take the demo Plugin back out. It was a prop. `docs/brand/demo.sh reset` runs
+both of these:
 
 ```sh
 firstmate remove notes
