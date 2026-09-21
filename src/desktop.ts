@@ -39,6 +39,7 @@ import {
 } from './desktop-state.ts';
 import { STATE_WORDS } from './index-page.ts';
 import { readLogon, setLogon } from './logon.ts';
+import { nameTheWindow } from './taskbar.ts';
 import { SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
 
 /** The window's title. The chrome strip names what is open inside it. */
@@ -117,7 +118,15 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   const context = app.createWebContext({ dataDirectory: dataDirectory(process.env) });
   const mark = marks();
 
-  const window = app.createBrowserWindow({ title: TITLE, width: WIDTH, height: HEIGHT });
+  // The window is made hidden and shown once it is right. Windows reads what a
+  // window is when it makes its taskbar button, and a button already made keeps
+  // what it read.
+  const window = app.createBrowserWindow({
+    title: TITLE,
+    width: WIDTH,
+    height: HEIGHT,
+    visible: false,
+  });
   if (mark.running !== undefined) {
     // Windows draws the title bar from the small icon and the taskbar from the
     // big one, and these are the two calls that set them. Setting one alone
@@ -126,6 +135,10 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     window.setWindowIcon(mark.running);
     window.setTaskbarIcon(mark.running);
   }
+
+  // Asked for now and waited for later, so that the window is not held shut
+  // while PowerShell starts.
+  const naming = nameTheWindow(window.getNativeHandle(), MARKS.running);
 
   /** The run the window is talking to. A restart of the Host replaces it. */
   let run = found.runtime;
@@ -297,6 +310,13 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   shown = { window, strip, content, context, tray };
   content.loadUrl(indexAddress(run));
   app.run();
+
+  const unnamed = await naming;
+  if (unnamed !== undefined) {
+    // A taskbar button wearing Node's icon is a blemish and not a fault.
+    console.error(`firstmate: the taskbar button keeps the icon of whatever ran it: ${unnamed}`);
+  }
+  window.setVisible(true);
 
   await ending;
 
