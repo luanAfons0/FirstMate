@@ -244,6 +244,23 @@ Install it with `windows/install-tray.ps1`, remove it with
 `windows/uninstall-tray.ps1`; both are in
 [`docs/deploy.md`](docs/deploy.md).
 
+`firstmate desktop` opens a FirstMate window instead, and shows the Index Page
+in it. A Plugin Page is then a page of FirstMate's own rather than a tab among
+thirty others. It works out which distribution holds the Host and where the
+Host keeps its home directory, so there is no address to type and no token to
+paste; say them yourself when it cannot:
+
+```sh
+firstmate desktop
+firstmate desktop --distribution Debian --home /home/<user>/.firstmate
+```
+
+The window belongs on Windows, where the desktop is, and it refuses with a
+sentence saying so anywhere else. It is the one part of FirstMate that has a
+dependency, and that dependency is imported only when this command runs, so
+every other command works on a machine where its native binary will not load
+(ADR-0011).
+
 ## The first Plugin
 
 `~/.nexus` is FirstMate's first Plugin. The Host serves its `web/` directory as

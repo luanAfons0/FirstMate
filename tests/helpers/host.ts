@@ -193,15 +193,20 @@ export type CommandResult = {
 /**
  * One run of the command line, against a home directory of this test's own.
  * It is a real process, like everything else a test drives here.
+ *
+ * The environment is the whole of what a test may change about that process,
+ * which is how a command is run on a machine the test has arranged: with no
+ * display, or with the webview library made unloadable.
  */
 export function firstmate(
   home: string,
   argv: readonly string[],
+  env: NodeJS.ProcessEnv = {},
 ): Promise<CommandResult> {
   return new Promise((done, fail) => {
     const child = spawn(process.execPath, [join(REPOSITORY, 'src', 'cli.ts'), ...argv], {
       cwd: REPOSITORY,
-      env: { ...process.env, FIRSTMATE_HOME: home },
+      env: { ...process.env, FIRSTMATE_HOME: home, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';

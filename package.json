@@ -27,7 +27,8 @@
     "firstmate": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "icons"
   ],
   "scripts": {
     "start": "node src/main.ts",
@@ -39,5 +40,8 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "@webviewjs/webview": "^0.4.6"
   }
 }

@@ -84,8 +84,14 @@ foreach ($process in @(Get-CimInstance Win32_Process -Filter "Name = 'powershell
 
 New-Item -ItemType Directory -Path $trayHome -Force | Out-Null
 foreach ($file in 'firstmate-tray.ps1', 'firstmate-open.ps1', 'firstmate-runtime.ps1',
-                  'firstmate-hidden.vbs', 'firstmate-running.ico', 'firstmate-stopped.ico') {
+                  'firstmate-hidden.vbs') {
     Copy-Item -Path (Join-Path $here $file) -Destination $trayHome -Force
+}
+# The icons left windows/ when they stopped being PowerShell's alone: they are
+# packed with the program now. The Tray still draws with them until it retires.
+$icons = Join-Path (Split-Path -Path $here -Parent) 'icons'
+foreach ($file in 'firstmate-running.ico', 'firstmate-stopped.ico') {
+    Copy-Item -Path (Join-Path $icons $file) -Destination $trayHome -Force
 }
 $shim = Join-Path $trayHome 'firstmate-hidden.vbs'
 $values = '-Distro "{0}" -FirstMateHome "{1}"' -f $distro, $firstMateHome
