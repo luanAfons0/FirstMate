@@ -57,8 +57,9 @@ Server has to answer the handshake). Tests use all three.
   runs and never when a module loads, so every other command works on a machine
   where the native binary will not load (ADR-0011).
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
-  removing the Windows side and for the logon task, **systemd** for the service,
-  **WSL Debian** for the machine it all runs on (ADR-0007). The Tray itself is
+  removing the Windows side, for the logon task, and for the one shell call the
+  running Tray makes (`src/taskbar.ts`), **systemd** for the service, **WSL
+  Debian** for the machine it all runs on (ADR-0007). The Tray itself is
   TypeScript, in `src/desktop*.ts`, and runs on Windows Node.
 
 ## Project structure
@@ -85,6 +86,8 @@ src/         the Host. Every file is one job.
   strip.ts         the chrome strip above the content view, one file with no
                    assets of its own. The Host never serves it.
   logon.ts         whether FirstMate starts at logon: one file in Startup.
+  taskbar.ts       the name Windows groups the taskbar button by, so that the
+                   button wears FirstMate's mark and not node.exe's.
 tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
 icons/       the mark, running and stopped. The window wears it; the Tray
              draws with both. Packed with the program.

@@ -16,7 +16,7 @@ exists, and the migration is the argument made once, in full:
 | a loopback listener, `scripts/lib/ui_server.py` | `src/host.ts`                    |
 | a static allowlist                          | `src/static-files.ts`                |
 | a Run Token, a Run File, a stale-run probe  | `src/runtime.ts`, `src/security.ts`  |
-| five PowerShell files of its own tray       | the Tray, in `windows/`              |
+| five PowerShell files of its own tray       | the Tray, in `src/desktop*.ts`       |
 | `nexus ui`, with `--status`, `--stop`, `--open` | the Tray, and the address `/p/nexus/` |
 
 ## What v1 proved
