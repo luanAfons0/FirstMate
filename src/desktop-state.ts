@@ -87,6 +87,29 @@ export function indexAddress(runtime: Runtime): string {
 }
 
 /**
+ * The Plugin Name an address names, or nothing when it names the Index Page or
+ * anything else the Host serves.
+ *
+ * Only the path is read. The address carries the token on the first navigation
+ * of a run, and nothing here keeps it, writes it down or says it out loud.
+ */
+export function pluginOpenAt(address: string): string | undefined {
+  let path: string;
+  try {
+    path = new URL(address).pathname;
+  } catch {
+    return undefined;
+  }
+  const found = /^\/p\/([^/]+)(?:\/|$)/.exec(path);
+  if (found?.[1] === undefined) return undefined;
+  try {
+    return decodeURIComponent(found[1]);
+  } catch {
+    return found[1];
+  }
+}
+
+/**
  * The run of the Host to talk to, or the reason there is none.
  *
  * The distribution is asked whether it is running **before** any path into it

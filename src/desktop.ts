@@ -21,8 +21,10 @@ import {
   hasDesktop,
   indexAddress,
   NO_DESKTOP,
+  pluginOpenAt,
   type Where,
 } from './desktop-state.ts';
+import { SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
 
 /** The window's title. A Plugin Page names itself in the chrome strip, later. */
 const TITLE = 'FirstMate';
@@ -30,6 +32,14 @@ const TITLE = 'FirstMate';
 /** The window's first size. It is resizable, and it remembers nothing yet. */
 const WIDTH = 1100;
 const HEIGHT = 760;
+
+/**
+ * How tall the chrome strip is, in logical pixels.
+ *
+ * Bounds are logical, so the window's inner size is asked for in the same
+ * coordinates and no scale factor is ever worked out by hand.
+ */
+const STRIP = 44;
 
 /**
  * The mark the window wears, in its title bar and on the taskbar.
@@ -45,16 +55,17 @@ const HEIGHT = 760;
 const ICON = new URL('../icons/firstmate-running.ico', import.meta.url);
 
 /**
- * The window, the view inside it, and the browser data the view keeps.
+ * The window, the two views in it, and the browser data they keep.
  *
- * All three are held while the program runs. The library asks for a strong
+ * All of it is held while the program runs. The library asks for a strong
  * reference to anything whose methods or listeners are still wanted, and says
  * the data must outlive every view that uses it.
  */
 let shown:
   | {
       readonly window: BrowserWindow;
-      readonly webview: Webview;
+      readonly strip: Webview;
+      readonly content: Webview;
       readonly context: WebContext;
     }
   | undefined;
@@ -91,19 +102,80 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     window.setWindowIcon(mark);
     window.setTaskbarIcon(mark);
   }
-  shown = {
-    window,
-    context,
-    webview: window.createWebview({ url: indexAddress(found.runtime), webContext: context }),
-  };
+  const index = indexAddress(found.runtime);
+  const size = window.getInnerSize(true);
+
+  // The strip is the program's own page. It asks for one thing, by trying to
+  // go to one address, and this is where that address is refused and answered.
+  const strip = window.createWebview({
+    html: stripPage(THE_PLUGIN_LIST),
+    x: 0,
+    y: 0,
+    width: size.width,
+    height: STRIP,
+    webContext: context,
+    navigationHandler: (address) => {
+      if (!address.startsWith(SCHEME)) return true;
+      // A guard has to answer at once, so the work happens after it has.
+      setTimeout(() => content.loadUrl(index), 0);
+      return false;
+    },
+  });
+
+  // The content view is made with nothing in it, so that what it is showing is
+  // known from its first navigation onwards. Nothing is ever injected into it,
+  // wrapped around it or read out of it: the window is a viewer (ADR-0008).
+  const content = window.createWebview({
+    x: 0,
+    y: STRIP,
+    width: size.width,
+    height: size.height - STRIP,
+    webContext: context,
+  });
+
+  let named = THE_PLUGIN_LIST;
+  content.on('navigation', (event) => {
+    const open = event.url === undefined ? undefined : pluginOpenAt(event.url);
+    const now = open ?? THE_PLUGIN_LIST;
+    if (now === named) return;
+    named = now;
+    // The strip is written again rather than reached into. It is a small page,
+    // and the program owns every byte of it.
+    strip.loadHtml(stripPage(now));
+  });
+
+  // The library holds bounds rather than a layout, so they are put back every
+  // time the window changes size.
+  window.on('resize', () => {
+    const now = window.getInnerSize(true);
+    strip.setBounds({ x: 0, y: 0, width: now.width, height: STRIP });
+    content.setBounds({
+      x: 0,
+      y: STRIP,
+      width: now.width,
+      height: Math.max(now.height - STRIP, 0),
+    });
+  });
+
+  shown = { window, strip, content, context };
+  content.loadUrl(index);
 
   await new Promise<void>((done) => {
     // Closing the window ends the program, because FirstMate has nothing else
     // on this desktop yet. The notification-area icon changes that.
+    //
+    // The wait ends before the application is told to go, never after. An exit
+    // refuses every later call into the library, and one that answers with a
+    // throw would leave this wait standing for ever: the program would then end
+    // with Node complaining about an await that never settled.
     app.on('application-close-requested', () => {
       shown = undefined;
-      app.exit();
       done();
+      try {
+        app.exit();
+      } catch {
+        // It is already going. There is nothing to add.
+      }
     });
     app.run();
   });

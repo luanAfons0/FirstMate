@@ -246,7 +246,9 @@ Install it with `windows/install-tray.ps1`, remove it with
 
 `firstmate desktop` opens a FirstMate window instead, and shows the Index Page
 in it. A Plugin Page is then a page of FirstMate's own rather than a tab among
-thirty others. It works out which distribution holds the Host and where the
+thirty others. A narrow strip above the page holds one control, *see the plugin
+list*, and the name of what is open. One Plugin Page is open at a time, so
+leaving one and coming back loads it again. It works out which distribution holds the Host and where the
 Host keeps its home directory, so there is no address to type and no token to
 paste; say them yourself when it cannot:
 
