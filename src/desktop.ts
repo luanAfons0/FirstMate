@@ -30,6 +30,7 @@ import {
   NO_DESKTOP,
   pluginAddress,
   pluginOpenAt,
+  restartTheHost,
   watchTheHost,
   type PluginSeen,
   type Plugins,
@@ -37,6 +38,7 @@ import {
   type Where,
 } from './desktop-state.ts';
 import { STATE_WORDS } from './index-page.ts';
+import { readLogon, setLogon } from './logon.ts';
 import { SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
 
 /** The window's title. The chrome strip names what is open inside it. */
@@ -69,6 +71,8 @@ const MARKS: Readonly<Record<Pulse['state'], URL>> = {
 /** What the menu items ask for. A Plugin's item carries its Plugin Name. */
 const OPEN = 'open-firstmate';
 const QUIT = 'quit';
+const RESTART = 'restart-the-host';
+const LOGON = 'start-at-logon';
 const PLUGIN = 'plugin:';
 
 /**
@@ -160,14 +164,32 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     webContext: context,
   });
 
+  /** What went wrong with the last thing the person asked for, until they do
+   *  something else. The strip is where the program says it. */
+  let fault: string | undefined;
+
+  /** Say the strip again. It is a small page the program owns every byte of,
+   *  so it is written rather than reached into. */
+  const redraw = (): void => {
+    strip.loadHtml(stripPage(named, fault));
+  };
+
+  const complain = (said: string): void => {
+    fault = said;
+    redraw();
+    // A failure the person asked for is worth showing them, even if they had
+    // put the window away.
+    window.setVisible(true);
+  };
+
   content.on('navigation', (event) => {
     open = event.url === undefined ? undefined : pluginOpenAt(event.url);
     const now = open ?? THE_PLUGIN_LIST;
-    if (now === named) return;
+    const clearing = fault !== undefined;
+    if (now === named && !clearing) return;
     named = now;
-    // The strip is written again rather than reached into. It is a small page,
-    // and the program owns every byte of it.
-    strip.loadHtml(stripPage(now));
+    fault = undefined;
+    redraw();
   });
 
   // The library holds bounds rather than a layout, so they are put back every
@@ -187,7 +209,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     id: 'firstmate',
     ...(mark.running === undefined ? {} : { icon: { data: mark.running } }),
     tooltip: tooltip({ state: 'running', runtime: run, plugins: { kind: 'untold' } }),
-    menu: menu({ kind: 'untold' }),
+    menu: menu({ plugins: { kind: 'untold' }, running: true, logon: readLogon(process.env).on }),
     // A click opens the window, which is the thing wanted nearly every time.
     // The menu is where the rest lives, one click to the right of it.
     menuOnLeftClick: false,
@@ -222,6 +244,15 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
         window.setVisible(true);
       } else if (asked === QUIT) {
         quit();
+      } else if (asked === RESTART) {
+        void restartTheHost(found.where).then((why) => {
+          if (why !== undefined) complain(`FirstMate could not start the Host: ${why}`);
+        });
+      } else if (asked === LOGON) {
+        const on = !readLogon(process.env).on;
+        const why = setLogon(process.env, on, logonCommand(found.where));
+        if (why !== undefined) complain(why);
+        else listed = '';
       } else if (asked !== undefined && asked.startsWith(PLUGIN)) {
         content.loadUrl(pluginAddress(run, asked.slice(PLUGIN.length)));
         window.setVisible(true);
@@ -243,10 +274,15 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     if (now !== undefined) tray.setIcon(now);
     tray.setTooltip(tooltip(pulse));
 
-    const said = signature(pulse.plugins);
+    const view: MenuView = {
+      plugins: pulse.plugins,
+      running: pulse.state === 'running',
+      logon: readLogon(process.env).on,
+    };
+    const said = signature(view);
     if (said !== listed) {
       listed = said;
-      tray.setMenu(menu(pulse.plugins));
+      tray.setMenu(menu(view));
     }
 
     if (pulse.runtime === undefined) return;
@@ -280,15 +316,26 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
  * The Plugins are a submenu rather than a run of items, so that Quit never
  * moves under the cursor when a Plugin is added or taken away.
  */
-function menu(plugins: Plugins): MenuOptions {
+function menu(view: MenuView): MenuOptions {
   return {
     items: [
       { id: OPEN, label: 'Open FirstMate' },
-      { label: 'Plugins', submenu: { items: pluginItems(plugins) } },
+      { label: 'Plugins', submenu: { items: pluginItems(view.plugins) } },
+      // The label says what will happen, not what the item is for. One command
+      // does both, because a restart starts a unit that is not running.
+      { id: RESTART, label: view.running ? 'Restart FirstMate' : 'Start FirstMate' },
+      { id: LOGON, label: view.logon ? 'Start at logon \u2713' : 'Start at logon' },
       { id: QUIT, label: 'Quit' },
     ],
   };
 }
+
+/** Everything the menu has to be right about. */
+type MenuView = {
+  readonly plugins: Plugins;
+  readonly running: boolean;
+  readonly logon: boolean;
+};
 
 /**
  * Every Plugin, or the one sentence that stands in for the list.
@@ -321,11 +368,35 @@ function pluginLabel(plugin: PluginSeen): string {
     : `${plugin.name} — ${STATE_WORDS[plugin.state]}`;
 }
 
-/** What a menu is built from, as one string, so that an unchanged list is
+/** What a menu is built from, as one string, so that an unchanged menu is
  *  built once. */
-function signature(plugins: Plugins): string {
-  if (plugins.kind === 'untold') return 'untold';
-  return plugins.plugins.map((p) => `${p.name}/${p.hasPage}/${p.state}`).join(',');
+function signature(view: MenuView): string {
+  const listed =
+    view.plugins.kind === 'untold'
+      ? 'untold'
+      : view.plugins.plugins.map((p) => `${p.name}/${p.hasPage}/${p.state}`).join(',');
+  return `${listed}|${view.running}|${view.logon}`;
+}
+
+/**
+ * The command that starts FirstMate at logon.
+ *
+ * It is what is running now, with the distribution and the Host's home already
+ * worked out, so that the logon entry never has to work them out again on a
+ * machine that may be half awake.
+ */
+function logonCommand(where: Where): readonly string[] {
+  return [
+    process.execPath,
+    // The command line this program was started from, which is what the logon
+    // entry has to start again.
+    process.argv[1] ?? '',
+    'desktop',
+    '--distribution',
+    where.distribution,
+    '--home',
+    where.home,
+  ];
 }
 
 /** What the icon says when the pointer rests on it. */

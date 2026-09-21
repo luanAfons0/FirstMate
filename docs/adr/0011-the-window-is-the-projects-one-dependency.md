@@ -24,4 +24,6 @@ The chrome strip asks the program for things by trying to navigate, and the prog
 
 Closing the window hides it rather than closing it, because the application owns the notification-area icon and disposes it when it ends. A close that is allowed through therefore takes the icon with it, and the next poll then speaks to an icon that is gone. Quit is what ends FirstMate.
 
+Start at logon is a script in the Startup folder rather than a shortcut, because the program is a console program and a console program started from a shortcut flashes a window at every logon. The script host starts it with no window at all, which is what FirstMate already used PowerShell's launch shim for.
+
 ADR-0008 stands: the Host still frames nothing. The chrome strip above the content view is the program's own view, and the Host does not serve it. That is the whole of what makes it safe, because every Plugin Page shares an origin with the Index Page and could rewrite a strip the Host had served.

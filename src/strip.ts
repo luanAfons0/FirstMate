@@ -30,7 +30,7 @@ export const THE_PLUGIN_LIST = 'the Plugin list';
  * It is rewritten rather than scripted when what is open changes: the page is
  * small, and re-reading it costs less than reaching into it would.
  */
-export function stripPage(open: string): string {
+export function stripPage(open: string, fault?: string): string {
   const onTheList = open === THE_PLUGIN_LIST;
   return `<!doctype html>
 <html lang="en">
@@ -51,10 +51,16 @@ export function stripPage(open: string): string {
   a[aria-disabled='true'] { opacity: .4; pointer-events: none; }
   b { font-weight: 600; }
   span { color: #8b8f97; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  span.fault { color: #e8a0a0; }
 </style>
 <a href="${PLUGIN_LIST}"${onTheList ? " aria-disabled='true'" : ''}>see the plugin list</a>
-<span>${onTheList ? 'FirstMate' : `<b>${escaped(open)}</b>`}</span>
+${fault === undefined ? name(open, onTheList) : `<span class="fault">${escaped(fault)}</span>`}
 </html>`;
+}
+
+/** What is open, in the strip's own words. */
+function name(open: string, onTheList: boolean): string {
+  return `<span>${onTheList ? 'FirstMate' : `<b>${escaped(open)}</b>`}</span>`;
 }
 
 /** A Plugin Name is not the program's to trust, so it is written as text. */
