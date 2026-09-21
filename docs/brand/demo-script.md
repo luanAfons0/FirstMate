@@ -39,7 +39,8 @@ firstmate --help          # proves it is on PATH
 Then:
 
 - A terminal at about 90 columns, nothing else on screen.
-- The Windows browser open on a blank tab, and the Tray running.
+- Nothing else on the Windows desktop, and the Tray running in the
+  notification area.
 - The demo Plugin at `~/firstmate-demo/notes`. It ships a `web/` directory and
   an executable `mcp`, so it reaches `Running` and answers one tool.
 - The Host running as its service, against the real `~/.firstmate`. The Tray

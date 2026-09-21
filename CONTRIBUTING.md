@@ -49,7 +49,7 @@ under `tests/fixtures/` rather than a mock.
 ## Where FirstMate runs
 
 FirstMate is developed on WSL Debian, and only there. The Host runs under
-systemd; the Tray is Windows PowerShell. macOS and native Windows are not
+systemd; the Tray is Windows Node. macOS and native Windows are not
 tested by anyone, so nobody can honestly claim they work.
 
 This is not a rule against them. It is a statement of what has been run. If you

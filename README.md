@@ -56,8 +56,8 @@ and then spawns the Plugin's `mcp` file directly, and Windows reads no shebang.
 The other half is unaffected — the Host still serves that Plugin's `web/`
 directory byte for byte, so its Plugin Page works.
 
-The service is a systemd unit, so it is Linux only. The Tray is Windows
-PowerShell and reads the runtime file over a `\\wsl.localhost\` path, so it is
+The service is a systemd unit, so it is Linux only. The Tray is a Windows
+program and reads the runtime file over a `\\wsl.localhost\` path, so it is
 WSL-bound by construction. Neither is a judgement about the other platforms;
 nobody has written those halves (ADR-0007).
 
@@ -232,25 +232,18 @@ scripts/uninstall-service.sh        # remove it
 
 ## Open it from Windows
 
-The Tray is a notification-area icon that opens the Index Page in one click. It
-holds the Host's port and token in memory, so opening makes no `wsl.exe` call
-and no file read.
+The Tray is FirstMate's Windows program. It runs on Windows, where the desktop
+is, while the Host and every Plugin Server stay in WSL Debian. The two talk over
+loopback, which WSL already forwards, so nothing new carries traffic between
+them.
 
-Its **Plugins** submenu lists every Plugin with its state and opens any one of
-them directly, so moving between Plugins never goes through the Index Page. The
-list is asked for when the menu opens, so it is never stale.
-
-Install it with `windows/install-tray.ps1`, remove it with
-`windows/uninstall-tray.ps1`; both are in
-[`docs/deploy.md`](docs/deploy.md).
-
-`firstmate desktop` opens a FirstMate window instead, and shows the Index Page
+`firstmate desktop` opens a window of FirstMate's own and shows the Index Page
 in it. A Plugin Page is then a page of FirstMate's own rather than a tab among
 thirty others. A narrow strip above the page holds one control, *see the plugin
 list*, and the name of what is open. One Plugin Page is open at a time, so
-leaving one and coming back loads it again. It works out which distribution holds the Host and where the
-Host keeps its home directory, so there is no address to type and no token to
-paste; say them yourself when it cannot:
+leaving one and coming back loads it again. It works out which distribution
+holds the Host and where the Host keeps its home directory, so there is no
+address to type and no token to paste; say them yourself when it cannot:
 
 ```sh
 firstmate desktop
@@ -268,6 +261,13 @@ answer disables the list rather than showing it as empty.
 Start at logon is one file, `FirstMate.vbs` in the Startup folder. Turning it
 off deletes exactly that file. Nothing is written to the registry and nothing is
 scheduled.
+
+Install it with `windows/install-tray.ps1`, remove it with
+`windows/uninstall-tray.ps1`; both are in
+[`docs/deploy.md`](docs/deploy.md).
+
+A browser still works. The address still opens, and a Plugin Page is still a
+whole page that anything can load. The window is another door, not the only one.
 
 The window belongs on Windows, where the desktop is, and it refuses with a
 sentence saying so anywhere else. It is the one part of FirstMate that has a

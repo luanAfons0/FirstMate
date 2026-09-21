@@ -52,7 +52,7 @@ test('the package holds the built output, the README and the licence', async () 
 
   // Packing builds, so the package can never be stale against the source.
   const built = files.filter((path) => path.startsWith('dist/') && path.endsWith('.js'));
-  assert.ok(built.length >= 16, `every source file is built, got ${built.length}`);
+  assert.ok(built.length >= 17, `every source file is built, got ${built.length}`);
 });
 
 test('the package holds the desktop program and the icons it draws with', async () => {
@@ -61,6 +61,7 @@ test('the package holds the desktop program and the icons it draws with', async 
   assert.ok(files.includes('dist/desktop.js'), 'the part that shows');
   assert.ok(files.includes('dist/desktop-state.js'), 'the part that decides');
   assert.ok(files.includes('dist/strip.js'), 'the chrome strip');
+  assert.ok(files.includes('dist/logon.js'), 'whether it starts at logon');
   // The Tray cannot draw without them, and tsc copies nothing that is not
   // TypeScript, so they are packed from where they live rather than built.
   assert.ok(files.includes('icons/firstmate-running.ico'));

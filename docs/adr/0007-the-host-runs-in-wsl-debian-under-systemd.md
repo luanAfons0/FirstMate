@@ -4,4 +4,8 @@ The Host runs as a systemd service inside WSL Debian, with a Windows Task Schedu
 
 ## Consequences
 
-The Tray is a Windows PowerShell process and the Host is a Linux process, so the two communicate through the filesystem: the Host writes its port and token to `~/.firstmate/runtime.json`, and the Tray reads that file over the `\\wsl.localhost\` path.
+The Tray is a Windows process and the Host is a Linux process, so the two find each other through the filesystem and talk over loopback. The Host writes its port and token to `~/.firstmate/runtime.json`; the Tray reads that file over the `\\wsl.localhost\` path, and then reaches the Host at `127.0.0.1`, which WSL already forwards into the distribution. Nothing new carries traffic between the two halves.
+
+Reading anything under `\\wsl.localhost\` starts a stopped distribution, so the Tray asks `wsl.exe` whether the distribution is running before it touches such a path, every time. Looking at FirstMate must not wake WSL.
+
+The Tray was PowerShell when this decision was made and is a Node program now (ADR-0011). What is written here did not change with it: the split, the file, and loopback are the same. A notification-area icon is drawn by the process that creates it, and the distribution carries no tray host, no notification daemon and no panel, so the Windows half is where the icon has to live.
