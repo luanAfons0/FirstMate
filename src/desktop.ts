@@ -1,32 +1,35 @@
 /**
- * The FirstMate window: one view, showing the Index Page.
+ * The FirstMate window and the notification-area icon above it.
  *
- * This is the part that shows. It owns the window, and it is the only file in
- * FirstMate that imports the webview library. It imports it when the subcommand
- * runs rather than when the module loads, so that every other command keeps
- * working on a machine where the native binary is missing or will not load for
- * want of system libraries (ADR-0011). The part that decides is
- * `desktop-state.ts`, and it imports nothing native.
+ * This is the part that shows. It owns the window, the icon and the two views,
+ * and it is the only file in FirstMate that imports the webview library. It
+ * imports it when the subcommand runs rather than when the module loads, so
+ * that every other command keeps working on a machine where the native binary
+ * is missing or will not load for want of system libraries (ADR-0011). The part
+ * that decides is `desktop-state.ts`, and it imports nothing native.
  *
- * The window is a viewer and never a frame. The view loads the Host's own
- * address and shows the bytes the Host serves, and nothing is injected into a
- * Plugin Page, wrapped around it or rewritten in it (ADR-0008).
+ * The window is a viewer and never a frame. The content view loads the Host's
+ * own address and shows the bytes the Host serves; nothing is injected into a
+ * Plugin Page, wrapped around it or read out of it (ADR-0008).
  */
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { BrowserWindow, WebContext, Webview } from '@webviewjs/webview';
+import type { BrowserWindow, TrayIcon, WebContext, Webview } from '@webviewjs/webview';
 import {
   findTheHost,
   hasDesktop,
   indexAddress,
   NO_DESKTOP,
+  pluginAddress,
   pluginOpenAt,
+  watchTheHost,
+  type Pulse,
   type Where,
 } from './desktop-state.ts';
 import { SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
 
-/** The window's title. A Plugin Page names itself in the chrome strip, later. */
+/** The window's title. The chrome strip names what is open inside it. */
 const TITLE = 'FirstMate';
 
 /** The window's first size. It is resizable, and it remembers nothing yet. */
@@ -42,20 +45,23 @@ const HEIGHT = 760;
 const STRIP = 44;
 
 /**
- * The mark the window wears, in its title bar and on the taskbar.
- *
- * It is the running one because the window opens only where the Host is
- * running. The pair belongs to the notification-area icon, which shows a state
- * this window cannot be in.
+ * The mark for each state the Host can be in.
  *
  * The path is read from this module rather than from the working directory, so
  * it is `icons/` beside `src/` in a clone and `icons/` beside `dist/` in the
  * package, and neither needs a build step to put it there (ADR-0010).
  */
-const ICON = new URL('../icons/firstmate-running.ico', import.meta.url);
+const MARKS: Readonly<Record<Pulse['state'], URL>> = {
+  running: new URL('../icons/firstmate-running.ico', import.meta.url),
+  stopped: new URL('../icons/firstmate-stopped.ico', import.meta.url),
+};
+
+/** What the menu items ask for. */
+const OPEN = 'open-firstmate';
+const QUIT = 'quit';
 
 /**
- * The window, the two views in it, and the browser data they keep.
+ * The window, the views in it, the icon, and the browser data they keep.
  *
  * All of it is held while the program runs. The library asks for a strong
  * reference to anything whose methods or listeners are still wanted, and says
@@ -67,15 +73,17 @@ let shown:
       readonly strip: Webview;
       readonly content: Webview;
       readonly context: WebContext;
+      readonly tray: TrayIcon;
     }
   | undefined;
 
 /**
- * Open the window on the Index Page, and hold it open.
+ * Open the window on the Index Page, put FirstMate in the notification area,
+ * and hold both until the program is told to quit.
  *
  * The distribution and the Host's home directory are worked out when they are
  * not given, so that the window opens with no address typed and no token
- * pasted. This returns when the window is closed.
+ * pasted.
  */
 export async function openWindow(asked: Partial<Where>): Promise<number> {
   if (!hasDesktop(process.platform, process.env)) {
@@ -92,17 +100,25 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   const webview = await load();
   const app = new webview.Application();
   const context = app.createWebContext({ dataDirectory: dataDirectory(process.env) });
-  const mark = icon();
+  const mark = marks();
+
   const window = app.createBrowserWindow({ title: TITLE, width: WIDTH, height: HEIGHT });
-  if (mark !== undefined) {
+  if (mark.running !== undefined) {
     // Windows draws the title bar from the small icon and the taskbar from the
     // big one, and these are the two calls that set them. Setting one alone
     // leaves the other showing the icon of whatever runs the program, which is
     // node.exe.
-    window.setWindowIcon(mark);
-    window.setTaskbarIcon(mark);
+    window.setWindowIcon(mark.running);
+    window.setTaskbarIcon(mark.running);
   }
-  const index = indexAddress(found.runtime);
+
+  /** The run the window is talking to. A restart of the Host replaces it. */
+  let run = found.runtime;
+  /** The Plugin whose Plugin Page is open, if it is not the Index Page. */
+  let open: string | undefined;
+  /** What the strip says is open. */
+  let named = THE_PLUGIN_LIST;
+
   const size = window.getInnerSize(true);
 
   // The strip is the program's own page. It asks for one thing, by trying to
@@ -117,7 +133,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     navigationHandler: (address) => {
       if (!address.startsWith(SCHEME)) return true;
       // A guard has to answer at once, so the work happens after it has.
-      setTimeout(() => content.loadUrl(index), 0);
+      setTimeout(() => content.loadUrl(indexAddress(run)), 0);
       return false;
     },
   });
@@ -133,9 +149,8 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     webContext: context,
   });
 
-  let named = THE_PLUGIN_LIST;
   content.on('navigation', (event) => {
-    const open = event.url === undefined ? undefined : pluginOpenAt(event.url);
+    open = event.url === undefined ? undefined : pluginOpenAt(event.url);
     const now = open ?? THE_PLUGIN_LIST;
     if (now === named) return;
     named = now;
@@ -157,44 +172,90 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     });
   });
 
-  shown = { window, strip, content, context };
-  content.loadUrl(index);
-
-  await new Promise<void>((done) => {
-    // Closing the window ends the program, because FirstMate has nothing else
-    // on this desktop yet. The notification-area icon changes that.
-    //
-    // The wait ends before the application is told to go, never after. An exit
-    // refuses every later call into the library, and one that answers with a
-    // throw would leave this wait standing for ever: the program would then end
-    // with Node complaining about an await that never settled.
-    app.on('application-close-requested', () => {
-      shown = undefined;
-      done();
-      try {
-        app.exit();
-      } catch {
-        // It is already going. There is nothing to add.
-      }
-    });
-    app.run();
+  const tray = app.createTrayIcon({
+    id: 'firstmate',
+    ...(mark.running === undefined ? {} : { icon: { data: mark.running } }),
+    tooltip: tooltip({ state: 'running', runtime: run }),
+    menu: { items: [{ id: OPEN, label: 'Open FirstMate' }, { id: QUIT, label: 'Quit' }] },
+    // A click opens the window, which is the thing wanted nearly every time.
+    // The menu is where the rest lives, one click to the right of it.
+    menuOnLeftClick: false,
+    menuOnRightClick: true,
   });
+
+  // Closing the window hides it rather than ending the program, because the
+  // icon is still there and the program is still reachable from it. Quit is
+  // what ends FirstMate.
+  //
+  // The close is refused rather than allowed, and the window is hidden by hand.
+  // Letting it through ends the application, and the application owns the icon:
+  // it disposes it, and the next poll then talks to an icon that is gone.
+  window.on('close', (event) => {
+    event.preventDefault();
+    window.setVisible(false);
+  });
+
+  let quit: () => void = () => {};
+  const ending = new Promise<void>((done) => {
+    quit = done;
+  });
+
+  tray.on('click', () => window.setVisible(true));
+  app.on('custom-menu-click', (event) => {
+    const asked = event.customMenuEvent?.id;
+    if (asked === OPEN) window.setVisible(true);
+    else if (asked === QUIT) quit();
+  });
+
+  const stopWatching = watchTheHost(found.where, run, (pulse) => {
+    // The icon goes when the application goes, and a beat already in flight
+    // would otherwise reach for one that is no longer there.
+    if (tray.isDisposed()) return;
+    const now = mark[pulse.state];
+    if (now !== undefined) tray.setIcon(now);
+    tray.setTooltip(tooltip(pulse));
+
+    if (pulse.runtime === undefined) return;
+    if (pulse.runtime.port === run.port && pulse.runtime.token === run.token) return;
+
+    // The Host was replaced underneath the window. The new run answers at a new
+    // address, so the view goes back to where it already was, at that address.
+    run = pulse.runtime;
+    content.loadUrl(open === undefined ? indexAddress(run) : pluginAddress(run, open));
+  });
+
+  shown = { window, strip, content, context, tray };
+  content.loadUrl(indexAddress(run));
+  app.run();
+
+  await ending;
+
+  stopWatching();
+  shown = undefined;
+  try {
+    app.exit();
+  } catch {
+    // It is already going. There is nothing to add.
+  }
   return 0;
 }
 
-/**
- * The window's mark, or nothing at all.
- *
- * A window with no icon is still a window, so a mark that cannot be read costs
- * the icon and not the program. It is surprising enough to say once.
- */
-function icon(): Buffer | undefined {
+/** What the icon says when the pointer rests on it. */
+function tooltip(pulse: Pulse): string {
+  return pulse.runtime === undefined || pulse.state === 'stopped'
+    ? 'FirstMate: the Host is stopped'
+    : `FirstMate: the Host is running on ${pulse.runtime.port}`;
+}
+
+/** Both marks, or neither. A mark that cannot be read costs the icon and not
+ *  the program, and it is surprising enough to say once. */
+function marks(): { readonly running?: Buffer; readonly stopped?: Buffer } {
   try {
-    return readFileSync(ICON);
+    return { running: readFileSync(MARKS.running), stopped: readFileSync(MARKS.stopped) };
   } catch (fault: unknown) {
     const said = fault instanceof Error ? fault.message : String(fault);
-    console.error(`firstmate: the window opens without its icon: ${said}`);
-    return undefined;
+    console.error(`firstmate: the window and the icon go without their mark: ${said}`);
+    return {};
   }
 }
 

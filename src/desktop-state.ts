@@ -27,6 +27,24 @@ const WSL_TIMEOUT_MS = 10_000;
 const DISTRIBUTION_PREFIX = '\\\\wsl.localhost\\';
 
 /**
+ * How often the Host is asked whether it is up.
+ *
+ * Asking its port costs nothing, so the icon can be honest every few seconds.
+ */
+export const POLL_MS = 5_000;
+
+/**
+ * How seldom the runtime file is read when the Host will not answer.
+ *
+ * Reading it crosses into the distribution, and a Host that is simply down must
+ * not become a running cost.
+ */
+export const REREAD_MS = 30_000;
+
+/** How long the Host has to answer one poll. */
+const POLL_TIMEOUT_MS = 2_000;
+
+/**
  * The Host's own rule for where it keeps its state, asked of the distribution
  * in the distribution's own shell: FIRSTMATE_HOME, or ~/.firstmate. Asking is
  * what keeps the window free of an address to type.
@@ -82,8 +100,147 @@ export function runtimePathIn(where: Where): string {
  * place the token is ever written and it is never written to a file.
  */
 export function indexAddress(runtime: Runtime): string {
+  return address(runtime, '/');
+}
+
+/** The address of one Plugin Page, carrying the token exactly as the Index
+ *  Page's does. It is how the window returns to where it was after a restart. */
+export function pluginAddress(runtime: Runtime, name: string): string {
+  return address(runtime, `/p/${encodeURIComponent(name)}/`);
+}
+
+function address(runtime: Runtime, path: string): string {
   const token = encodeURIComponent(runtime.token);
-  return `http://127.0.0.1:${runtime.port}/?${TOKEN_PARAMETER}=${token}`;
+  return `http://127.0.0.1:${runtime.port}${path}?${TOKEN_PARAMETER}=${token}`;
+}
+
+/**
+ * What the Host said when it was asked. Three answers, never two.
+ *
+ * A port that answers does not prove the token in hand still opens it: the Host
+ * keeps the same port and mints a new token at every start, so a run can end and
+ * be replaced without the port ever stopping answering. Asking the Host itself
+ * is the only honest check.
+ */
+export type HostSays =
+  /** It answered, and this token opens it. */
+  | 'running'
+  /** It answered and refused the token: the run was replaced. */
+  | 'stale'
+  /** Nothing answered at all. */
+  | 'absent';
+
+/** What the program knows about the Host at one moment. */
+export type Pulse = {
+  /** What the icon shows and the tooltip says. */
+  readonly state: 'running' | 'stopped';
+  /** The run to talk to, when there is one. */
+  readonly runtime: Runtime | undefined;
+};
+
+/**
+ * Ask the Host whether it is up and whether this token still opens it.
+ *
+ * WSL forwards 127.0.0.1 into the distribution, so this asks from Windows with
+ * no wsl.exe call and no file read. A HEAD asks the question without carrying
+ * the page back.
+ */
+export async function askTheHost(runtime: Runtime): Promise<HostSays> {
+  let answer: Response;
+  try {
+    answer = await fetch(indexAddress(runtime), {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+    });
+  } catch {
+    return 'absent';
+  }
+  // Whatever else it disliked about that one address, the Host is up and this
+  // token reaches it.
+  return answer.status === 403 ? 'stale' : 'running';
+}
+
+/**
+ * Whether the runtime file is worth reading again now.
+ *
+ * A refused token means the run was replaced, so it is read at once rather than
+ * at the next tick: the person is one click away from an address that would be
+ * refused. A Host that does not answer at all is read again seldom, because
+ * reading it crosses into the distribution.
+ */
+export function readAgain(says: HostSays, sinceRead: number): boolean {
+  if (says === 'running') return false;
+  if (says === 'stale') return true;
+  return sinceRead >= REREAD_MS;
+}
+
+/**
+ * Watch the Host, and say what is true of it at every beat.
+ *
+ * This is the whole of the deciding the program does over time, and it imports
+ * nothing native (ADR-0011). It returns the way to stop watching.
+ */
+export function watchTheHost(
+  where: Where,
+  from: Runtime,
+  tell: (pulse: Pulse) => void,
+): () => void {
+  let held: Runtime | undefined = from;
+  let lastRead = Date.now();
+  let beating = false;
+  let watching = true;
+
+  async function beat(): Promise<void> {
+    // A beat that overran its interval is not joined by a second one.
+    if (beating || !watching) return;
+    beating = true;
+    try {
+      let says: HostSays = held === undefined ? 'absent' : await askTheHost(held);
+
+      if (readAgain(says, Date.now() - lastRead)) {
+        lastRead = Date.now();
+        held = await readRunAgain(where);
+        says = held === undefined ? 'absent' : await askTheHost(held);
+      }
+
+      if (!watching) return;
+      tell(
+        says === 'running'
+          ? { state: 'running', runtime: held }
+          : { state: 'stopped', runtime: undefined },
+      );
+    } catch (fault: unknown) {
+      // One beat may fail. The program may not. An unhandled throw inside a
+      // handler is what took the Tray down, and it took the whole application
+      // with it (#44), so a beat says what went wrong and the next one runs.
+      complain(fault);
+    } finally {
+      beating = false;
+    }
+  }
+
+  const timer = setInterval(() => void beat(), POLL_MS);
+  return () => {
+    watching = false;
+    clearInterval(timer);
+  };
+}
+
+/**
+ * The run of the Host, read again.
+ *
+ * The distribution is asked whether it is running before the path into it is
+ * touched, every single time, because reading such a path is enough to start a
+ * stopped distribution. Looking at FirstMate must never wake WSL.
+ */
+async function readRunAgain(where: Where): Promise<Runtime | undefined> {
+  const listed = await ask(['--list', '--running', '--quiet']);
+  if (listed.kind === 'silent') return undefined;
+  if (!names(listed.output).includes(where.distribution)) return undefined;
+
+  const found = await readRuntimeIn(where);
+  return found.kind === 'found' ? found.runtime : undefined;
 }
 
 /**
@@ -270,4 +427,15 @@ function read(env: NodeJS.ProcessEnv, name: string): string | undefined {
 
 function lost(reason: string): Found {
   return { kind: 'lost', reason };
+}
+
+/** What has already been complained about. A fault every five seconds is not
+ *  five seconds of news. */
+const complained = new Set<string>();
+
+function complain(fault: unknown): void {
+  const said = fault instanceof Error ? fault.message : String(fault);
+  if (complained.has(said)) return;
+  complained.add(said);
+  console.error(`firstmate: a look at the Host went wrong, and the next one will try again: ${said}`);
 }

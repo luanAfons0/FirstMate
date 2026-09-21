@@ -257,6 +257,11 @@ firstmate desktop
 firstmate desktop --distribution Debian --home /home/<user>/.firstmate
 ```
 
+While it runs, FirstMate is in the notification area. The icon shows whether the
+Host is running, and its tooltip names the state and the port. Clicking it opens
+the window; closing the window hides it and leaves the icon. The menu opens the
+window and quits.
+
 The window belongs on Windows, where the desktop is, and it refuses with a
 sentence saying so anywhere else. It is the one part of FirstMate that has a
 dependency, and that dependency is imported only when this command runs, so
