@@ -34,13 +34,19 @@ function Get-Distribution {
 }
 
 function New-Shortcut {
-    param([string] $Path, [string] $Target, [string] $Arguments, [string] $Description)
+    param(
+        [string] $Path, [string] $Target, [string] $Arguments, [string] $Description,
+        # Without this a shortcut wears its target's icon, and the target is a
+        # script host: the Start Menu then shows FirstMate as a generic script.
+        [string] $Icon
+    )
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($Path)
     $link.TargetPath       = $Target
     $link.Arguments        = $Arguments
     $link.WorkingDirectory = Split-Path -Path $Target -Parent
     $link.Description      = $Description
+    if ($Icon) { $link.IconLocation = $Icon }
     $link.Save()
 }
 
@@ -99,14 +105,15 @@ $values = '-Distro "{0}" -FirstMateHome "{1}"' -f $distro, $firstMateHome
 # The Tray runs from the Windows filesystem, so it can start and answer
 # honestly while the distribution is down. Only the shortcut knows where to
 # look.
+$mark = Join-Path $trayHome 'firstmate-running.ico'
 New-Shortcut -Path $startup -Target $shim `
     -Arguments "firstmate-tray.ps1 $values" `
-    -Description 'FirstMate Tray'
+    -Description 'FirstMate Tray' -Icon $mark
 
 # A door onto the Index Page that needs no Tray running at all.
 New-Shortcut -Path $startMenu -Target $shim `
     -Arguments "firstmate-open.ps1 $values" `
-    -Description 'Open the FirstMate Index Page'
+    -Description 'Open the FirstMate Index Page' -Icon $mark
 
 Write-Output "FirstMate Tray installed."
 Write-Output "  distribution:   $distro"
