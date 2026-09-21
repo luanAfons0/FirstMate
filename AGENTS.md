@@ -83,6 +83,7 @@ src/         the Host. Every file is one job.
   desktop.ts       the part that shows: the window, and the one dependency.
   strip.ts         the chrome strip above the content view, one file with no
                    assets of its own. The Host never serves it.
+  logon.ts         whether FirstMate starts at logon: one file in Startup.
 tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
 icons/       the mark, running and stopped. The window wears it; the Tray
              draws with both. Packed with the program.

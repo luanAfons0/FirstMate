@@ -24,6 +24,14 @@ const WSL = 'wsl.exe';
 /** How long one wsl.exe call may take before the program gives up on it. */
 const WSL_TIMEOUT_MS = 10_000;
 
+/**
+ * How long the service manager has to start the Host, or start it again.
+ *
+ * Longer than a call that only asks a question: a restart stops every Plugin
+ * Server and starts it again, and systemd is entitled to take a moment over it.
+ */
+const RESTART_TIMEOUT_MS = 20_000;
+
 /** Where a distribution's filesystem appears to Windows. */
 const DISTRIBUTION_PREFIX = '\\\\wsl.localhost\\';
 
@@ -322,6 +330,27 @@ async function readRunAgain(where: Where): Promise<Runtime | undefined> {
 }
 
 /**
+ * Ask the distribution's service manager to start the Host, or start it again.
+ *
+ * This is the one place the program may start something rather than only report
+ * it, and waking a stopped distribution is the point here rather than an
+ * accident: the person asked for it. One command covers both, because a restart
+ * starts a unit that is not running.
+ *
+ * Returns nothing when it worked, and the real failure as a sentence when it
+ * did not. Every argument is passed as an argument. The Tray built this command
+ * by joining strings, the quoting became part of the service name, and the
+ * failure came back as the single letter N (#45).
+ */
+export async function restartTheHost(where: Where): Promise<string | undefined> {
+  const said = await ask(
+    ['-d', where.distribution, '--', 'systemctl', '--user', 'restart', 'firstmate'],
+    RESTART_TIMEOUT_MS,
+  );
+  return said.kind === 'silent' ? said.why : undefined;
+}
+
+/**
  * The Plugin Name an address names, or nothing when it names the Index Page or
  * anything else the Host serves.
  *
@@ -458,7 +487,7 @@ type Answer =
  * strings is what made the Tray's restart impossible: the quoting became part
  * of the service name (#45).
  */
-function ask(args: readonly string[]): Promise<Answer> {
+function ask(args: readonly string[], timeout = WSL_TIMEOUT_MS): Promise<Answer> {
   return new Promise((done) => {
     execFile(
       WSL,
@@ -469,14 +498,17 @@ function ask(args: readonly string[]): Promise<Answer> {
         // UTF-16, so the NULs are dropped as well, which reads an ASCII name
         // either way.
         env: { ...process.env, WSL_UTF8: '1' },
-        timeout: WSL_TIMEOUT_MS,
+        timeout,
         // No console window flashes, because this is a desktop program.
         windowsHide: true,
       },
       (fault, stdout, stderr) => {
         if (fault !== null) {
-          const said = plain(stderr).trim();
-          done({ kind: 'silent', why: said === '' ? fault.message : said });
+          // What the command itself said comes first, because that is the
+          // sentence a person can act on. The library's own message is the
+          // last resort, not the first.
+          const why = plain(stderr).trim() || plain(stdout).trim() || fault.message;
+          done({ kind: 'silent', why });
           return;
         }
         done({ kind: 'said', output: plain(stdout) });
