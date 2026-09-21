@@ -15,6 +15,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { HOME_VARIABLE } from './config.ts';
 import { RUNTIME_FILE, type Runtime } from './runtime.ts';
+import type { PluginState } from './supervisor.ts';
 import { TOKEN_PARAMETER } from './security.ts';
 
 /** The command Windows reaches a distribution through. */
@@ -109,6 +110,11 @@ export function pluginAddress(runtime: Runtime, name: string): string {
   return address(runtime, `/p/${encodeURIComponent(name)}/`);
 }
 
+/** The address the Plugin list is asked for, carrying the token as the rest do. */
+function pluginsAddress(runtime: Runtime): string {
+  return address(runtime, '/plugins.json');
+}
+
 function address(runtime: Runtime, path: string): string {
   const token = encodeURIComponent(runtime.token);
   return `http://127.0.0.1:${runtime.port}${path}?${TOKEN_PARAMETER}=${token}`;
@@ -130,13 +136,83 @@ export type HostSays =
   /** Nothing answered at all. */
   | 'absent';
 
+/** What the Host says about one Plugin. */
+export type PluginSeen = {
+  /** The Plugin Name, which is also its address. */
+  readonly name: string;
+  /** Whether it ships a Plugin Page, so whether there is anything to open. */
+  readonly hasPage: boolean;
+  /** What the Host knows about its Plugin Server right now. */
+  readonly state: PluginState;
+};
+
+/**
+ * What the Host said about the Plugins.
+ *
+ * "The Host would not say" and "the Registry is empty" are different states
+ * with different menus, and this is why they are written as two shapes rather
+ * than as a list that may be empty. Conflating them took the Tray down: the
+ * empty guard passed, the loop then ran once over nothing, and the throw inside
+ * a menu handler ended the whole application (#44). Here there is no value that
+ * can mean both.
+ */
+export type Plugins =
+  /** The Host answered. The list may be empty, and an empty list means empty. */
+  | { readonly kind: 'told'; readonly plugins: readonly PluginSeen[] }
+  /** The Host would not say. Nothing is known, and nothing is claimed. */
+  | { readonly kind: 'untold' };
+
 /** What the program knows about the Host at one moment. */
 export type Pulse = {
   /** What the icon shows and the tooltip says. */
   readonly state: 'running' | 'stopped';
   /** The run to talk to, when there is one. */
   readonly runtime: Runtime | undefined;
+  /** Every Plugin the Host reports, or the fact that it would not report. */
+  readonly plugins: Plugins;
 };
+
+/**
+ * Every Plugin the Host knows, or the fact that it would not say.
+ *
+ * The Host serves the Index Page for a person and this for the program, which
+ * cannot read a page. It is one loopback GET, the same trip the poll already
+ * makes: no wsl.exe call and no file read.
+ */
+export async function askForPlugins(runtime: Runtime): Promise<Plugins> {
+  let said: unknown;
+  try {
+    const answer = await fetch(pluginsAddress(runtime), {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+    });
+    if (!answer.ok) return { kind: 'untold' };
+    said = await answer.json();
+  } catch {
+    return { kind: 'untold' };
+  }
+
+  if (typeof said !== 'object' || said === null) return { kind: 'untold' };
+  const { plugins } = said as { readonly plugins?: unknown };
+  // An answer without the name is an answer from something that is not the
+  // Host. It is not an empty Registry.
+  if (!Array.isArray(plugins)) return { kind: 'untold' };
+  return { kind: 'told', plugins: plugins.flatMap(onePlugin) };
+}
+
+/** One row of that answer, or none of it. A row FirstMate cannot read is left
+ *  out rather than shown as a Plugin with no name. */
+function onePlugin(row: unknown): readonly PluginSeen[] {
+  if (typeof row !== 'object' || row === null) return [];
+  const { name, hasPage, state } = row as {
+    readonly name?: unknown;
+    readonly hasPage?: unknown;
+    readonly state?: unknown;
+  };
+  if (typeof name !== 'string' || name === '') return [];
+  if (state !== 'running' && state !== 'stopped' && state !== 'no-plugin-server') return [];
+  return [{ name, hasPage: hasPage === true, state }];
+}
 
 /**
  * Ask the Host whether it is up and whether this token still opens it.
@@ -205,11 +281,13 @@ export function watchTheHost(
       }
 
       if (!watching) return;
-      tell(
-        says === 'running'
-          ? { state: 'running', runtime: held }
-          : { state: 'stopped', runtime: undefined },
-      );
+      if (says !== 'running' || held === undefined) {
+        tell({ state: 'stopped', runtime: undefined, plugins: { kind: 'untold' } });
+        return;
+      }
+      const plugins = await askForPlugins(held);
+      if (!watching) return;
+      tell({ state: 'running', runtime: held, plugins });
     } catch (fault: unknown) {
       // One beat may fail. The program may not. An unhandled throw inside a
       // handler is what took the Tray down, and it took the whole application

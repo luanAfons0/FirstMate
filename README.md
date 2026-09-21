@@ -260,7 +260,9 @@ firstmate desktop --distribution Debian --home /home/<user>/.firstmate
 While it runs, FirstMate is in the notification area. The icon shows whether the
 Host is running, and its tooltip names the state and the port. Clicking it opens
 the window; closing the window hides it and leaves the icon. The menu opens the
-window and quits.
+window, lists every Plugin the Host reports, and quits. A Plugin that ships no
+Plugin Page is listed and is not offered, and a Stopped Plugin is still listed.
+A Host that will not answer disables the list rather than showing it as empty.
 
 The window belongs on Windows, where the desktop is, and it refuses with a
 sentence saying so anywhere else. It is the one part of FirstMate that has a
