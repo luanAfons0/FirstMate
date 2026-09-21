@@ -87,18 +87,23 @@ Get-ScheduledTaskInfo -TaskName 'FirstMate Host'
 
 ## Windows: the Tray
 
-The Tray is the notification-area icon that opens the Index Page in one click.
-Install it the same way, from this repository over `\\wsl.localhost\`:
+The Tray is FirstMate's Windows program: a notification-area icon and a window
+of FirstMate's own. It needs Node 24 on Windows. Install it the same way, from
+this repository over `\\wsl.localhost\`:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
   \\wsl.localhost\Debian\home\<user>\.first-mate\windows\install-tray.ps1
 ```
 
-It copies the Tray into `%LOCALAPPDATA%\FirstMate\Tray`, writes a Startup
-shortcut and a Start Menu shortcut, and starts the icon at once. It asks the
-distribution once where the Host's home directory is; that is the only
-`wsl.exe` call anywhere in the Tray, and it happens here.
+It installs the published package with `npm`, writes one launcher into
+`%LOCALAPPDATA%\FirstMate`, puts a shortcut to it in the Start Menu, and starts
+the program at once. It asks the distribution once where the Host's home
+directory is, so that the program never has to ask again. Add `-FromHere` to
+install the code in this repository instead of the published package.
+
+The launcher is a script rather than a shortcut because the program is a console
+program, and a console program started from a shortcut flashes a window.
 
 Remove it:
 
@@ -109,20 +114,32 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 What the icon does:
 
-| Action              | What happens                                             |
-| ------------------- | -------------------------------------------------------- |
-| Double-click, Open  | Opens the Index Page in the default browser.              |
-| Plugins             | Every Plugin and its state. Opens any one of them.        |
-| Start at logon      | Writes or removes the Startup shortcut.                   |
-| Quit                | Removes the icon. The Host keeps running.                 |
+| Action           | What happens                                                |
+| ---------------- | ----------------------------------------------------------- |
+| Click            | Opens the window, on the Index Page or where it last was.    |
+| Open FirstMate   | The same.                                                    |
+| Plugins          | Every Plugin and its state. Opens any one in the window.     |
+| Start, Restart   | Asks systemd inside the distribution. The label says which.  |
+| Start at logon   | Writes or removes one file in the Startup folder.            |
+| Quit             | Removes the icon. The Host keeps running.                    |
 
-Green means the Host answered and admitted the Tray's token. Grey means it did
-not, and Open then says so and names the command that starts it.
+The anchor is green when the Host answered and admitted the program's token, and
+grey when it did not. The tooltip names the state and, when running, the port.
 
-The Tray asks the Host itself rather than only asking whether the port is open,
-because the port is fixed and the token is not: the Host mints a new one at
-every start, so a run can end and be replaced without the port ever stopping
-answering. A refused token sends the Tray back to the runtime file at once.
+The program asks the Host itself rather than only asking whether the port is
+open, because the port is fixed and the token is not: the Host mints a new one
+at every start, so a run can end and be replaced without the port ever stopping
+answering. A refused token sends the program back to the runtime file at once,
+and the window returns to the page it was on at the address the new run answers.
+
+Reading that file crosses into the distribution, so a Host that does not answer
+at all is read again no more than every thirty seconds, and `wsl.exe` is asked
+whether the distribution is running before any path into it is touched. Looking
+at FirstMate does not wake WSL.
+
+Start at logon is one file, `FirstMate.vbs` in the Startup folder. The installer
+does not write it; the menu does, and turning the toggle off deletes exactly
+that file. Nothing goes in the registry and nothing is scheduled.
 
 On Windows 11 a new notification-area icon starts hidden: click the chevron
 (`^`) beside the clock and drag the FirstMate icon out to keep it on the

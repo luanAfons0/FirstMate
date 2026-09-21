@@ -56,9 +56,10 @@ Server has to answer the handshake). Tests use all three.
   `@webviewjs/webview`; `src/desktop.ts` imports it when the desktop subcommand
   runs and never when a module loads, so every other command works on a machine
   where the native binary will not load (ADR-0011).
-- **Windows PowerShell** (`powershell.exe`, not `pwsh`) for the Tray and the
-  logon task, **systemd** for the
-  service, **WSL Debian** for the machine it all runs on (ADR-0007).
+- **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
+  removing the Windows side and for the logon task, **systemd** for the service,
+  **WSL Debian** for the machine it all runs on (ADR-0007). The Tray itself is
+  TypeScript, in `src/desktop*.ts`, and runs on Windows Node.
 
 ## Project structure
 
@@ -92,7 +93,8 @@ docs/agents/ how an agent works in this repo. See "Agent skills" below.
 docs/brand/  the anchor, at the sizes GitHub asks for.
 scripts/     install and uninstall the systemd user service.
 systemd/     the unit file.
-windows/     the Tray and the logon task, in PowerShell.
+windows/     install and remove the Windows side, and the logon task that
+             holds the distribution up. PowerShell, and nothing else.
 ```
 
 ## Code style

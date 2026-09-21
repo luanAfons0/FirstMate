@@ -19,8 +19,8 @@ The Host's record of which Plugins exist, where their directories are, and what 
 _Avoid_: manifest, catalogue, config, lockfile
 
 **Tray**:
-The Windows notification-area icon that opens the Index Page, or any one
-Plugin Page directly.
+The Windows program that holds FirstMate's notification-area icon and shows the
+Index Page and Plugin Pages in a window of its own.
 _Avoid_: systray, notification icon, menu bar
 
 ### Plugins
