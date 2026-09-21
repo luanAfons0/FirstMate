@@ -20,4 +20,6 @@ The program is written in two parts. `src/desktop-state.ts` decides: it takes th
 
 The window's browser engine keeps its data in `%LOCALAPPDATA%\FirstMate\Window`. Told nothing, it writes beside the program hosting it, which is `node.exe` inside Program Files, and the window then does not open at all.
 
+The chrome strip asks the program for things by trying to navigate, and the program refuses the navigation and acts. The library injects a message channel into every page it loads, and on Windows a page that uses it and is not served over HTTP takes the whole program down; the strip is deliberately served by nobody. A link the program declines to follow carries the same one message, needs nothing injected, and cannot end the program. The strip is written again rather than scripted when what is open changes, for the same reason: it is a small page the program owns every byte of.
+
 ADR-0008 stands: the Host still frames nothing. The chrome strip above the content view is the program's own view, and the Host does not serve it. That is the whole of what makes it safe, because every Plugin Page shares an origin with the Index Page and could rewrite a strip the Host had served.

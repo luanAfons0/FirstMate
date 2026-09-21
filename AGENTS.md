@@ -81,6 +81,8 @@ src/         the Host. Every file is one job.
   desktop-state.ts the part that decides: where the Host is, and whether it is
                    there. Imports nothing native, owns no window.
   desktop.ts       the part that shows: the window, and the one dependency.
+  strip.ts         the chrome strip above the content view, one file with no
+                   assets of its own. The Host never serves it.
 tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
 icons/       the mark, running and stopped. The window wears it; the Tray
              draws with both. Packed with the program.
