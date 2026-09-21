@@ -25,8 +25,8 @@ export type PluginView = {
   readonly state: PluginState;
 };
 
-/** The one word the Index Page says about a Plugin Server. */
-const STATE_WORDS: Readonly<Record<PluginState, string>> = {
+/** The one word FirstMate says about a Plugin Server, wherever it says it. */
+export const STATE_WORDS: Readonly<Record<PluginState, string>> = {
   running: 'Running',
   stopped: 'Stopped',
   'no-plugin-server': 'no Plugin Server',

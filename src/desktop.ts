@@ -15,7 +15,14 @@
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { BrowserWindow, TrayIcon, WebContext, Webview } from '@webviewjs/webview';
+import type {
+  BrowserWindow,
+  MenuItemOptions,
+  MenuOptions,
+  TrayIcon,
+  WebContext,
+  Webview,
+} from '@webviewjs/webview';
 import {
   findTheHost,
   hasDesktop,
@@ -24,9 +31,12 @@ import {
   pluginAddress,
   pluginOpenAt,
   watchTheHost,
+  type PluginSeen,
+  type Plugins,
   type Pulse,
   type Where,
 } from './desktop-state.ts';
+import { STATE_WORDS } from './index-page.ts';
 import { SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
 
 /** The window's title. The chrome strip names what is open inside it. */
@@ -56,9 +66,10 @@ const MARKS: Readonly<Record<Pulse['state'], URL>> = {
   stopped: new URL('../icons/firstmate-stopped.ico', import.meta.url),
 };
 
-/** What the menu items ask for. */
+/** What the menu items ask for. A Plugin's item carries its Plugin Name. */
 const OPEN = 'open-firstmate';
 const QUIT = 'quit';
+const PLUGIN = 'plugin:';
 
 /**
  * The window, the views in it, the icon, and the browser data they keep.
@@ -175,8 +186,8 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   const tray = app.createTrayIcon({
     id: 'firstmate',
     ...(mark.running === undefined ? {} : { icon: { data: mark.running } }),
-    tooltip: tooltip({ state: 'running', runtime: run }),
-    menu: { items: [{ id: OPEN, label: 'Open FirstMate' }, { id: QUIT, label: 'Quit' }] },
+    tooltip: tooltip({ state: 'running', runtime: run, plugins: { kind: 'untold' } }),
+    menu: menu({ kind: 'untold' }),
     // A click opens the window, which is the thing wanted nearly every time.
     // The menu is where the rest lives, one click to the right of it.
     menuOnLeftClick: false,
@@ -202,10 +213,27 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
 
   tray.on('click', () => window.setVisible(true));
   app.on('custom-menu-click', (event) => {
-    const asked = event.customMenuEvent?.id;
-    if (asked === OPEN) window.setVisible(true);
-    else if (asked === QUIT) quit();
+    // A click that throws must not end the program. This is the handler the
+    // Tray died in (#44), and a Plugin clicked one moment after the Host took
+    // it away is exactly the click that would do it.
+    try {
+      const asked = event.customMenuEvent?.id;
+      if (asked === OPEN) {
+        window.setVisible(true);
+      } else if (asked === QUIT) {
+        quit();
+      } else if (asked !== undefined && asked.startsWith(PLUGIN)) {
+        content.loadUrl(pluginAddress(run, asked.slice(PLUGIN.length)));
+        window.setVisible(true);
+      }
+    } catch (fault: unknown) {
+      const said = fault instanceof Error ? fault.message : String(fault);
+      console.error(`firstmate: that menu click went nowhere: ${said}`);
+    }
   });
+
+  /** What the menu was last built from. Rebuilding it unchanged is churn. */
+  let listed = '';
 
   const stopWatching = watchTheHost(found.where, run, (pulse) => {
     // The icon goes when the application goes, and a beat already in flight
@@ -214,6 +242,12 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     const now = mark[pulse.state];
     if (now !== undefined) tray.setIcon(now);
     tray.setTooltip(tooltip(pulse));
+
+    const said = signature(pulse.plugins);
+    if (said !== listed) {
+      listed = said;
+      tray.setMenu(menu(pulse.plugins));
+    }
 
     if (pulse.runtime === undefined) return;
     if (pulse.runtime.port === run.port && pulse.runtime.token === run.token) return;
@@ -238,6 +272,60 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     // It is already going. There is nothing to add.
   }
   return 0;
+}
+
+/**
+ * The icon's menu.
+ *
+ * The Plugins are a submenu rather than a run of items, so that Quit never
+ * moves under the cursor when a Plugin is added or taken away.
+ */
+function menu(plugins: Plugins): MenuOptions {
+  return {
+    items: [
+      { id: OPEN, label: 'Open FirstMate' },
+      { label: 'Plugins', submenu: { items: pluginItems(plugins) } },
+      { id: QUIT, label: 'Quit' },
+    ],
+  };
+}
+
+/**
+ * Every Plugin, or the one sentence that stands in for the list.
+ *
+ * A Host that would not say and a Registry with nothing in it get different
+ * sentences, because they are different states. The first is not an empty
+ * list, and saying so was what took the Tray down (#44).
+ */
+function pluginItems(plugins: Plugins): MenuItemOptions[] {
+  if (plugins.kind === 'untold') {
+    return [{ id: 'plugins-untold', label: 'The Host would not say', enabled: false }];
+  }
+  if (plugins.plugins.length === 0) {
+    return [{ id: 'plugins-none', label: 'No Plugin is registered', enabled: false }];
+  }
+  return plugins.plugins.map((plugin) => ({
+    id: `${PLUGIN}${plugin.name}`,
+    label: pluginLabel(plugin),
+    // A Plugin that ships no Plugin Page has no address to open, so it is shown
+    // and not offered. A Stopped Plugin is still offered: the Host serves its
+    // page whatever its Plugin Server is doing, and a broken Plugin must stay
+    // visible rather than vanish.
+    enabled: plugin.hasPage,
+  }));
+}
+
+function pluginLabel(plugin: PluginSeen): string {
+  return plugin.state === 'running'
+    ? plugin.name
+    : `${plugin.name} — ${STATE_WORDS[plugin.state]}`;
+}
+
+/** What a menu is built from, as one string, so that an unchanged list is
+ *  built once. */
+function signature(plugins: Plugins): string {
+  if (plugins.kind === 'untold') return 'untold';
+  return plugins.plugins.map((p) => `${p.name}/${p.hasPage}/${p.state}`).join(',');
 }
 
 /** What the icon says when the pointer rests on it. */
