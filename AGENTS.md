@@ -27,6 +27,7 @@ Run every command from the repository root.
 | `npm run build`                      | Compile into `dist/`. Packing does this; you do not. |
 | `node src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node src/cli.ts start`              | The same Host, from the command line.           |
+| `node src/cli.ts desktop`            | The FirstMate window. Windows only.             |
 | `node src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
@@ -49,9 +50,12 @@ Server has to answer the handshake). Tests use all three.
 - **TypeScript 5.8**, `strict`, `noUncheckedIndexedAccess`,
   `erasableSyntaxOnly`. `typescript` is a dev dependency and is used only to
   check the types.
-- **No runtime dependencies.** The Host speaks MCP over stdio with about 140
-  lines of its own JSON-RPC (`src/mcp.ts`) rather than take a dependency. Keep
-  it that way.
+- **One runtime dependency, and the Host uses none of it.** The Host speaks MCP
+  over stdio with about 140 lines of its own JSON-RPC (`src/mcp.ts`) rather than
+  take a dependency. Keep it that way. The desktop program draws its window with
+  `@webviewjs/webview`; `src/desktop.ts` imports it when the desktop subcommand
+  runs and never when a module loads, so every other command works on a machine
+  where the native binary will not load (ADR-0011).
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for the Tray and the
   logon task, **systemd** for the
   service, **WSL Debian** for the machine it all runs on (ADR-0007).
@@ -61,8 +65,8 @@ Server has to answer the handshake). Tests use all three.
 ```
 src/         the Host. Every file is one job.
   main.ts          start-up: read the Registry, mint the token, supervise, listen.
-  cli.ts           the terminal: start, and the Registry: add, remove, list,
-                   grant, revoke.
+  cli.ts           the terminal: start, desktop, and the Registry: add, remove,
+                   list, grant, revoke.
   config.ts        FIRSTMATE_HOME and FIRSTMATE_PORT, and nothing else.
   registry.ts      read and write registry.json, whole, through a rename.
   runtime.ts       write and remove runtime.json: the port and the token.
@@ -74,13 +78,18 @@ src/         the Host. Every file is one job.
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
+  desktop-state.ts the part that decides: where the Host is, and whether it is
+                   there. Imports nothing native, owns no window.
+  desktop.ts       the part that shows: the window, and the one dependency.
 tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
+icons/       the mark, running and stopped. The window wears it; the Tray
+             draws with both. Packed with the program.
 docs/adr/    the decisions that are expensive to reverse.
 docs/agents/ how an agent works in this repo. See "Agent skills" below.
 docs/brand/  the anchor, at the sizes GitHub asks for.
 scripts/     install and uninstall the systemd user service.
 systemd/     the unit file.
-windows/     the Tray and the logon task, in PowerShell, with its two icons.
+windows/     the Tray and the logon task, in PowerShell.
 ```
 
 ## Code style

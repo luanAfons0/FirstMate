@@ -7,6 +7,7 @@
  * wherever it already lives.
  *
  *   node src/cli.ts start
+ *   node src/cli.ts desktop
  *   node src/cli.ts add <name> <directory>
  *   node src/cli.ts remove <name>
  *   node src/cli.ts list
@@ -26,11 +27,16 @@ import {
 
 const USAGE = `usage:
   firstmate start                    run the Host until it is stopped.
+  firstmate desktop                  open the FirstMate window. Windows only.
   firstmate add <name> <directory>   register a Plugin. The directory is not copied.
   firstmate remove <name>            take a Plugin out of the Registry.
   firstmate list                     every Plugin in the Registry.
   firstmate grant <from> <to>        let <from> call <to>'s tools.
   firstmate revoke <from> <to>       take that Grant back.
+
+The window works out which distribution holds the Host and where the Host keeps
+its home directory. Say them yourself with --distribution <name> and
+--home <path> when it cannot.
 
 A Plugin Name is lower-case letters, digits and hyphens, because it names the
 Plugin in every address. A directory is an absolute path. A Grant is one way:
@@ -49,6 +55,8 @@ async function main(argv: readonly string[]): Promise<number> {
   switch (command) {
     case 'start':
       return start(rest);
+    case 'desktop':
+      return desktop(rest);
     case 'add':
       return add(home, rest);
     case 'remove':
@@ -88,6 +96,36 @@ async function start(argv: readonly string[]): Promise<number> {
   // The Host is listening and owns the process now. It ends on a signal, and
   // reports its own fault if it could not start at all.
   return 0;
+}
+
+/**
+ * Open the FirstMate window.
+ *
+ * The window is imported here rather than at the top of this file, because it
+ * is the one part of FirstMate that has a dependency, and every other command
+ * must keep working on a machine where that dependency's native binary will not
+ * load (ADR-0011). `start` is imported the same way, for a reason of its own.
+ */
+async function desktop(argv: readonly string[]): Promise<number> {
+  let distribution: string | undefined;
+  let home: string | undefined;
+
+  for (let at = 0; at < argv.length; at += 2) {
+    const flag = argv[at];
+    const value = argv[at + 1];
+    if (value === undefined || (flag !== '--distribution' && flag !== '--home')) {
+      console.error(
+        'firstmate: desktop takes --distribution <name> and --home <path>, and ' +
+          `works both out when you leave them out.\n\n${USAGE}`,
+      );
+      return USAGE_FAULT;
+    }
+    if (flag === '--distribution') distribution = value;
+    else home = value;
+  }
+
+  const { openWindow } = await import('./desktop.ts');
+  return openWindow({ distribution, home });
 }
 
 function add(home: string, argv: readonly string[]): number {
