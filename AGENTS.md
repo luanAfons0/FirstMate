@@ -31,13 +31,18 @@ Run every command from the repository root.
 | `node src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
+| `node src/cli.ts shelf [dir]`        | Say where a fetched Plugin lands, or move it.   |
 | `scripts/install-service.sh`         | Install and start the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
-Three environment variables move the Host: `FIRSTMATE_HOME` (default
+Four environment variables move the Host: `FIRSTMATE_HOME` (default
 `~/.firstmate`), `FIRSTMATE_PORT` (default `4747`; zero asks the system for a
-free port) and `FIRSTMATE_HANDSHAKE_MS` (default `10000`, how long a Plugin
-Server has to answer the handshake). Tests use all three.
+free port), `FIRSTMATE_HANDSHAKE_MS` (default `10000`, how long a Plugin
+Server has to answer the handshake) and `FIRSTMATE_SHELF` (default
+`$FIRSTMATE_HOME/shelf`, the Shelf a fetched Plugin lands in). Tests use all
+four. The Shelf is the one setting that does not come from the environment
+alone: the variable beats the settings file, which beats the default
+(ADR-0012).
 
 `npm test` and `npm run typecheck` must both pass before you call work done.
 
@@ -67,11 +72,13 @@ Server has to answer the handshake). Tests use all three.
 ```
 src/         the Host. Every file is one job.
   main.ts          start-up: read the Registry, mint the token, supervise, listen.
-  cli.ts           the terminal: start, desktop, and the Registry: add, remove,
-                   list, grant, revoke.
-  config.ts        FIRSTMATE_HOME and FIRSTMATE_PORT, and nothing else.
+  cli.ts           the terminal: start, desktop, shelf, and the Registry: add,
+                   remove, list, grant, revoke.
+  config.ts        FIRSTMATE_HOME, FIRSTMATE_PORT, the handshake and the Shelf.
   registry.ts      read and write registry.json, whole, through a rename.
   runtime.ts       write and remove runtime.json: the port and the token.
+  settings.ts      read and write settings.json, the one setting the Host keeps.
+  shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   host.ts          the HTTP surface: /, /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.

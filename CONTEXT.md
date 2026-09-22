@@ -18,6 +18,11 @@ _Avoid_: dashboard, home, shell
 The Host's record of which Plugins exist, where their directories are, and what Grants they hold.
 _Avoid_: manifest, catalogue, config, lockfile
 
+**Shelf**:
+The directory a fetched Plugin lands in. The operator chooses it, the Host
+remembers it in its settings file, and nothing ever scans it.
+_Avoid_: store, library, vendor directory, plugins folder
+
 **Tray**:
 The Windows program that holds FirstMate's notification-area icon and shows the
 Index Page and Plugin Pages in a window of its own.
