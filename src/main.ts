@@ -26,6 +26,7 @@ async function main(): Promise<void> {
     port: config.port,
     plugins,
     registryPath: registryPath(config.home),
+    shelf: config.shelf,
     token,
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),
