@@ -32,7 +32,7 @@ Run every command from the repository root.
 | `node src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
 | `node src/cli.ts shelf [dir]`        | Say where a fetched Plugin lands, or move it.   |
-| `node src/cli.ts install <src> [name]` | Fetch a Plugin into the Shelf and register it. |
+| `node src/cli.ts install <dir\|url> [name]` | Fetch a Plugin into the Shelf and register it. |
 | `scripts/install-service.sh`         | Install and start the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
@@ -61,7 +61,9 @@ alone: the variable beats the settings file, which beats the default
   take a dependency. Keep it that way. The desktop program draws its window with
   `@webviewjs/webview`; `src/desktop.ts` imports it when the desktop subcommand
   runs and never when a module loads, so every other command works on a machine
-  where the native binary will not load (ADR-0011).
+  where the native binary will not load (ADR-0011). `install` runs the `git`
+  binary to clone a Plugin: an external tool the command line assumes, not a
+  package dependency, and the Host still calls nothing outside Node.
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
   removing the Windows side, for the logon task, and for the one shell call the
   running Tray makes (`src/taskbar.ts`), **systemd** for the service, **WSL
@@ -80,7 +82,8 @@ src/         the Host. Every file is one job.
   runtime.ts       write and remove runtime.json: the port and the token.
   settings.ts      read and write settings.json, the one setting the Host keeps.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
-  fetch-plugin.ts  put a Plugin's files in the Shelf, and run none of them.
+  fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
+                   a git URL, and run none of what lands.
   host.ts          the HTTP surface: /, /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.

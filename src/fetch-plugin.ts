@@ -1,10 +1,15 @@
 /**
  * Fetching a Plugin: put its files in the Shelf, and say where they landed.
  *
- * It runs nothing the Plugin ships. A directory is copied, and that is the
- * whole of it; the Plugin's own executable runs later, when the Host starts
- * it. Fetching a Plugin and running a Plugin stay two separate decisions
- * (ADR-0012).
+ * It runs nothing the Plugin ships. A directory is copied and a git URL is
+ * cloned, and that is the whole of it; the Plugin's own executable runs later,
+ * when the Host starts it. Fetching a Plugin and running a Plugin stay two
+ * separate decisions (ADR-0012).
+ *
+ * Cloning uses the `git` binary. That is one external tool the command line
+ * assumes, it is not a package dependency, and the Host itself still has none.
+ * If a second external binary is ever wanted, that is the moment to ask
+ * whether fetching belongs in the Host at all, or in a Plugin.
  *
  * The files are staged inside the Shelf and renamed into place, and never
  * staged in the Host's home directory: a rename does not cross a filesystem,
@@ -18,9 +23,19 @@
  * a caller can catch, and a command that dies like that leaves half a Plugin
  * in the Shelf and says nothing.
  */
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { cp, rename, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
+
+/** A source git can clone: a URL with a scheme, or the scp-like short form. */
+const GIT_URL = /^(?:https?|ssh|git|ftps?|file|git\+ssh|git\+https):\/\//;
+const GIT_SHORT = /^[^/\\:]+@[^/\\:]+:/;
+
+/** Whether this source is something to clone rather than something to copy. */
+export function isGitUrl(source: string): boolean {
+  return GIT_URL.test(source) || GIT_SHORT.test(source);
+}
 
 /**
  * Put the Plugin at this source into the Shelf under this Plugin Name, and
@@ -36,23 +51,57 @@ export async function fetchPlugin(
   if (existsSync(target)) {
     throw new Error(`${target} already exists. Take it away, or give the Plugin another name.`);
   }
-  // Copying a directory into something it holds never ends.
-  if (isInside(shelf, source)) {
-    throw new Error(`The Shelf is inside ${source}, so a Plugin cannot be copied from there.`);
-  }
 
   const staging = join(shelf, `.${name}.pending`);
   await rm(staging, { recursive: true, force: true });
   try {
-    // Symlinks are copied as the Plugin wrote them, and nothing is followed
-    // out of the Plugin's own directory.
-    await cp(source, staging, { recursive: true, verbatimSymlinks: true });
+    if (isGitUrl(source)) await clone(source, staging);
+    else await copyDirectory(source, staging, shelf);
     await rename(staging, target);
   } catch (cause) {
     await rm(staging, { recursive: true, force: true });
     throw cause;
   }
   return target;
+}
+
+async function copyDirectory(source: string, staging: string, shelf: string): Promise<void> {
+  // Copying a directory into something it holds never ends.
+  if (isInside(shelf, source)) {
+    throw new Error(`The Shelf is inside ${source}, so a Plugin cannot be copied from there.`);
+  }
+  // Symlinks are copied as the Plugin wrote them, and nothing is followed out
+  // of the Plugin's own directory.
+  await cp(source, staging, { recursive: true, verbatimSymlinks: true });
+}
+
+/**
+ * Clone a Plugin into the staging directory.
+ *
+ * git writes to this process's own output, so whatever it says about a bad
+ * URL or a missing network reaches the operator in git's own words, and a
+ * clone that failed is never mistaken for a fault in FirstMate. Cloning runs
+ * none of the Plugin's code; its executable runs when the Host starts it.
+ */
+function clone(url: string, staging: string): Promise<void> {
+  return new Promise((done, fail) => {
+    const git = spawn('git', ['clone', '--', url, staging], { stdio: 'inherit' });
+    git.once('error', (cause: NodeJS.ErrnoException) => {
+      fail(
+        cause.code === 'ENOENT'
+          ? new Error('git is not on the PATH, and a URL needs it. Install git, or give a directory.')
+          : new Error(`git could not be run: ${cause.message}`, { cause }),
+      );
+    });
+    git.once('exit', (code, signal) => {
+      if (code === 0) {
+        done();
+        return;
+      }
+      const how = code === null ? `it was stopped by ${signal}` : `it exited ${code}`;
+      fail(new Error(`git could not clone ${url}: ${how}.`));
+    });
+  });
 }
 
 /** Whether the inner path is the outer one, or sits under it. */

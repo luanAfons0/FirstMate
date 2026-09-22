@@ -14,7 +14,7 @@
  *   node src/cli.ts grant <from> <to>
  *   node src/cli.ts revoke <from> <to>
  *   node src/cli.ts shelf [directory]
- *   node src/cli.ts install <source> [name]
+ *   node src/cli.ts install <directory|git-url> [name]
  */
 import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
@@ -28,7 +28,7 @@ import {
 } from './registry.ts';
 import { writeSettings } from './settings.ts';
 import { checkShelf, defaultShelf, SHELF_VARIABLE, shelfInEnvironment } from './shelf.ts';
-import { fetchPlugin } from './fetch-plugin.ts';
+import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
 
 const USAGE = `usage:
   firstmate start                    run the Host until it is stopped.
@@ -41,11 +41,11 @@ const USAGE = `usage:
   firstmate shelf [directory]        say where a fetched Plugin lands, or move it.
   firstmate install <source> [name]  fetch a Plugin into the Shelf and register it.
 
-The Shelf is the directory a fetched Plugin lands in. install copies a
-directory into it and registers what it copied, under the last segment of the
-source or under the name you give. ${SHELF_VARIABLE} moves the Shelf for one
-run; firstmate shelf <directory> moves it for good, and that directory has to
-be there already.
+The Shelf is the directory a fetched Plugin lands in. A source is a directory,
+which is copied, or a git URL, which is cloned; install registers what it put
+there, under the last segment of the source or under the name you give.
+${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
+moves it for good, and that directory has to be there already.
 
 The window works out which distribution holds the Host and where the Host keeps
 its home directory. Say them yourself with --distribution <name> and
@@ -349,14 +349,16 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
     );
     return 1;
   }
-  if (!isAbsolute(source)) {
-    console.error(`firstmate: ${source} is not an absolute path.`);
-    return 1;
-  }
-  const found = statSync(source, { throwIfNoEntry: false });
-  if (found === undefined || !found.isDirectory()) {
-    console.error(`firstmate: ${source} is not a directory.`);
-    return 1;
+  if (!isGitUrl(source)) {
+    if (!isAbsolute(source)) {
+      console.error(`firstmate: ${source} is not an absolute path, and is no URL either.`);
+      return 1;
+    }
+    const found = statSync(source, { throwIfNoEntry: false });
+    if (found === undefined || !found.isDirectory()) {
+      console.error(`firstmate: ${source} is not a directory.`);
+      return 1;
+    }
   }
 
   // Refused before anything is fetched, so a refusal costs no copying and a
@@ -387,9 +389,10 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
   return 0;
 }
 
-/** The Plugin Name a source suggests: its last segment. */
+/** The Plugin Name a source suggests: its last segment, with no git suffix. */
 function nameOf(source: string): string {
-  return basename(source.replace(/[/\\]+$/, ''));
+  const last = basename(source.replace(/[/\\]+$/, ''));
+  return isGitUrl(source) ? last.replace(/\.git$/, '') : last;
 }
 
 function list(home: string, argv: readonly string[]): number {

@@ -39,11 +39,13 @@ it already lives:
 node src/cli.ts add <name> /absolute/path/to/your/plugin
 ```
 
-A Plugin you do not have on disk yet is fetched and registered in one step.
-The files land in the Shelf, and nothing your Plugin ships is run:
+A Plugin you do not have on disk yet is fetched and registered in one step. A
+directory is copied and a git URL is cloned; either way the files land in the
+Shelf, and nothing your Plugin ships is run:
 
 ```sh
 node src/cli.ts install /absolute/path/to/a/plugin [name]
+node src/cli.ts install https://example.com/someone/a-plugin.git [name]
 ```
 
 A Plugin Name is lower-case letters and digits, with single hyphens between
