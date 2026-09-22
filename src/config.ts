@@ -1,13 +1,19 @@
 /**
- * Where the Host keeps its state, which port it listens on, and how long a
- * Plugin Server has to say hello.
+ * Where the Host keeps its state, which port it listens on, how long a Plugin
+ * Server has to say hello, and where a fetched Plugin lands.
  *
- * All three come from the environment. The home directory override is what
- * lets a test boot a real Host against a temporary directory, which is the
- * single seam this project tests through.
+ * The first three come from the environment alone. The Shelf does not, and
+ * this module no longer promises that everything it hands back does: the
+ * environment moves the Shelf, but an operator who has set none has the one
+ * they chose from a terminal, out of the settings file, and a directory under
+ * the home when they have chosen nothing at all (ADR-0012).
+ *
+ * The home directory override is what lets a test boot a real Host against a
+ * temporary directory, which is the single seam this project tests through.
  */
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { readShelf } from './shelf.ts';
 
 /** The environment variable that moves the Host's home directory. */
 export const HOME_VARIABLE = 'FIRSTMATE_HOME';
@@ -41,10 +47,18 @@ export type Config = {
   readonly port: number;
   /** How long a Plugin Server has to answer the handshake. */
   readonly handshakeMs: number;
+  /** The Shelf: the directory a fetched Plugin lands in. */
+  readonly shelf: string;
 };
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  return { home: readHome(env), port: readPort(env), handshakeMs: readHandshake(env) };
+  const home = readHome(env);
+  return {
+    home,
+    port: readPort(env),
+    handshakeMs: readHandshake(env),
+    shelf: readShelf(home, env),
+  };
 }
 
 function readHome(env: NodeJS.ProcessEnv): string {

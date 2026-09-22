@@ -34,6 +34,9 @@ async function main(): Promise<void> {
 
   announce(host.port, token, config.home);
   console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);
+  // The Shelf is the one setting the Host remembers, so the Host says which
+  // one it read. A terminal and the Host that disagree is worth seeing.
+  console.log(`FirstMate: the Shelf is ${config.shelf}`);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

@@ -13,10 +13,11 @@
  *   node src/cli.ts list
  *   node src/cli.ts grant <from> <to>
  *   node src/cli.ts revoke <from> <to>
+ *   node src/cli.ts shelf [directory]
  */
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { readConfig } from './config.ts';
+import { readConfig, type Config } from './config.ts';
 import {
   isPluginName,
   readRegistry,
@@ -24,6 +25,8 @@ import {
   writeRegistry,
   type PluginRow,
 } from './registry.ts';
+import { writeSettings } from './settings.ts';
+import { checkShelf, SHELF_VARIABLE, shelfInEnvironment } from './shelf.ts';
 
 const USAGE = `usage:
   firstmate start                    run the Host until it is stopped.
@@ -33,6 +36,11 @@ const USAGE = `usage:
   firstmate list                     every Plugin in the Registry.
   firstmate grant <from> <to>        let <from> call <to>'s tools.
   firstmate revoke <from> <to>       take that Grant back.
+  firstmate shelf [directory]        say where a fetched Plugin lands, or move it.
+
+The Shelf is the directory a fetched Plugin lands in. ${SHELF_VARIABLE} moves it
+for one run; firstmate shelf <directory> moves it for good, and the directory
+has to be there already.
 
 The window works out which distribution holds the Host and where the Host keeps
 its home directory. Say them yourself with --distribution <name> and
@@ -50,7 +58,8 @@ const USAGE_FAULT = 2;
 
 async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv;
-  const home = readConfig().home;
+  const config = readConfig();
+  const home = config.home;
 
   switch (command) {
     case 'start':
@@ -67,6 +76,8 @@ async function main(argv: readonly string[]): Promise<number> {
       return grant(home, rest);
     case 'revoke':
       return revoke(home, rest);
+    case 'shelf':
+      return shelf(config, rest);
     case undefined:
     case '-h':
     case '--help':
@@ -265,6 +276,39 @@ function findPair(
     return undefined;
   }
   return { fromRow, fromIndex: rows.indexOf(fromRow) };
+}
+
+/**
+ * Say where a fetched Plugin lands, or move it.
+ *
+ * Moving it is a write, and the caller's right to make it comes from the
+ * terminal the command was typed into. There is no address on the Host that
+ * does this, because every Plugin Page shares the Index Page's origin and
+ * could therefore send a request the Host cannot tell from the Index Page's
+ * own (ADR-0012).
+ */
+function shelf(config: Config, argv: readonly string[]): number {
+  const [directory] = argv;
+  if (argv.length > 1) {
+    console.error(`firstmate: shelf takes one directory, or nothing.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+  if (directory === undefined) {
+    console.log(`firstmate: the Shelf is ${config.shelf}`);
+    return 0;
+  }
+
+  // Checked before it is remembered, and what is remembered is the real path.
+  const chosen = checkShelf(directory, config.home);
+  writeSettings(config.home, { shelf: chosen });
+  console.log(`firstmate: the Shelf is now ${chosen}`);
+
+  const forced = shelfInEnvironment();
+  if (forced !== undefined && forced !== chosen) {
+    console.log(`firstmate: ${SHELF_VARIABLE} is set to ${forced}, and wins until it is unset.`);
+  }
+  console.log('firstmate: restart the Host to pick it up.');
+  return 0;
 }
 
 function list(home: string, argv: readonly string[]): number {

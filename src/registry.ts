@@ -3,7 +3,9 @@
  * directories are.
  *
  * It is one file in the Host's home directory. There is no scanning and no
- * plugins folder: a Plugin is registered or it does not exist.
+ * plugins folder: a Plugin is registered or it does not exist. The Shelf looks
+ * like a plugins folder and is not one — the Host never reads it, and what
+ * lands there is a Plugin only once a row here says so (ADR-0012).
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';

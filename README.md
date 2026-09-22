@@ -130,9 +130,31 @@ installs FirstMate can run what they installed.
 
 | Variable                | Default        | What it moves                                     |
 | ----------------------- | -------------- | ------------------------------------------------- |
-| `FIRSTMATE_HOME`        | `~/.firstmate` | Where the Registry and the runtime file live.     |
+| `FIRSTMATE_HOME`        | `~/.firstmate` | Where the Registry, the runtime file and the settings live. |
 | `FIRSTMATE_PORT`        | `4747`         | The port. Zero asks the system for a free one.    |
 | `FIRSTMATE_HANDSHAKE_MS`| `10000`        | How long a Plugin Server has to answer the handshake. |
+| `FIRSTMATE_SHELF`       | `~/.firstmate/shelf` | The Shelf: where a fetched Plugin lands. |
+
+## The Shelf
+
+The Shelf is the directory a fetched Plugin lands in. Say where it is, or move
+it:
+
+```sh
+node src/cli.ts shelf                      # where a fetched Plugin lands
+node src/cli.ts shelf /absolute/directory  # move it, and remember it
+```
+
+The directory has to be there already, and it may not be, hold, or lead to the
+Host's home directory, because a fetched Plugin must never be written over the
+Registry and the runtime file. What is remembered is the real path, so what you
+read back is what FirstMate uses.
+
+The choice is kept in `settings.json` and survives a restart. `FIRSTMATE_SHELF`
+beats it, for a test, a script, or a second FirstMate. The Shelf is moved from a
+terminal and from nowhere else, because no address on the Host changes it
+([ADR-0012](docs/adr/0012-the-host-keeps-one-setting.md)). Nothing scans the
+Shelf — a directory sitting there is not a Plugin until `add` registers it.
 
 ## The home directory
 
@@ -140,6 +162,8 @@ installs FirstMate can run what they installed.
   the absolute path of its directory, and its Grants.
 - `runtime.json` — the port the Host listened on and the token it minted. It is
   rewritten at every start and removed when the Host stops.
+- `settings.json` — the one setting the Host remembers: the Shelf. It is absent
+  until you choose one.
 
 ## Addresses
 
