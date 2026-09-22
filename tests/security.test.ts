@@ -3,6 +3,8 @@
  * refused.
  */
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import { bootHost, cookieFor } from './helpers/host.ts';
 
@@ -129,4 +131,69 @@ test('curl reaches the Host with the token as a query parameter', async (t) => {
 
   assert.equal(answer.status, 200);
   assert.match(answer.body, /the Plugin Page of both/);
+});
+
+/**
+ * The Shelf is shown by the Host and moved from a terminal. These three hold
+ * that line. Every Plugin Page is served from the Index Page\'s own origin, so
+ * a same-origin write would be a write a Plugin Page can make: it carries the
+ * cookie, its Origin is genuine, and its Sec-Fetch-Site really is same-origin
+ * (ADR-0012). The answer is to have no such address at all.
+ */
+test('the Index Page carries no way to set the Shelf, filter and all', async (t) => {
+  // Enough Plugins for the filter, so this is the whole page and not a
+  // stripped-down one. page-only ships no Plugin Server, so none is started.
+  const many = Array.from({ length: 8 }, (_, at) => ({
+    name: `p${at + 1}`,
+    directory: 'page-only',
+  }));
+  const host = await bootHost(t, many);
+
+  const page = (await (await host.fetch('/')).text()).toLowerCase();
+
+  assert.ok(page.includes('id="filter"'), 'the filter is on the page');
+  for (const shape of [
+    '<form',
+    'method="post"',
+    'type="submit"',
+    'formaction',
+    'fetch(',
+    'xmlhttprequest',
+    'sendbeacon',
+  ]) {
+    assert.ok(!page.includes(shape), `the Index Page carries no ${shape}`);
+  }
+});
+
+test('the Host answers no address that writes the Shelf', async (t) => {
+  const host = await bootHost(t, []);
+
+  for (const path of ['/shelf', '/settings', '/settings.json', '/api/shelf']) {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const answer = await host.fetch(path, { method });
+      assert.equal(answer.status, 404, `${method} ${path}`);
+    }
+  }
+
+  await assert.rejects(
+    readFile(join(host.home, 'settings.json')),
+    'no request wrote the settings file',
+  );
+});
+
+test('every address but a tool call answers GET and HEAD alone', async (t) => {
+  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
+
+  for (const path of ['/', '/plugins.json', '/p/both/', '/p/both/index.html']) {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const answer = await host.fetch(path, { method });
+      assert.equal(answer.status, 405, `${method} ${path}`);
+      assert.equal(answer.headers.get('allow'), 'GET, HEAD', `${method} ${path}`);
+    }
+  }
+
+  // The one address that takes a write takes a tool call, and nothing else.
+  const rpc = await host.fetch('/p/both/rpc', { method: 'PUT' });
+  assert.equal(rpc.status, 405);
+  assert.equal(rpc.headers.get('allow'), 'POST');
 });

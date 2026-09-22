@@ -91,3 +91,39 @@ test('an empty Registry says how to add a Plugin', async (t) => {
 
   assert.ok(page.includes('node src/cli.ts add'), 'the empty page is an invitation to act');
 });
+
+test('the Index Page says where a fetched Plugin lands, and how to move it', async (t) => {
+  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.ok(page.includes(`${host.home}/shelf`), 'it shows the Shelf in force');
+  assert.ok(page.includes('node src/cli.ts shelf'), 'it names the command that moves it');
+});
+
+test('the Index Page shows the Shelf with an empty Registry too', async (t) => {
+  const host = await bootHost(t, []);
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.ok(page.includes('No Plugins are registered'), 'the Registry really is empty');
+  assert.ok(page.includes(`${host.home}/shelf`), 'and the Shelf is shown all the same');
+});
+
+test('the Shelf the Index Page shows is the Shelf the Host uses', async (t) => {
+  const host = await bootHost(t, [], { FIRSTMATE_SHELF: '/somewhere/else' });
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.ok(page.includes('/somewhere/else'), page);
+  assert.ok(!page.includes(`${host.home}/shelf`), 'the default is not shown instead');
+});
+
+test('the Shelf is escaped where it is shown', async (t) => {
+  const host = await bootHost(t, [], { FIRSTMATE_SHELF: '/tmp/<script>alert(1)</script>' });
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.ok(!page.includes('<script>alert(1)'), 'no tag of the Shelf reaches the page');
+  assert.ok(page.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), page);
+});

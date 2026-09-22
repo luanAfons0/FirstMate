@@ -12,6 +12,12 @@
  * The filter is an enhancement, never a requirement: the list is whole in the
  * HTML and the script only hides rows, so the page still chooses a Plugin when
  * no script runs at all.
+ *
+ * The page says where a fetched Plugin lands and never sets it. Every Plugin
+ * Page is served from this page's own origin, so a form here would be a form
+ * a Plugin Page could send for itself, carrying a genuine cookie and a genuine
+ * Origin the Host cannot tell from this page's own. The Shelf moves from the
+ * terminal alone (ADR-0012).
  */
 
 import type { PluginState } from './supervisor.ts';
@@ -38,7 +44,11 @@ export const STATE_WORDS: Readonly<Record<PluginState, string>> = {
  */
 const FILTER_FROM = 7;
 
-export function indexPage(plugins: readonly PluginView[], registryPath: string): string {
+export function indexPage(
+  plugins: readonly PluginView[],
+  registryPath: string,
+  shelf: string,
+): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -55,6 +65,7 @@ ${styles()}
   ${plugins.length === 0 ? '' : `<p class="count">${countOf(plugins)}</p>`}
 </header>
 ${plugins.length === 0 ? emptyRegistry(registryPath) : list(plugins)}
+${shelfNote(shelf)}
 ${plugins.length < FILTER_FROM ? '' : script()}
 </body>
 </html>
@@ -112,6 +123,18 @@ function emptyRegistry(registryPath: string): string {
     registryPath,
   )}</code>.</p>
 <p>Add one with <code>node src/cli.ts add &lt;name&gt; &lt;dir&gt;</code>.</p>`;
+}
+
+/**
+ * Where a fetched Plugin lands, and the command that moves it. It is shown
+ * whatever the Registry holds, because the answer to "where would a Plugin
+ * land" does not depend on whether one has landed yet.
+ */
+function shelfNote(shelf: string): string {
+  return `<footer>
+<p>A fetched Plugin lands in <code>${escapeHtml(shelf)}</code>. Move it with
+<code>node src/cli.ts shelf &lt;dir&gt;</code>.</p>
+</footer>`;
 }
 
 function styles(): string {
@@ -211,6 +234,10 @@ kbd {
 .empty, p { color: var(--muted); }
 .empty { font-size: .875rem; }
 code { font-family: var(--mono); font-size: .8125em; }
+
+/* The quietest thing on the page: an answer for whoever goes looking. */
+footer { margin: 2.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); }
+footer p { margin: 0; font-size: .8125rem; color: var(--faint); }
 @media (max-width: 30rem) {
   body { padding-top: 2rem; }
   .row { gap: .6rem; padding-inline: .5rem; margin-inline: -.5rem; }

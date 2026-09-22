@@ -151,8 +151,10 @@ Registry and the runtime file. What is remembered is the real path, so what you
 read back is what FirstMate uses.
 
 The choice is kept in `settings.json` and survives a restart. `FIRSTMATE_SHELF`
-beats it, for a test, a script, or a second FirstMate. The Shelf is moved from a
-terminal and from nowhere else, because no address on the Host changes it
+beats it, for a test, a script, or a second FirstMate. The Index Page shows the
+Shelf in force and names the command that moves it, and that is all it does:
+the Shelf is moved from a terminal and from nowhere else, because no address on
+the Host changes it
 ([ADR-0012](docs/adr/0012-the-host-keeps-one-setting.md)). Nothing scans the
 Shelf — a directory sitting there is not a Plugin until `add` registers it.
 
@@ -169,7 +171,7 @@ Shelf — a directory sitting there is not a Plugin until `add` registers it.
 
 | Address              | What it serves                                     |
 | -------------------- | -------------------------------------------------- |
-| `/`                  | The Index Page: every Plugin, and its state.       |
+| `/`                  | The Index Page: every Plugin, its state, the Shelf. |
 | `/plugins.json`      | The same list, for the Tray. Nothing is written.   |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
