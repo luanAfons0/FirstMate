@@ -34,4 +34,10 @@ What is stored is the real path, so what the operator reads back is what FirstMa
 
 The Host prints the Shelf it read when it starts, beside the Registry it read. A terminal and a Host that disagree about where a Plugin lands is worth seeing in the journal.
 
+Fetching reaches outside Node once, for `git`, which clones a Plugin from a
+URL. It is an external tool the command line assumes rather than a package
+dependency, and the Host itself still calls nothing outside Node. It is worth
+watching: if a second external binary is ever wanted, that is the moment to ask
+whether fetching belongs in the Host at all, or in a Plugin.
+
 The day a graphical interface should move the Shelf, it belongs in a chrome the Host does not serve — the strip above the window's content view (ADR-0011) — which moves it by running the command line, not by calling the Host.
