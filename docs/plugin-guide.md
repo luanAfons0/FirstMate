@@ -39,6 +39,13 @@ it already lives:
 node src/cli.ts add <name> /absolute/path/to/your/plugin
 ```
 
+A Plugin you do not have on disk yet is fetched and registered in one step.
+The files land in the Shelf, and nothing your Plugin ships is run:
+
+```sh
+node src/cli.ts install /absolute/path/to/a/plugin [name]
+```
+
 A Plugin Name is lower-case letters and digits, with single hyphens between
 them: `nexus`, `spy`, `scheduled-job`. No leading hyphen, no trailing one,
 no two in a row. The rule is strict because the name is not a label — it is
@@ -49,8 +56,8 @@ The Host refuses a name that does not fit, a path that is not absolute, a
 path that is not a directory, and a name already in the Registry. It says
 which, in a sentence you can act on.
 
-The Registry is read once, when the Host starts. After `add` or `remove`,
-restart the Host — from the Tray, or with
+The Registry is read once, when the Host starts. After `add`, `install` or
+`remove`, restart the Host — from the Tray, or with
 `systemctl --user restart firstmate`.
 
 ## The Plugin Page: your `web/` directory

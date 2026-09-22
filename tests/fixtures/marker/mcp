@@ -1,0 +1,7 @@
+#!/bin/sh
+# A fixture Plugin Server that leaves a mark the moment it is run.
+#
+# Fetching a Plugin and running a Plugin are two separate decisions, so
+# `install` copies this file and never starts it. The mark is how a test sees
+# the difference between the two.
+: > "$(dirname "$0")/ran"

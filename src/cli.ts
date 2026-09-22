@@ -14,9 +14,10 @@
  *   node src/cli.ts grant <from> <to>
  *   node src/cli.ts revoke <from> <to>
  *   node src/cli.ts shelf [directory]
+ *   node src/cli.ts install <source> [name]
  */
-import { statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { mkdirSync, statSync } from 'node:fs';
+import { basename, isAbsolute } from 'node:path';
 import { readConfig, type Config } from './config.ts';
 import {
   isPluginName,
@@ -26,7 +27,8 @@ import {
   type PluginRow,
 } from './registry.ts';
 import { writeSettings } from './settings.ts';
-import { checkShelf, SHELF_VARIABLE, shelfInEnvironment } from './shelf.ts';
+import { checkShelf, defaultShelf, SHELF_VARIABLE, shelfInEnvironment } from './shelf.ts';
+import { fetchPlugin } from './fetch-plugin.ts';
 
 const USAGE = `usage:
   firstmate start                    run the Host until it is stopped.
@@ -37,10 +39,13 @@ const USAGE = `usage:
   firstmate grant <from> <to>        let <from> call <to>'s tools.
   firstmate revoke <from> <to>       take that Grant back.
   firstmate shelf [directory]        say where a fetched Plugin lands, or move it.
+  firstmate install <source> [name]  fetch a Plugin into the Shelf and register it.
 
-The Shelf is the directory a fetched Plugin lands in. ${SHELF_VARIABLE} moves it
-for one run; firstmate shelf <directory> moves it for good, and the directory
-has to be there already.
+The Shelf is the directory a fetched Plugin lands in. install copies a
+directory into it and registers what it copied, under the last segment of the
+source or under the name you give. ${SHELF_VARIABLE} moves the Shelf for one
+run; firstmate shelf <directory> moves it for good, and that directory has to
+be there already.
 
 The window works out which distribution holds the Host and where the Host keeps
 its home directory. Say them yourself with --distribution <name> and
@@ -78,6 +83,8 @@ async function main(argv: readonly string[]): Promise<number> {
       return revoke(home, rest);
     case 'shelf':
       return shelf(config, rest);
+    case 'install':
+      return install(config, rest);
     case undefined:
     case '-h':
     case '--help':
@@ -309,6 +316,80 @@ function shelf(config: Config, argv: readonly string[]): number {
   }
   console.log('firstmate: restart the Host to pick it up.');
   return 0;
+}
+
+/**
+ * Fetch a Plugin into the Shelf and register it, in one step.
+ *
+ * It follows `add` step for step once the files have landed, because a Plugin
+ * that was fetched is a Plugin like any other. Nothing the Plugin ships runs
+ * here: its executable runs later, when the Host starts it.
+ */
+async function install(config: Config, argv: readonly string[]): Promise<number> {
+  const [source, given] = argv;
+  if (source === undefined || argv.length > 2) {
+    console.error(
+      `firstmate: install takes a source, and a Plugin Name where the source ` +
+        `does not name one.\n\n${USAGE}`,
+    );
+    return USAGE_FAULT;
+  }
+
+  const name = given ?? nameOf(source);
+  if (!isPluginName(name)) {
+    if (given === undefined) {
+      console.error(
+        `firstmate: ${source} does not name a Plugin. Give the name yourself: ` +
+          `firstmate install ${source} <name>`,
+      );
+      return 1;
+    }
+    console.error(
+      `firstmate: ${name} is not a Plugin Name. Use lower-case letters, digits and hyphens.`,
+    );
+    return 1;
+  }
+  if (!isAbsolute(source)) {
+    console.error(`firstmate: ${source} is not an absolute path.`);
+    return 1;
+  }
+  const found = statSync(source, { throwIfNoEntry: false });
+  if (found === undefined || !found.isDirectory()) {
+    console.error(`firstmate: ${source} is not a directory.`);
+    return 1;
+  }
+
+  // Refused before anything is fetched, so a refusal costs no copying and a
+  // Plugin that is running is never replaced under it.
+  const rows = readRegistry(config.home);
+  const taken = rows.find((row) => row.name === name);
+  if (taken !== undefined) {
+    console.error(`firstmate: ${name} is already registered, at ${taken.directory}.`);
+    return 1;
+  }
+
+  // The default Shelf is inside the Host's home directory, which the Host
+  // makes for itself, so install works before anything has been chosen. A
+  // Shelf the operator named is theirs to make, so that a typo is refused
+  // rather than created.
+  if (config.shelf === defaultShelf(config.home)) {
+    mkdirSync(config.shelf, { recursive: true, mode: 0o700 });
+  }
+  // Checked on every run. The remembered Shelf is never trusted as already
+  // checked, because a path that was a directory yesterday can be a symlink
+  // today.
+  const shelf = checkShelf(config.shelf, config.home);
+  const directory = await fetchPlugin(source, shelf, name);
+
+  writeRegistry(config.home, [...rows, { name, directory, grants: [] }]);
+  console.log(`firstmate: installed ${name} at ${directory}`);
+  console.log('firstmate: restart the Host to pick it up.');
+  return 0;
+}
+
+/** The Plugin Name a source suggests: its last segment. */
+function nameOf(source: string): string {
+  return basename(source.replace(/[/\\]+$/, ''));
 }
 
 function list(home: string, argv: readonly string[]): number {
