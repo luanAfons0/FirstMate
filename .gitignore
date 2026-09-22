@@ -7,3 +7,6 @@ dist/
 # directory rather than git, and packed a whole second copy of the repository
 # from here.
 .claude/
+
+# A fixture Plugin Server leaves this behind when it is run.
+tests/fixtures/marker/ran

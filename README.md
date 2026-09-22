@@ -101,11 +101,19 @@ contract: what the Host enforces, and what it only advises.
 
 ```sh
 node src/cli.ts add <name> /absolute/path/to/the/directory
+node src/cli.ts install /absolute/path/to/the/directory [name]
 node src/cli.ts remove <name>
 node src/cli.ts list
 node src/cli.ts grant <from> <to>
 node src/cli.ts revoke <from> <to>
 ```
+
+`install` is `add` for a Plugin you do not have yet: it copies the directory
+into the Shelf and registers what it copied, under the last segment of the
+source or under the name you give. It runs nothing the Plugin ships — the
+Plugin's own executable runs later, when the Host starts it. It refuses a name
+already in the Registry and a directory already in the Shelf, and a fetch that
+fails leaves the Registry untouched.
 
 Adding neither copies nor symlinks the directory: the Registry holds the path,
 so a Plugin stays in its own repository wherever it already lives. `grant` lets
