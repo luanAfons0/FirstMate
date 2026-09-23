@@ -1,0 +1,91 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that answers when it is ready and not before.
+//
+// It exists so that a test can prove what a caller's `timeoutMs` and the
+// Host's ceiling are worth, in milliseconds rather than in minutes. How long
+// it takes is an argument, so one fixture serves a call that is answered in
+// time and a call that is not.
+//
+// It says on stderr when a late answer goes out, because that is the line a
+// test waits for: the Host cancelled nothing, this Plugin Server is still
+// running, and the answer nobody is owed is about to be dropped.
+//
+// It serves on the `line` event and not in a `for await` loop. A call arrives
+// while an earlier one is still sleeping, and a loop that awaited would be
+// waiting for the line it is stopping itself from reading.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const result = (id, value) => reply({ jsonrpc: '2.0', id, result: value });
+const say = (text) => process.stderr.write(`slow: ${text}\n`);
+const after = (ms) => new Promise((done) => setTimeout(done, ms));
+
+const TOOLS = [
+  {
+    name: 'answer-late',
+    description: 'Answer after the number of milliseconds it is given.',
+    inputSchema: {
+      type: 'object',
+      properties: { ms: { type: 'number' } },
+      required: ['ms'],
+    },
+  },
+  {
+    name: 'now',
+    description: 'Answer at once, whatever else this Plugin Server is doing.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+];
+
+async function called(id, name, given) {
+  switch (name) {
+    case 'answer-late': {
+      const ms = given.ms ?? 0;
+      await after(ms);
+      say(`answered after ${ms} ms`);
+      result(id, { content: [{ type: 'text', text: `slow answered after ${ms} ms` }] });
+      return;
+    }
+    case 'now':
+      result(id, { content: [{ type: 'text', text: 'slow answered at once' }] });
+      return;
+    default:
+      reply({ jsonrpc: '2.0', id, error: { code: -32602, message: `no such tool: ${name}` } });
+  }
+}
+
+async function serve(request) {
+  switch (request.method) {
+    case 'initialize':
+      // The handshake is answered at once. Only a tool call is slow, so the
+      // Plugin is Running and stays Running while a call of its own runs out.
+      result(request.id, {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'slow', version: '1.0.0' },
+      });
+      return;
+    case 'tools/list':
+      result(request.id, { tools: TOOLS });
+      return;
+    case 'tools/call':
+      await called(request.id, request.params.name, request.params.arguments ?? {});
+      return;
+    default:
+      reply({
+        jsonrpc: '2.0',
+        id: request.id,
+        error: { code: -32601, message: `no such method: ${request.method}` },
+      });
+  }
+}
+
+say('the Plugin Server is up');
+
+createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.trim() === '') return;
+  const message = JSON.parse(line);
+  // A message with no id is a notification, and there is nothing to answer.
+  if (message.id === undefined || message.id === null) return;
+  void serve(message);
+});

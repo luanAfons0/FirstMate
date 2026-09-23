@@ -125,6 +125,11 @@ so a Plugin stays in its own repository wherever it already lives. `grant` lets
 registered. The Host enforces a Grant on every Tool Bus call. The Registry is
 read when the Host starts, so restart the Host to pick up a change.
 
+A Tool Bus call may carry a `timeoutMs` saying how long it is allowed to take.
+Without one it gets thirty seconds, and `FIRSTMATE_MAX_CALL_MS` is the ceiling:
+a call that asks for more is quietly given the ceiling rather than refused. A
+Plugin Page's own call is not a Tool Bus call and keeps its thirty seconds.
+
 ## Run the Host
 
 ```sh
@@ -144,6 +149,7 @@ installs FirstMate can run what they installed.
 | `FIRSTMATE_HOME`        | `~/.firstmate` | Where the Registry, the runtime file and the settings live. |
 | `FIRSTMATE_PORT`        | `4747`         | The port. Zero asks the system for a free one.    |
 | `FIRSTMATE_HANDSHAKE_MS`| `10000`        | How long a Plugin Server has to answer the handshake. |
+| `FIRSTMATE_MAX_CALL_MS` | `600000`       | The longest a Tool Bus call may ask the Host to wait. |
 | `FIRSTMATE_SHELF`       | `~/.firstmate/shelf` | The Shelf: where a fetched Plugin lands. |
 
 ## The Shelf

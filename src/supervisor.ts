@@ -35,9 +35,20 @@ export type Supervisor = {
   stopAll(): void;
 };
 
+/**
+ * The two waits the Supervisor holds, in one value rather than as two numbers
+ * side by side, because two milliseconds in a row are two things to swap.
+ */
+export type Waits = {
+  /** How long a Plugin Server has to answer the handshake. */
+  readonly handshakeMs: number;
+  /** The longest the Host will wait for a Plugin Server on a Tool Bus call. */
+  readonly maxCallMs: number;
+};
+
 export async function superviseAll(
   plugins: readonly PluginRow[],
-  handshakeMs: number,
+  waits: Waits,
 ): Promise<Supervisor> {
   const servers = new Map<string, PluginServer>();
   const shipsNone = new Set<string>();
@@ -55,11 +66,16 @@ export async function superviseAll(
   // The Tool Bus is opened over this same map, which is still empty. A call is
   // resolved when it arrives, so every Plugin Server can reach every other one
   // however they were ordered at start.
-  const bus = openToolBus(plugins, { stateOf, serverOf });
+  const bus = openToolBus(plugins, { stateOf, serverOf }, waits.maxCallMs);
 
   await Promise.all(
     plugins.map(async (plugin) => {
-      const server = await startOne(plugin, shipsNone, handshakeMs, bus.answering(plugin.name));
+      const server = await startOne(
+        plugin,
+        shipsNone,
+        waits.handshakeMs,
+        bus.answering(plugin.name),
+      );
       if (server !== null) servers.set(plugin.name, server);
     }),
   );

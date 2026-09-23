@@ -1,8 +1,9 @@
 /**
  * Where the Host keeps its state, which port it listens on, how long a Plugin
- * Server has to say hello, and where a fetched Plugin lands.
+ * Server has to say hello, how long one Plugin may wait on another, and where
+ * a fetched Plugin lands.
  *
- * The first three come from the environment alone. The Shelf does not, and
+ * The first four come from the environment alone. The Shelf does not, and
  * this module no longer promises that everything it hands back does: the
  * environment moves the Shelf, but an operator who has set none has the one
  * they chose from a terminal, out of the settings file, and a directory under
@@ -24,6 +25,9 @@ export const PORT_VARIABLE = 'FIRSTMATE_PORT';
 /** The environment variable that moves the handshake a Plugin Server must answer. */
 export const HANDSHAKE_VARIABLE = 'FIRSTMATE_HANDSHAKE_MS';
 
+/** The environment variable that moves the ceiling on a Tool Bus call. */
+export const MAX_CALL_VARIABLE = 'FIRSTMATE_MAX_CALL_MS';
+
 /** The fixed port, so that the address is predictable and can be bookmarked. */
 export const DEFAULT_PORT = 4747;
 
@@ -37,6 +41,19 @@ export const DEFAULT_PORT = 4747;
  */
 export const DEFAULT_HANDSHAKE_MS = 10_000;
 
+/**
+ * The longest the Host will wait for a Plugin Server on a Tool Bus call.
+ *
+ * Ten minutes is a ceiling and not a default: a call that asks for nothing
+ * still gets the thirty seconds it always got, and a call that asks for more
+ * than this is quietly given this, because a Plugin should not have to know
+ * the Host's number to be allowed to run. It is a variable for the same reason
+ * the handshake is one — a test proves the clamp in milliseconds rather than
+ * in minutes (ADR-0012 keeps the Shelf in the settings file; this is the other
+ * kind of number, which nobody changes).
+ */
+export const DEFAULT_MAX_CALL_MS = 600_000;
+
 /** The one address the Host answers on. Nothing else on the network reaches it. */
 export const BIND_ADDRESS = '127.0.0.1';
 
@@ -47,6 +64,8 @@ export type Config = {
   readonly port: number;
   /** How long a Plugin Server has to answer the handshake. */
   readonly handshakeMs: number;
+  /** The longest the Host will wait for a Plugin Server on a Tool Bus call. */
+  readonly maxCallMs: number;
   /** The Shelf: the directory a fetched Plugin lands in. */
   readonly shelf: string;
 };
@@ -57,6 +76,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     home,
     port: readPort(env),
     handshakeMs: readHandshake(env),
+    maxCallMs: readMaxCall(env),
     shelf: readShelf(home, env),
   };
 }
@@ -92,6 +112,21 @@ function readHandshake(env: NodeJS.ProcessEnv): number {
   if (!Number.isInteger(ms) || ms <= 0) {
     throw new Error(
       `${HANDSHAKE_VARIABLE} must be a whole number of milliseconds above zero, ` +
+        `not ${JSON.stringify(given)}.`,
+    );
+  }
+  return ms;
+}
+
+function readMaxCall(env: NodeJS.ProcessEnv): number {
+  const given = env[MAX_CALL_VARIABLE];
+  if (given === undefined || given === '') {
+    return DEFAULT_MAX_CALL_MS;
+  }
+  const ms = Number(given);
+  if (!Number.isInteger(ms) || ms <= 0) {
+    throw new Error(
+      `${MAX_CALL_VARIABLE} must be a whole number of milliseconds above zero, ` +
         `not ${JSON.stringify(given)}.`,
     );
   }
