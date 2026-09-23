@@ -36,14 +36,15 @@ Run every command from the repository root.
 | `scripts/install-service.sh`         | Install and start the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
-Four environment variables move the Host: `FIRSTMATE_HOME` (default
+Five environment variables move the Host: `FIRSTMATE_HOME` (default
 `~/.firstmate`), `FIRSTMATE_PORT` (default `4747`; zero asks the system for a
 free port), `FIRSTMATE_HANDSHAKE_MS` (default `10000`, how long a Plugin
-Server has to answer the handshake) and `FIRSTMATE_SHELF` (default
-`$FIRSTMATE_HOME/shelf`, the Shelf a fetched Plugin lands in). Tests use all
-four. The Shelf is the one setting that does not come from the environment
-alone: the variable beats the settings file, which beats the default
-(ADR-0012).
+Server has to answer the handshake), `FIRSTMATE_MAX_CALL_MS` (default
+`600000`, the longest a Tool Bus call may ask the Host to wait) and
+`FIRSTMATE_SHELF` (default `$FIRSTMATE_HOME/shelf`, the Shelf a fetched Plugin
+lands in). Tests use all five. The Shelf is the one setting that does not come
+from the environment alone: the variable beats the settings file, which beats
+the default (ADR-0012).
 
 `npm test` and `npm run typecheck` must both pass before you call work done.
 

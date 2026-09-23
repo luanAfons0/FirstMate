@@ -3,8 +3,9 @@
 //
 // It hands back whatever the Host handed it, result or error, so that a test
 // reads the target Plugin's own answer, and every refusal, off the HTTP
-// response. It is told which Plugin to reach in the arguments, so one fixture
-// serves as either end of a pair, and as both ends of a cycle.
+// response. It is told which Plugin to reach, and how long the call may take,
+// in the arguments, so one fixture serves as either end of a pair, and as both
+// ends of a cycle.
 //
 // It serves on the `line` event and not in a `for await` loop. Its own answer
 // arrives on a later line, and a loop that awaited would be waiting for the
@@ -36,10 +37,14 @@ function handOn(id, answer) {
 const TOOLS = [
   {
     name: 'reach',
-    description: "Call one tool of another Plugin.",
+    description: "Call one tool of another Plugin, and say how long it may take.",
     inputSchema: {
       type: 'object',
-      properties: { plugin: { type: 'string' }, tool: { type: 'string' } },
+      properties: {
+        plugin: { type: 'string' },
+        tool: { type: 'string' },
+        timeoutMs: { type: 'number' },
+      },
       required: ['plugin', 'tool'],
     },
   },
@@ -66,10 +71,15 @@ const TOOLS = [
 async function called(id, name, given) {
   switch (name) {
     case 'reach':
+      // `timeoutMs` goes on exactly as it was given, and is left out when it
+      // was not given at all, so that a test reads the Host's own answer to
+      // the number it asked for — including the answer to a number that is
+      // not one.
       handOn(id, await ask('firstmate/tools/call', {
         plugin: given.plugin,
         name: given.tool,
         arguments: given.arguments ?? {},
+        ...(given.timeoutMs === undefined ? {} : { timeoutMs: given.timeoutMs }),
       }));
       return;
     case 'catalogue':

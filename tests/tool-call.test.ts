@@ -180,3 +180,24 @@ test('a tool call is a POST', async (t) => {
   assert.equal(answer.status, 405);
   assert.equal(answer.headers.get('allow'), 'POST');
 });
+
+test("a Plugin Page's own call keeps its thirty seconds, whatever it asks for", async (t) => {
+  // A ceiling low enough to cut this call short, were the ceiling its own.
+  const host = await bootHost(t, [{ name: 'slow', directory: 'slow' }], {
+    FIRSTMATE_MAX_CALL_MS: '100',
+  });
+
+  const answer = await ask(host, 'slow', {
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'tools/call',
+    params: { name: 'answer-late', arguments: { ms: 400 }, timeoutMs: 1 },
+  });
+  const said = (await answer.json()) as { result: { content: { text: string }[] } };
+
+  // Neither the ceiling nor the number in the body moved this call: only the
+  // Tool Bus takes a `timeoutMs`, because nothing is waiting on a Tool Bus
+  // call and a browser is waiting on this one.
+  assert.equal(answer.status, 200);
+  assert.equal(said.result.content[0]?.text, 'slow answered after 400 ms');
+});

@@ -49,7 +49,7 @@ node src/cli.ts install https://example.com/someone/a-plugin.git [name]
 ```
 
 A Plugin Name is lower-case letters and digits, with single hyphens between
-them: `nexus`, `spy`, `scheduled-job`. No leading hyphen, no trailing one,
+them: `nexus`, `scheduler`, `scheduled-job`. No leading hyphen, no trailing one,
 no two in a row. The rule is strict because the name is not a label — it is
 the address. Your Plugin lives at `/p/<name>/`, and every link, every
 relative path and every tool call resolves from there.
@@ -155,11 +155,11 @@ and read the answer on your stdin
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"firstmate/tools/call",
- "params":{"plugin":"other","name":"its-tool","arguments":{}}}
+ "params":{"plugin":"scheduler","name":"its-tool","arguments":{}}}
 ```
 
-`firstmate/tools/list` takes `{"plugin":"other"}` and lists that Plugin's
-tools. Both hand you the other Plugin's own answer, unchanged.
+`firstmate/tools/list` takes `{"plugin":"scheduler"}` and lists that
+Plugin's tools. Both hand you the other Plugin's own answer, unchanged.
 
 - **The Host carries it only under a Grant.** The operator records one with
   `firstmate grant <you> <other>`. A Grant is one way and covers one pair,
@@ -169,6 +169,28 @@ tools. Both hand you the other Plugin's own answer, unchanged.
   there is nothing for you to leak.
 - **Your own request numbers stay yours.** The Host answers with the id you
   gave and never one of its own, so number your requests however you like.
+- **You may say how long your call is allowed to take.** Add a `timeoutMs`
+  beside the `plugin`, and the Host waits that many milliseconds for the
+  other Plugin Server:
+
+  ```json
+  {"plugin":"scheduler","name":"its-tool","arguments":{},"timeoutMs":180000}
+  ```
+
+  Leave it out and your call gets thirty seconds, which is right when a
+  person is waiting on a page and wrong for work that takes minutes with
+  nobody watching. It is a word to the Host and never to the other Plugin:
+  its tool is handed the `arguments` and nothing else. It must be a whole
+  number of milliseconds above zero, and anything else is refused with a
+  sentence.
+- **The Host keeps a ceiling on it.** `FIRSTMATE_MAX_CALL_MS`, ten minutes
+  by default, is the longest it will wait. Ask for more and you quietly get
+  the ceiling rather than a refusal, so you never have to know the operator's
+  number to be allowed to run.
+- **Running out of time cancels nothing.** The Host lets go and hands you a
+  sentence; the other Plugin Server keeps working, its late answer is
+  dropped, and nothing else on that pipe is disturbed. A call that runs out
+  of time never means the tool did not run.
 - **The handshake tells you it is there.** The `initialize` the Host sends
   you carries `capabilities.experimental.firstmate.toolBus`.
 - **Every refusal is a sentence**, as a JSON-RPC error: you hold no Grant

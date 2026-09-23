@@ -5,7 +5,7 @@ import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { connect } from 'node:net';
 import test from 'node:test';
-import { bootHost } from './helpers/host.ts';
+import { bootHost, firstmate, makeHome } from './helpers/host.ts';
 
 test('the runtime file holds the port actually listened on and the token', async (t) => {
   const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
@@ -41,6 +41,20 @@ test('the Host is reachable from this machine and from nowhere else', async (t) 
   }
 
   await assert.rejects(reach(elsewhere, host.port), /ECONNREFUSED|EHOSTUNREACH|ETIMEDOUT/);
+});
+
+test('a ceiling on a call that is not a number stops the Host with a sentence', async (t) => {
+  const home = await makeHome(t);
+
+  const said = await firstmate(home, ['start'], { FIRSTMATE_MAX_CALL_MS: 'ten minutes' });
+
+  // The same sentence, and the same refusal to start at all, that a handshake
+  // which is not a number of milliseconds gets.
+  assert.equal(said.code, 1);
+  assert.match(
+    said.stderr,
+    /FIRSTMATE_MAX_CALL_MS must be a whole number of milliseconds above zero, not "ten minutes"\./,
+  );
 });
 
 function ownAddress(): string | null {
