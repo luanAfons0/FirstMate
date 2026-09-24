@@ -15,6 +15,8 @@
  *   node src/cli.ts revoke <from> <to>
  *   node src/cli.ts shelf [directory]
  *   node src/cli.ts install <directory|git-url> [name]
+ *   node src/cli.ts bind <keys> <plugin> [path]
+ *   node src/cli.ts unbind <keys>
  */
 import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
@@ -26,7 +28,8 @@ import {
   writeRegistry,
   type PluginRow,
 } from './registry.ts';
-import { writeSettings } from './settings.ts';
+import { readSettings, writeSettings, type Settings } from './settings.ts';
+import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 import { checkShelf, defaultShelf, SHELF_VARIABLE, shelfInEnvironment } from './shelf.ts';
 import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
 
@@ -40,6 +43,9 @@ const USAGE = `usage:
   firstmate revoke <from> <to>       take that Grant back.
   firstmate shelf [directory]        say where a fetched Plugin lands, or move it.
   firstmate install <source> [name]  fetch a Plugin into the Shelf and register it.
+  firstmate bind <keys> <plugin> [path]
+                                     open a Plugin's address from a Shortcut in Windows.
+  firstmate unbind <keys>            free that Shortcut's keys.
 
 The Shelf is the directory a fetched Plugin lands in. A source is a directory,
 which is copied, or a git URL, which is cloned; install registers what it put
@@ -54,6 +60,10 @@ its home directory. Say them yourself with --distribution <name> and
 A Plugin Name is lower-case letters, digits and hyphens, because it names the
 Plugin in every address. A directory is an absolute path. A Grant is one way:
 granting <from> the right to call <to> does not let <to> call <from>.
+
+A Shortcut is one or more of Ctrl, Alt, Shift and Win and one key, joined by
++, as in Ctrl+Alt+N. The path is relative to the Plugin's address; leave it out
+to open the Plugin Page. The Tray picks up a Shortcut with no restart.
 
 The Registry is read when the Host starts, so restart the Host to pick up a
 change: systemctl --user restart firstmate`;
@@ -85,6 +95,10 @@ async function main(argv: readonly string[]): Promise<number> {
       return shelf(config, rest);
     case 'install':
       return install(config, rest);
+    case 'bind':
+      return bind(home, rest);
+    case 'unbind':
+      return unbind(home, rest);
     case undefined:
     case '-h':
     case '--help':
@@ -195,9 +209,22 @@ function remove(home: string, argv: readonly string[]): number {
     return 1;
   }
 
+  // The Shortcuts go first: a Shortcut that outlived its Plugin would open an
+  // address that answers nothing, and a failure after this leaves the Plugin
+  // registered and the command safe to run again.
+  const settings = readSettings(home);
+  const shortcuts = settings.shortcuts ?? [];
+  const dropped = shortcuts.filter((shortcut) => shortcut.plugin === name);
+  if (dropped.length > 0) {
+    writeSettings(home, withShortcuts(settings, shortcuts.filter((s) => s.plugin !== name)));
+  }
+
   writeRegistry(home, left);
   // The directory itself is untouched. The Host stops serving and running it.
   console.log(`firstmate: removed ${name}`);
+  for (const shortcut of dropped) {
+    console.log(`firstmate: unbound ${shortcut.keys}, which opened ${shortcutAddress(shortcut)}`);
+  }
   console.log('firstmate: restart the Host to pick it up. The directory is untouched.');
   return 0;
 }
@@ -307,7 +334,7 @@ function shelf(config: Config, argv: readonly string[]): number {
 
   // Checked before it is remembered, and what is remembered is the real path.
   const chosen = checkShelf(directory, config.home);
-  writeSettings(config.home, { shelf: chosen });
+  writeSettings(config.home, { ...readSettings(config.home), shelf: chosen });
   console.log(`firstmate: the Shelf is now ${chosen}`);
 
   const forced = shelfInEnvironment();
@@ -389,6 +416,93 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
   return 0;
 }
 
+/**
+ * Bind keys to one address of one Plugin, for the Tray to hold in all of
+ * Windows.
+ *
+ * Binding is a write, and like moving the Shelf it is done from a terminal and
+ * from nowhere else: every Plugin Page shares the Index Page's origin, so an
+ * address that bound a Shortcut would let any Plugin take a key in all of
+ * Windows (ADR-0013).
+ */
+function bind(home: string, argv: readonly string[]): number {
+  const [typed, plugin, path = ''] = argv;
+  if (typed === undefined || plugin === undefined || argv.length > 3) {
+    console.error(`firstmate: bind takes keys, a Plugin Name, and a path or nothing.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+
+  const read = readKeys(typed);
+  if (read.kind === 'wrong') {
+    console.error(`firstmate: ${read.reason}`);
+    return 1;
+  }
+  const keys = read.chord.keys;
+  if (!readRegistry(home).some((row) => row.name === plugin)) {
+    console.error(`firstmate: no Plugin named ${plugin} is registered.`);
+    return 1;
+  }
+  if (!isPluginPath(path, plugin)) {
+    console.error(
+      `firstmate: ${path} is not a path inside ${plugin}'s address. Give it relative, ` +
+        'with no leading slash and no "..".',
+    );
+    return 1;
+  }
+
+  const settings = readSettings(home);
+  const shortcuts = settings.shortcuts ?? [];
+  const held = shortcuts.find((shortcut) => shortcut.keys === keys);
+  if (held !== undefined) {
+    console.error(
+      `firstmate: ${keys} is already bound to ${held.plugin}, to open ` +
+        `${shortcutAddress(held)}. Unbind it first: firstmate unbind ${keys}`,
+    );
+    return 1;
+  }
+
+  const shortcut: Shortcut = { keys, plugin, path };
+  writeSettings(home, withShortcuts(settings, [...shortcuts, shortcut]));
+  console.log(`firstmate: bound ${keys} to open ${shortcutAddress(shortcut)}`);
+  return 0;
+}
+
+/** Free a Shortcut's keys. A key that is not bound is a typing error, and says so. */
+function unbind(home: string, argv: readonly string[]): number {
+  const [typed] = argv;
+  if (typed === undefined || argv.length > 1) {
+    console.error(`firstmate: unbind takes the keys of one Shortcut.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+
+  const read = readKeys(typed);
+  if (read.kind === 'wrong') {
+    console.error(`firstmate: ${read.reason}`);
+    return 1;
+  }
+  const keys = read.chord.keys;
+  const settings = readSettings(home);
+  const shortcuts = settings.shortcuts ?? [];
+  const held = shortcuts.find((shortcut) => shortcut.keys === keys);
+  if (held === undefined) {
+    console.error(`firstmate: ${keys} is not bound.`);
+    return 1;
+  }
+
+  writeSettings(home, withShortcuts(settings, shortcuts.filter((s) => s !== held)));
+  console.log(`firstmate: unbound ${keys}, which opened ${shortcutAddress(held)}`);
+  return 0;
+}
+
+/**
+ * The settings with these Shortcuts in them. No Shortcut at all leaves no
+ * array behind, so a file that never held one reads as it did before.
+ */
+function withShortcuts(settings: Settings, shortcuts: readonly Shortcut[]): Settings {
+  const { shortcuts: _old, ...rest } = settings;
+  return shortcuts.length === 0 ? rest : { ...rest, shortcuts };
+}
+
 /** The Plugin Name a source suggests: its last segment, with no git suffix. */
 function nameOf(source: string): string {
   const last = basename(source.replace(/[/\\]+$/, ''));
@@ -402,6 +516,9 @@ function list(home: string, argv: readonly string[]): number {
   }
   // An empty Registry says nothing, as an empty directory listing says nothing.
   for (const row of readRegistry(home)) console.log(describe(row));
+  for (const shortcut of readSettings(home).shortcuts ?? []) {
+    console.log(`${shortcut.keys}\topens ${shortcutAddress(shortcut)}`);
+  }
   return 0;
 }
 
