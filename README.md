@@ -336,10 +336,16 @@ Shortcut you `bind` or `unbind` within a few seconds, with no restart. Pressing
 one opens its address in a Popup at the center of the screen, on top of every
 other window, with the focus in it, whether the FirstMate window is shown or
 hidden. The Popup has no frame, asks Windows for no taskbar button, and loads
-its page fresh every time. It asks Windows for exactly the keys you bound, with
-`RegisterHotKey`, through a small PowerShell helper, and sees no other key. A
-key another program already holds, and a press while the Host is not running,
-are each said in a Windows notification.
+its page fresh every time. It hides when it loses focus, on Esc, on its own
+Shortcut pressed again, and when its page goes to any address other than its
+own. That last one is refused, so the Popup never shows a second page, and it
+is how a Plugin Page says it is finished: after a save, go to `./`. Esc is held
+only while the Popup is shown, and works as always everywhere else.
+
+The Tray asks Windows for exactly the keys you bound, with `RegisterHotKey`,
+through a small PowerShell helper, and sees no other key. A key another program
+already holds, and a press while the Host is not running, are each said in a
+Windows notification.
 
 Start at logon is one file, `FirstMate.vbs` in the Startup folder. Turning it
 off deletes exactly that file. Nothing is written to the registry and nothing is

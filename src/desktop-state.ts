@@ -279,6 +279,12 @@ function oneShortcut(row: unknown): readonly ShortcutSeen[] {
   return [{ chord: read.chord, address: path }];
 }
 
+/**
+ * The keys Windows holds for the Popup while it is shown, and only then, so
+ * that Esc works as it always does everywhere else.
+ */
+export const ESCAPE: KeyChord = { keys: 'Esc', modifiers: 0, key: 0x1b };
+
 /** What to ask the helper for, to hold exactly the keys wanted. */
 export type Reconciled = {
   /** Keys to ask Windows for. */
@@ -304,7 +310,7 @@ export function reconcile(asked: ReadonlySet<string>, wanted: Shortcuts): Reconc
     register: wanted.shortcuts
       .map((shortcut) => shortcut.chord)
       .filter((chord) => !asked.has(chord.keys)),
-    release: [...asked].filter((held) => !keys.has(held)),
+    release: [...asked].filter((held) => held !== ESCAPE.keys && !keys.has(held)),
   };
 }
 
@@ -350,6 +356,28 @@ export function popupAddress(runtime: Runtime, path: string): string {
   const url = new URL(path, `http://127.0.0.1:${runtime.port}`);
   url.searchParams.set(TOKEN_PARAMETER, runtime.token);
   return url.href;
+}
+
+/**
+ * Whether a navigation leaves a Popup's own address, which is how its page
+ * says it is finished (ADR-0013).
+ *
+ * Its own address is its origin and its path. The query and the fragment may
+ * change, because the token arrives in the one and a form may use the other.
+ * The blank page the Popup rests on while hidden leaves nothing. Anything that
+ * cannot be read leaves, because a Popup never shows a second page.
+ */
+export function leavesPopup(own: string, address: string): boolean {
+  if (address === 'about:blank') return false;
+  let there: URL;
+  let here: URL;
+  try {
+    there = new URL(address);
+    here = new URL(own);
+  } catch {
+    return true;
+  }
+  return there.origin !== here.origin || there.pathname !== here.pathname;
 }
 
 /**
