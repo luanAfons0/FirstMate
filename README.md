@@ -331,6 +331,16 @@ toggles start at logon, and quits. A Plugin that ships no Plugin Page is listed
 and is not offered, and a Stopped Plugin is still listed. A Host that will not
 answer disables the list rather than showing it as empty.
 
+While it runs, it also holds the Shortcuts in all of Windows, and picks up a
+Shortcut you `bind` or `unbind` within a few seconds, with no restart. Pressing
+one opens its address in a Popup at the center of the screen, on top of every
+other window, with the focus in it, whether the FirstMate window is shown or
+hidden. The Popup has no frame, asks Windows for no taskbar button, and loads
+its page fresh every time. It asks Windows for exactly the keys you bound, with
+`RegisterHotKey`, through a small PowerShell helper, and sees no other key. A
+key another program already holds, and a press while the Host is not running,
+are each said in a Windows notification.
+
 Start at logon is one file, `FirstMate.vbs` in the Startup folder. Turning it
 off deletes exactly that file. Nothing is written to the registry and nothing is
 scheduled.

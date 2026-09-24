@@ -17,6 +17,7 @@ import { HOME_VARIABLE } from './config.ts';
 import { RUNTIME_FILE, type Runtime } from './runtime.ts';
 import type { PluginState } from './supervisor.ts';
 import { TOKEN_PARAMETER } from './security.ts';
+import { readKeys, type KeyChord } from './shortcut.ts';
 
 /** The command Windows reaches a distribution through. */
 const WSL = 'wsl.exe';
@@ -170,6 +171,24 @@ export type Plugins =
   /** The Host would not say. Nothing is known, and nothing is claimed. */
   | { readonly kind: 'untold' };
 
+/** One Shortcut, as the Tray holds it: the keys Windows is asked for, and
+ *  the address a press opens. */
+export type ShortcutSeen = {
+  /** What `RegisterHotKey` needs, read from the keys by the one parser. */
+  readonly chord: KeyChord;
+  /** The path on the Host it opens, such as `/p/daily/new.html`. */
+  readonly address: string;
+};
+
+/**
+ * What the Host said about the Shortcuts. As with the Plugins, "would not
+ * say" is its own shape: a Host that is down has not unbound anything, so the
+ * keys stay held and a press can say the Host is down.
+ */
+export type Shortcuts =
+  | { readonly kind: 'told'; readonly shortcuts: readonly ShortcutSeen[] }
+  | { readonly kind: 'untold' };
+
 /** What the program knows about the Host at one moment. */
 export type Pulse = {
   /** What the icon shows and the tooltip says. */
@@ -178,6 +197,8 @@ export type Pulse = {
   readonly runtime: Runtime | undefined;
   /** Every Plugin the Host reports, or the fact that it would not report. */
   readonly plugins: Plugins;
+  /** Every Shortcut the Host reports, or the fact that it would not report. */
+  readonly shortcuts: Shortcuts;
 };
 
 /**
@@ -220,6 +241,115 @@ function onePlugin(row: unknown): readonly PluginSeen[] {
   if (typeof name !== 'string' || name === '') return [];
   if (state !== 'running' && state !== 'stopped' && state !== 'no-plugin-server') return [];
   return [{ name, hasPage: hasPage === true, state }];
+}
+
+/**
+ * Every Shortcut the Host knows, or the fact that it would not say.
+ *
+ * Asked on the same beat as the Plugins, so that a Shortcut bound from a
+ * terminal is held within one beat, with no restart (ADR-0013).
+ */
+export async function askForShortcuts(runtime: Runtime): Promise<Shortcuts> {
+  let said: unknown;
+  try {
+    const answer = await fetch(address(runtime, '/shortcuts.json'), {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+    });
+    if (!answer.ok) return { kind: 'untold' };
+    said = await answer.json();
+  } catch {
+    return { kind: 'untold' };
+  }
+  if (typeof said !== 'object' || said === null) return { kind: 'untold' };
+  const { shortcuts } = said as { readonly shortcuts?: unknown };
+  if (!Array.isArray(shortcuts)) return { kind: 'untold' };
+  return { kind: 'told', shortcuts: shortcuts.flatMap(oneShortcut) };
+}
+
+/** One row of that answer, or none of it. Keys the parser will not read, or
+ *  an address outside every Plugin, are never handed to Windows. */
+function oneShortcut(row: unknown): readonly ShortcutSeen[] {
+  if (typeof row !== 'object' || row === null) return [];
+  const { keys, address: path } = row as { readonly keys?: unknown; readonly address?: unknown };
+  if (typeof keys !== 'string' || typeof path !== 'string') return [];
+  if (!path.startsWith('/p/')) return [];
+  const read = readKeys(keys);
+  if (read.kind === 'wrong' || read.chord.keys !== keys) return [];
+  return [{ chord: read.chord, address: path }];
+}
+
+/** What to ask the helper for, to hold exactly the keys wanted. */
+export type Reconciled = {
+  /** Keys to ask Windows for. */
+  readonly register: readonly KeyChord[];
+  /** Keys to give back. */
+  readonly release: readonly string[];
+};
+
+/**
+ * What to register and what to release, so that the keys asked for become the
+ * keys wanted.
+ *
+ * `asked` holds every key already asked for, held or refused alike. A refused
+ * key is not asked for again on every beat, because each refusal would be one
+ * more notification about the same key; it is asked for again once it has been
+ * unbound and bound again, or when the Tray starts. A Host that would not say
+ * changes nothing: the keys stay held, and a press says the Host is down.
+ */
+export function reconcile(asked: ReadonlySet<string>, wanted: Shortcuts): Reconciled {
+  if (wanted.kind === 'untold') return { register: [], release: [] };
+  const keys = new Set(wanted.shortcuts.map((shortcut) => shortcut.chord.keys));
+  return {
+    register: wanted.shortcuts
+      .map((shortcut) => shortcut.chord)
+      .filter((chord) => !asked.has(chord.keys)),
+    release: [...asked].filter((held) => !keys.has(held)),
+  };
+}
+
+/** The line that asks the helper to hold one key combination. */
+export function registerCommand(chord: KeyChord): string {
+  return `register ${chord.keys} ${chord.modifiers} ${chord.key}`;
+}
+
+/** The line that asks the helper to give one back. */
+export function releaseCommand(keys: string): string {
+  return `release ${keys}`;
+}
+
+/** One line the helper wrote, read. */
+export type HotkeyEvent =
+  | { readonly kind: 'ready' }
+  | { readonly kind: 'registered'; readonly keys: string }
+  | { readonly kind: 'released'; readonly keys: string }
+  | { readonly kind: 'pressed'; readonly keys: string }
+  | { readonly kind: 'refused'; readonly keys: string; readonly reason: string }
+  | { readonly kind: 'unknown'; readonly line: string };
+
+export function readHotkeyEvent(line: string): HotkeyEvent {
+  const [word = '', keys = '', ...rest] = line.trim().split(' ');
+  if (word === 'ready' && keys === '') return { kind: 'ready' };
+  if (keys !== '' && rest.length === 0) {
+    if (word === 'registered' || word === 'released' || word === 'pressed') {
+      return { kind: word, keys };
+    }
+  }
+  if (word === 'refused' && keys !== '') {
+    return { kind: 'refused', keys, reason: rest.join(' ') || 'Windows gave no reason' };
+  }
+  return { kind: 'unknown', line };
+}
+
+/**
+ * The address a Popup loads: the Shortcut's own, with the token on it once,
+ * as the window's first navigation carries it. The Host trades it for the
+ * cookie, exactly as it does for the window.
+ */
+export function popupAddress(runtime: Runtime, path: string): string {
+  const url = new URL(path, `http://127.0.0.1:${runtime.port}`);
+  url.searchParams.set(TOKEN_PARAMETER, runtime.token);
+  return url.href;
 }
 
 /**
@@ -290,12 +420,20 @@ export function watchTheHost(
 
       if (!watching) return;
       if (says !== 'running' || held === undefined) {
-        tell({ state: 'stopped', runtime: undefined, plugins: { kind: 'untold' } });
+        tell({
+          state: 'stopped',
+          runtime: undefined,
+          plugins: { kind: 'untold' },
+          shortcuts: { kind: 'untold' },
+        });
         return;
       }
-      const plugins = await askForPlugins(held);
+      const [plugins, shortcuts] = await Promise.all([
+        askForPlugins(held),
+        askForShortcuts(held),
+      ]);
       if (!watching) return;
-      tell({ state: 'running', runtime: held, plugins });
+      tell({ state: 'running', runtime: held, plugins, shortcuts });
     } catch (fault: unknown) {
       // One beat may fail. The program may not. An unhandled throw inside a
       // handler is what took the Tray down, and it took the whole application

@@ -9,9 +9,10 @@
  *
  * The window is told its own identity and where its icon is, and Windows then
  * draws the button from that. There is no way to reach the shell's property
- * store from Node, so this is the one place FirstMate asks PowerShell to do
- * something for it. Every value travels in the environment rather than spliced
- * into the script, so no value is ever read as code (#45).
+ * store from Node, so FirstMate asks PowerShell to do it; the helper that
+ * holds the Shortcuts (`hotkeys.ts`) is the only other thing it asks of it.
+ * Every value travels in the environment rather than spliced into the script,
+ * so no value is ever read as code (#45).
  */
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
