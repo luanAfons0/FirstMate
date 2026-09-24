@@ -11,6 +11,10 @@
  * The window is a viewer and never a frame. The content view loads the Host's
  * own address and shows the bytes the Host serves; nothing is injected into a
  * Plugin Page, wrapped around it or read out of it (ADR-0008).
+ *
+ * The Popup is a second window of the same kind, opened by a Shortcut. It is a
+ * viewer too: it loads one Plugin address and shows the bytes the Host serves
+ * (ADR-0013).
  */
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,19 +28,29 @@ import type {
   Webview,
 } from '@webviewjs/webview';
 import {
+  askForShortcuts,
+  askTheHost,
   findTheHost,
   hasDesktop,
   indexAddress,
   NO_DESKTOP,
   pluginAddress,
   pluginOpenAt,
+  popupAddress,
+  readHotkeyEvent,
+  reconcile,
+  registerCommand,
+  releaseCommand,
   restartTheHost,
   watchTheHost,
   type PluginSeen,
   type Plugins,
   type Pulse,
+  type ShortcutSeen,
+  type Shortcuts,
   type Where,
 } from './desktop-state.ts';
+import { startHotkeys, type Hotkeys } from './hotkeys.ts';
 import { STATE_WORDS } from './index-page.ts';
 import { readLogon, setLogon } from './logon.ts';
 import { nameTheWindow } from './taskbar.ts';
@@ -56,6 +70,13 @@ const HEIGHT = 760;
  * coordinates and no scale factor is ever worked out by hand.
  */
 const STRIP = 44;
+
+/**
+ * The Popup's size, in logical pixels. It is one size for every Shortcut: a
+ * small form, not a program.
+ */
+const POPUP_WIDTH = 520;
+const POPUP_HEIGHT = 420;
 
 /**
  * The mark for each state the Host can be in.
@@ -90,6 +111,9 @@ let shown:
       readonly content: Webview;
       readonly context: WebContext;
       readonly tray: TrayIcon;
+      readonly popup: BrowserWindow;
+      readonly popupView: Webview;
+      readonly hotkeys: Hotkeys | undefined;
     }
   | undefined;
 
@@ -221,7 +245,12 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   const tray = app.createTrayIcon({
     id: 'firstmate',
     ...(mark.running === undefined ? {} : { icon: { data: mark.running } }),
-    tooltip: tooltip({ state: 'running', runtime: run, plugins: { kind: 'untold' } }),
+    tooltip: tooltip({
+      state: 'running',
+      runtime: run,
+      plugins: { kind: 'untold' },
+      shortcuts: { kind: 'untold' },
+    }),
     menu: menu({ plugins: { kind: 'untold' }, running: true, logon: readLogon(process.env).on }),
     // A click opens the window, which is the thing wanted nearly every time.
     // The menu is where the rest lives, one click to the right of it.
@@ -239,6 +268,133 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   window.on('close', (event) => {
     event.preventDefault();
     window.setVisible(false);
+  });
+
+  /** Say something the operator must know, in a Windows notification. */
+  const notify = (said: string): void => {
+    console.error(`firstmate: ${said}`);
+    try {
+      new webview.Notification(TITLE, { body: said });
+    } catch {
+      // The line above already said it, where the operator can read it.
+    }
+  };
+
+  // The Popup is made once, hidden, and shown by a Shortcut. It has no frame,
+  // it stays on top, and it asks for no taskbar button.
+  const popup = app.createBrowserWindow({
+    title: TITLE,
+    width: POPUP_WIDTH,
+    height: POPUP_HEIGHT,
+    decorations: false,
+    alwaysOnTop: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    visible: false,
+    windowsSkipTaskbar: true,
+  });
+  if (mark.running !== undefined) popup.setWindowIcon(mark.running);
+
+  /** The keys that opened the Popup, while it is shown. */
+  let popupKeys: string | undefined;
+
+  const popupView = popup.createWebview({
+    x: 0,
+    y: 0,
+    width: POPUP_WIDTH,
+    height: POPUP_HEIGHT,
+    webContext: context,
+  });
+
+  /** Every key the helper was asked to hold, held or refused alike. */
+  const askedFor = new Set<string>();
+  /** What each bound key opens, as the Host last said. */
+  let bound = new Map<string, ShortcutSeen>();
+
+  const hotkeys =
+    process.platform === 'win32'
+      ? startHotkeys(
+          (line) => {
+            try {
+              heard(line);
+            } catch (fault: unknown) {
+              const said = fault instanceof Error ? fault.message : String(fault);
+              console.error(`firstmate: a Shortcut went nowhere: ${said}`);
+            }
+          },
+          (why) => notify(`Shortcuts stopped working until FirstMate starts again: ${why}`),
+        )
+      : undefined;
+
+  const hidePopup = (): void => {
+    if (popupKeys === undefined) return;
+    popupKeys = undefined;
+    popup.setVisible(false);
+    // The page is put away with the Popup, so that the next open loads it
+    // fresh and never flashes the last one.
+    popupView.loadUrl('about:blank');
+  };
+
+  const showPopup = (keys: string, address: string): void => {
+    popupKeys = keys;
+    popupView.loadUrl(popupAddress(run, address));
+    popup.center();
+    popup.setVisible(true);
+    popup.focus();
+    popupView.focus();
+  };
+
+  const pressed = async (keys: string): Promise<void> => {
+    const shortcut = bound.get(keys);
+    if (shortcut === undefined) return;
+    const says = await askTheHost(run);
+    if (says === 'absent') {
+      notify(`${keys} opened nothing: the Host is not running.`);
+      return;
+    }
+    if (says === 'stale') {
+      notify(`${keys} opened nothing: the Host has just restarted. Press it again in a moment.`);
+      return;
+    }
+    showPopup(keys, shortcut.address);
+  };
+
+  function heard(line: string): void {
+    const event = readHotkeyEvent(line);
+    if (event.kind === 'pressed') {
+      void pressed(event.keys).catch((fault: unknown) => {
+        const said = fault instanceof Error ? fault.message : String(fault);
+        console.error(`firstmate: ${event.keys} went nowhere: ${said}`);
+      });
+    } else if (event.kind === 'refused') {
+      // A key another program holds is said, never dropped in silence.
+      notify(`FirstMate could not take ${event.keys}: ${event.reason}.`);
+    } else if (event.kind === 'unknown') {
+      console.error(`firstmate: the Shortcut helper said something unknown: ${event.line}`);
+    }
+  }
+
+  /** Hold exactly the keys the Host reports: ask for new ones, give back old ones. */
+  const holdShortcuts = (shortcuts: Shortcuts): void => {
+    if (hotkeys === undefined || shortcuts.kind === 'untold') return;
+    bound = new Map(shortcuts.shortcuts.map((shortcut) => [shortcut.chord.keys, shortcut]));
+    const change = reconcile(askedFor, shortcuts);
+    for (const keys of change.release) {
+      askedFor.delete(keys);
+      hotkeys.send(releaseCommand(keys));
+      if (keys === popupKeys) hidePopup();
+    }
+    for (const chord of change.register) {
+      askedFor.add(chord.keys);
+      hotkeys.send(registerCommand(chord));
+    }
+  };
+
+  // Alt+F4 on the Popup puts it away, like every other way out of it.
+  popup.on('close', (event) => {
+    event.preventDefault();
+    hidePopup();
   });
 
   let quit: () => void = () => {};
@@ -298,6 +454,8 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
       tray.setMenu(menu(view));
     }
 
+    holdShortcuts(pulse.shortcuts);
+
     if (pulse.runtime === undefined) return;
     if (pulse.runtime.port === run.port && pulse.runtime.token === run.token) return;
 
@@ -307,8 +465,10 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     content.loadUrl(open === undefined ? indexAddress(run) : pluginAddress(run, open));
   });
 
-  shown = { window, strip, content, context, tray };
+  shown = { window, strip, content, context, tray, popup, popupView, hotkeys };
   content.loadUrl(indexAddress(run));
+  // The first beat is a few seconds away, and a Shortcut should work sooner.
+  void askForShortcuts(run).then(holdShortcuts);
   app.run();
 
   const unnamed = await naming;
@@ -321,6 +481,8 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   await ending;
 
   stopWatching();
+  // Closing the helper's input releases every key it holds.
+  hotkeys?.stop();
   shown = undefined;
   try {
     app.exit();
