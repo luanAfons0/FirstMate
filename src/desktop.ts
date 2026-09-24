@@ -75,10 +75,11 @@ const STRIP = 44;
 
 /**
  * The Popup's size, in logical pixels. It is one size for every Shortcut: a
- * small form, not a program.
+ * small form, not a program. It is big enough for a form that edits what it
+ * picks from a list, and still small next to a laptop's screen.
  */
-const POPUP_WIDTH = 520;
-const POPUP_HEIGHT = 420;
+const POPUP_WIDTH = 680;
+const POPUP_HEIGHT = 540;
 
 /**
  * How long a Popup that lost focus waits before it looks again. Focus moving
