@@ -175,14 +175,43 @@ the Host changes it
 ([ADR-0012](docs/adr/0012-the-host-keeps-one-setting.md)). Nothing scans the
 Shelf — a directory sitting there is not a Plugin until `add` registers it.
 
+## Shortcuts
+
+A Shortcut is a key combination for all of Windows, bound to one address of one
+Plugin. The Tray holds it, and pressing it opens that address in a Popup: a
+small window with no frame, on top of every other window.
+
+```sh
+node src/cli.ts bind Ctrl+Alt+N daily new.html  # open /p/daily/new.html
+node src/cli.ts bind Ctrl+Alt+D daily           # open the Plugin Page
+node src/cli.ts unbind Ctrl+Alt+N
+node src/cli.ts list                            # the Shortcuts follow the Plugins
+```
+
+The keys are one or more of `Ctrl`, `Alt`, `Shift` and `Win`, and one key: a
+letter, a digit, `F1` to `F24`, or one of `Space`, `Enter`, `Tab`, `Backspace`,
+`Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Up`, `Down`, `Left`
+and `Right`. Letter case and modifier order do not matter: `alt+ctrl+n` is
+`Ctrl+Alt+N`, and that is how it is kept and shown. Keys with no modifier are
+refused, so a plain letter is never taken away from every program.
+
+`bind` refuses a Plugin that is not in the Registry, a path that is absolute or
+leaves the Plugin's address, and keys already bound, naming the Plugin that
+holds them. `unbind` of keys that are not bound fails. `remove` takes the
+Plugin's Shortcuts with it and says which. The Shortcuts are kept in
+`settings.json` beside the Shelf, and they are bound from a terminal and from
+nowhere else: a Plugin Page cannot set one, because any Plugin could then take
+a key in all of Windows
+([ADR-0013](docs/adr/0013-shortcuts-are-bound-from-a-terminal-and-held-by-the-tray.md)).
+
 ## The home directory
 
 - `registry.json` — the Registry: one row per Plugin, holding its Plugin Name,
   the absolute path of its directory, and its Grants.
 - `runtime.json` — the port the Host listened on and the token it minted. It is
   rewritten at every start and removed when the Host stops.
-- `settings.json` — the one setting the Host remembers: the Shelf. It is absent
-  until you choose one.
+- `settings.json` — the two settings the Host remembers: the Shelf and the
+  Shortcuts. It is absent until you choose a Shelf or bind a Shortcut.
 
 ## Addresses
 

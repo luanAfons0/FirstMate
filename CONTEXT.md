@@ -28,6 +28,17 @@ The Windows program that holds FirstMate's notification-area icon and shows the
 Index Page and Plugin Pages in a window of its own.
 _Avoid_: systray, notification icon, menu bar
 
+**Shortcut**:
+A key combination the Tray holds for all of Windows, bound from a terminal to
+one address of one Plugin. Pressing it opens that address in a Popup.
+_Avoid_: hotkey, keybinding, accelerator, bind
+
+**Popup**:
+The small window with no frame that a Shortcut opens, on top of every other
+window. It is not the FirstMate window, and it hides when it loses focus or
+when its page leaves its own address.
+_Avoid_: quick window, overlay, modal, dialog
+
 ### Plugins
 
 **Plugin**:

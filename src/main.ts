@@ -34,13 +34,15 @@ async function main(): Promise<void> {
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),
   });
-  writeRuntimeFile(config.home, { port: host.port, token });
-
   announce(host.port, token, config.home);
   console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);
-  // The Shelf is the one setting the Host remembers, so the Host says which
+  // The Shelf is a setting the Host remembers, so the Host says which
   // one it read. A terminal and the Host that disagree is worth seeing.
   console.log(`FirstMate: the Shelf is ${config.shelf}`);
+
+  // Written last, because the runtime file is how the Tray and every test
+  // know the Host is up. Whoever finds it then finds everything said above.
+  writeRuntimeFile(config.home, { port: host.port, token });
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
