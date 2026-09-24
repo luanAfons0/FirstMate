@@ -219,6 +219,7 @@ a key in all of Windows
 | -------------------- | -------------------------------------------------- |
 | `/`                  | The Index Page: every Plugin, its state, the Shelf. |
 | `/plugins.json`      | The same list, for the Tray. Nothing is written.   |
+| `/shortcuts.json`    | Every Shortcut and the address it opens, for the Tray. Nothing is written. |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
 
