@@ -1,6 +1,6 @@
 /**
- * The Host's HTTP surface: the Index Page, the same list as JSON, every Plugin
- * Page, and nothing else yet.
+ * The Host's HTTP surface: the Index Page, the same list as JSON, the
+ * Shortcuts as JSON, every Plugin Page, and nothing else yet.
  *
  * It binds the loopback address alone, so nothing else on the network reaches
  * it, and it is the one seam this project is tested through.
@@ -11,6 +11,7 @@ import { BIND_ADDRESS } from './config.ts';
 import { indexPage, type PluginView } from './index-page.ts';
 import type { PluginRow } from './registry.ts';
 import { checkRequest, startedByOwnPage } from './security.ts';
+import { shortcutAddress, type Shortcut } from './shortcut.ts';
 import { serveStatic, webRoot } from './static-files.ts';
 import type { PluginState } from './supervisor.ts';
 import type { PluginServer } from './mcp.ts';
@@ -34,6 +35,12 @@ export type HostOptions = {
   readonly stateOf: (name: string) => PluginState;
   /** The Plugin Server of a Plugin, while it is running. */
   readonly serverOf: (name: string) => PluginServer | null;
+  /**
+   * The Shortcuts as the settings file holds them now. They are read on every
+   * request rather than at startup, so that `bind` takes effect with no
+   * restart of the Host or the Tray (ADR-0013).
+   */
+  readonly shortcuts: () => readonly Shortcut[];
 };
 
 /** Where a Plugin Page calls its own Plugin's tools. */
@@ -45,6 +52,14 @@ const RPC_PATH = '/rpc';
  * in HTML and once here (ADR-0007).
  */
 const PLUGINS_PATH = '/plugins.json';
+
+/**
+ * The Shortcuts, for the Tray, which holds them in Windows. It is read-only,
+ * now and later: every Plugin Page shares this origin, so an address that
+ * wrote a Shortcut would let any Plugin take a key in all of Windows
+ * (ADR-0012, ADR-0013).
+ */
+const SHORTCUTS_PATH = '/shortcuts.json';
 
 export type Host = {
   /** The port the Host actually listened on. */
@@ -112,6 +127,20 @@ async function handle(
     sendJson(response, { plugins: pluginViews(plugins, options) }, method === 'HEAD');
     return;
   }
+  if (path === SHORTCUTS_PATH) {
+    if (!readOnly(response, method)) return;
+    let shortcuts: readonly Shortcut[];
+    try {
+      shortcuts = options.shortcuts();
+    } catch (fault: unknown) {
+      // A settings file damaged under a running Host is the operator's to fix,
+      // so the sentence that says how goes back whole.
+      sendText(response, 500, fault instanceof Error ? fault.message : String(fault));
+      return;
+    }
+    sendJson(response, { shortcuts: shortcuts.map(shortcutView) }, method === 'HEAD');
+    return;
+  }
   const address = PLUGIN_PATH.exec(path);
   if (address === null) {
     sendText(response, 404, `Nothing is served at ${path}.`);
@@ -164,6 +193,15 @@ function pluginViews(plugins: Map<string, PluginRow>, options: HostOptions): Plu
     hasPage: existsSync(webRoot(plugin.directory)),
     state: options.stateOf(plugin.name),
   }));
+}
+
+/** One Shortcut, as the Tray needs it: the keys, and the address they open. */
+function shortcutView(shortcut: Shortcut): {
+  readonly keys: string;
+  readonly plugin: string;
+  readonly address: string;
+} {
+  return { keys: shortcut.keys, plugin: shortcut.plugin, address: shortcutAddress(shortcut) };
 }
 
 async function sendPluginPage(

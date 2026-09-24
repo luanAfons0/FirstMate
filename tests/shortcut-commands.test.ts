@@ -134,7 +134,10 @@ test('bind refuses keys already bound, and names the Plugin that holds them', as
   const refused = await firstmate(home, ['bind', 'ALT+CTRL+n', 'page-only']);
 
   assert.equal(refused.code, 1);
-  assert.match(refused.stderr, /Ctrl\+Alt\+N is already bound to both, to open \/p\/both\/new\.html/);
+  assert.match(
+    refused.stderr,
+    /Ctrl\+Alt\+N is already bound to both, to open \/p\/both\/new\.html/,
+  );
   assert.deepEqual((await settings(home)).shortcuts, [
     { keys: 'Ctrl+Alt+N', plugin: 'both', path: 'new.html' },
   ]);

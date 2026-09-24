@@ -10,6 +10,7 @@ import { readConfig } from './config.ts';
 import { startHost } from './host.ts';
 import { readRegistry, registryPath } from './registry.ts';
 import { removeRuntimeFile, runtimePath, writeRuntimeFile } from './runtime.ts';
+import { readSettings } from './settings.ts';
 import { superviseAll, type Supervisor } from './supervisor.ts';
 
 async function main(): Promise<void> {
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
     token,
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),
+    shortcuts: () => readSettings(config.home).shortcuts ?? [],
   });
   announce(host.port, token, config.home);
   console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);

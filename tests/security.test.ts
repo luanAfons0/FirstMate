@@ -184,7 +184,7 @@ test('the Host answers no address that writes the Shelf', async (t) => {
 test('every address but a tool call answers GET and HEAD alone', async (t) => {
   const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
 
-  for (const path of ['/', '/plugins.json', '/p/both/', '/p/both/index.html']) {
+  for (const path of ['/', '/plugins.json', '/shortcuts.json', '/p/both/', '/p/both/index.html']) {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
       const answer = await host.fetch(path, { method });
       assert.equal(answer.status, 405, `${method} ${path}`);

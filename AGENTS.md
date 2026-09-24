@@ -89,7 +89,8 @@ src/         the Host. Every file is one job.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
                    a git URL, and run none of what lands.
-  host.ts          the HTTP surface: /, /p/<name>/…, POST /p/<name>/rpc.
+  host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
+                   /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
   index-page.ts    the Index Page, one file with no assets of its own.
