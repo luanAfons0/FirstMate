@@ -13,8 +13,8 @@
  * Plugin Page, wrapped around it or read out of it (ADR-0008).
  *
  * The Popup is a second window of the same kind, opened by a Shortcut. It is a
- * viewer too: it loads one Plugin address and shows the bytes the Host serves
- * (ADR-0013).
+ * viewer too: it loads one Plugin address, and it hides when its page leaves
+ * that address, which is the only thing a Plugin Page can say to it (ADR-0013).
  */
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -30,9 +30,11 @@ import type {
 import {
   askForShortcuts,
   askTheHost,
+  ESCAPE,
   findTheHost,
   hasDesktop,
   indexAddress,
+  leavesPopup,
   NO_DESKTOP,
   pluginAddress,
   pluginOpenAt,
@@ -77,6 +79,13 @@ const STRIP = 44;
  */
 const POPUP_WIDTH = 520;
 const POPUP_HEIGHT = 420;
+
+/**
+ * How long a Popup that lost focus waits before it looks again. Focus moving
+ * into the Popup's own page is not focus leaving it, and a moment tells the
+ * two apart.
+ */
+const BLUR_GRACE_MS = 120;
 
 /**
  * The mark for each state the Host can be in.
@@ -296,15 +305,25 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   });
   if (mark.running !== undefined) popup.setWindowIcon(mark.running);
 
+  /** The address the Popup was opened on, token and all, while it is shown. */
+  let popupOwn: string | undefined;
   /** The keys that opened the Popup, while it is shown. */
   let popupKeys: string | undefined;
 
+  // A page that leaves its own address is finished. The navigation is refused,
+  // so the Popup never shows a second page, and the Popup hides: the same
+  // "refuse the navigation and act" the strip uses (ADR-0013).
   const popupView = popup.createWebview({
     x: 0,
     y: 0,
     width: POPUP_WIDTH,
     height: POPUP_HEIGHT,
     webContext: context,
+    navigationHandler: (address) => {
+      if (popupOwn === undefined || !leavesPopup(popupOwn, address)) return true;
+      setTimeout(() => hidePopup(), 0);
+      return false;
+    },
   });
 
   /** Every key the helper was asked to hold, held or refused alike. */
@@ -330,22 +349,35 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   const hidePopup = (): void => {
     if (popupKeys === undefined) return;
     popupKeys = undefined;
+    popupOwn = undefined;
     popup.setVisible(false);
     // The page is put away with the Popup, so that the next open loads it
     // fresh and never flashes the last one.
     popupView.loadUrl('about:blank');
+    // Esc is held only while the Popup is shown, and works everywhere else.
+    if (askedFor.delete(ESCAPE.keys)) hotkeys?.send(releaseCommand(ESCAPE.keys));
   };
 
   const showPopup = (keys: string, address: string): void => {
     popupKeys = keys;
-    popupView.loadUrl(popupAddress(run, address));
+    popupOwn = popupAddress(run, address);
+    popupView.loadUrl(popupOwn);
     popup.center();
     popup.setVisible(true);
     popup.focus();
     popupView.focus();
+    if (!askedFor.has(ESCAPE.keys)) {
+      askedFor.add(ESCAPE.keys);
+      hotkeys?.send(registerCommand(ESCAPE));
+    }
   };
 
   const pressed = async (keys: string): Promise<void> => {
+    // Esc, and the Popup's own Shortcut pressed again, put it away.
+    if (keys === ESCAPE.keys || keys === popupKeys) {
+      hidePopup();
+      return;
+    }
     const shortcut = bound.get(keys);
     if (shortcut === undefined) return;
     const says = await askTheHost(run);
@@ -391,6 +423,11 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     }
   };
 
+  popup.on('blur', () => {
+    setTimeout(() => {
+      if (popupKeys !== undefined && !popup.isFocused()) hidePopup();
+    }, BLUR_GRACE_MS);
+  });
   // Alt+F4 on the Popup puts it away, like every other way out of it.
   popup.on('close', (event) => {
     event.preventDefault();
