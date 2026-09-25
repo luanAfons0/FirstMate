@@ -6,12 +6,15 @@
  * is spawned and kept for the life of the Host. A Plugin Server that exits
  * leaves its Plugin Stopped and is never started again: a broken Plugin must
  * stay visible rather than spin in a restart loop behind the operator's back.
+ * It does not go quietly all the same: the Host puts a Notice on the queue, so
+ * that the operator learns of it without opening the Index Page (ADR-0014).
  */
 import { spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { speak, type Answering, type PluginServer } from './mcp.ts';
+import { SEND_NOTICE, type Notices } from './notices.ts';
 import type { PluginRow } from './registry.ts';
 import { openToolBus } from './tool-bus.ts';
 
@@ -49,9 +52,16 @@ export type Waits = {
 export async function superviseAll(
   plugins: readonly PluginRow[],
   waits: Waits,
+  notices: Notices,
 ): Promise<Supervisor> {
   const servers = new Map<string, PluginServer>();
   const shipsNone = new Set<string>();
+  // A Plugin Server the Host stops on its way out is not news, so it sends no
+  // Notice: there is no Host left for a click to open.
+  let stopping = false;
+  const stopped = (name: string, why: string): void => {
+    if (!stopping) notices.fromHost(`${name} is Stopped`, why);
+  };
 
   const stateOf = (name: string): PluginState => {
     if (shipsNone.has(name)) return 'no-plugin-server';
@@ -70,12 +80,14 @@ export async function superviseAll(
 
   await Promise.all(
     plugins.map(async (plugin) => {
-      const server = await startOne(
-        plugin,
-        shipsNone,
-        waits.handshakeMs,
-        bus.answering(plugin.name),
-      );
+      const toolBus = bus.answering(plugin.name);
+      // A Notice is not a Tool Bus call, so it never passes the Grant check:
+      // every Plugin may send one, under the gap between two (ADR-0014).
+      const answering: Answering = (method, params) =>
+        method === SEND_NOTICE
+          ? Promise.resolve(notices.send(plugin.name, params))
+          : toolBus(method, params);
+      const server = await startOne(plugin, shipsNone, waits.handshakeMs, answering, stopped);
       if (server !== null) servers.set(plugin.name, server);
     }),
   );
@@ -84,6 +96,7 @@ export async function superviseAll(
     stateOf,
     serverOf,
     stopAll() {
+      stopping = true;
       for (const server of servers.values()) server.stop();
     },
   };
@@ -94,9 +107,10 @@ async function startOne(
   shipsNone: Set<string>,
   handshakeMs: number,
   answering: Answering,
+  stopped: (name: string, why: string) => void,
 ): Promise<PluginServer | null> {
   const path = join(plugin.directory, SERVER_FILE);
-  const say = onceOnly(plugin.name);
+  const say = onceOnly(plugin.name, stopped);
 
   const found = await stat(path).catch(() => null);
   if (found === null || !found.isFile()) {
@@ -131,8 +145,15 @@ async function startOne(
   try {
     await handshake(server, handshakeMs);
   } catch (cause) {
-    say(cause instanceof Error ? cause.message : String(cause));
-    server.stop();
+    if (server.alive()) {
+      say(cause instanceof Error ? cause.message : String(cause));
+      server.stop();
+    } else {
+      // The pipe broke first, so the process is gone or going. Its exit says
+      // why better than the broken pipe does: "exit 3" is what the operator
+      // can act on. The kill is for a process that closed its end and lives.
+      child.kill('SIGTERM');
+    }
     // A Plugin Server that never finished the handshake is one the Host
     // cannot forward a call to, so the Plugin is Stopped from the start.
     return null;
@@ -157,9 +178,10 @@ async function handshake(server: PluginServer, handshakeMs: number): Promise<voi
         protocolVersion: PROTOCOL_VERSION,
         // MCP keeps what its specification does not name under `experimental`.
         // The Host answers a Plugin Server that speaks on its own account, and
-        // what it carries is the Tool Bus, so it says both here: a Plugin
-        // Server can tell what this Host offers before it asks for anything.
-        capabilities: { experimental: { firstmate: { toolBus: {} } } },
+        // what it carries is the Tool Bus and the Notice, so it says so here: a
+        // Plugin Server can tell what this Host offers before it asks for
+        // anything.
+        capabilities: { experimental: { firstmate: { toolBus: {}, notice: {} } } },
         clientInfo: { name: 'firstmate', version: '1.0.0' },
       },
     },
@@ -169,15 +191,20 @@ async function handshake(server: PluginServer, handshakeMs: number): Promise<voi
 }
 
 /**
- * One Plugin becoming Stopped is one line in the journal, however many ways
- * the Host learns of it. It is news, not a failure of the Host: every other
- * Plugin keeps serving.
+ * One Plugin becoming Stopped is one line in the journal and one Notice,
+ * however many ways the Host learns of it. It is news, not a failure of the
+ * Host: every other Plugin keeps serving.
  */
-function onceOnly(name: string): (why: string) => void {
+function onceOnly(
+  name: string,
+  stopped: (name: string, why: string) => void,
+): (why: string) => void {
   let said = false;
   return (why) => {
     if (said) return;
     said = true;
     console.error(`FirstMate: the Plugin named ${name} is Stopped: ${why}.`);
+    // A reason may already end with a full stop, and a body needs just one.
+    stopped(name, `${why.replace(/\.$/, '')}.`);
   };
 }

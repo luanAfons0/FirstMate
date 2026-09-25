@@ -39,6 +39,12 @@ window. It is not the FirstMate window, and it hides when it loses focus or
 when its page leaves its own address.
 _Avoid_: quick window, overlay, modal, dialog
 
+**Notice**:
+A short message the Tray shows in a Windows pop-up, sent by a Plugin Server or
+by the Host itself. It names who sent it, and a click opens the sender's
+address. It has no severity: good news and bad news are both Notices.
+_Avoid_: notification, warning, alert, toast
+
 ### Plugins
 
 **Plugin**:

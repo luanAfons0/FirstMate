@@ -8,6 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { readConfig } from './config.ts';
 import { startHost } from './host.ts';
+import { openNotices } from './notices.ts';
 import { readRegistry, registryPath } from './registry.ts';
 import { removeRuntimeFile, runtimePath, writeRuntimeFile } from './runtime.ts';
 import { readSettings } from './settings.ts';
@@ -20,11 +21,15 @@ async function main(): Promise<void> {
   // every start, so yesterday's address is worth nothing today.
   const token = randomBytes(32).toString('hex');
 
+  // One queue of Notices for the run. It lives in memory and dies with it.
+  const notices = openNotices(config.noticeMs);
+
   // Every Plugin Server starts before the first request can reach one.
-  const supervisor = await superviseAll(plugins, {
-    handshakeMs: config.handshakeMs,
-    maxCallMs: config.maxCallMs,
-  });
+  const supervisor = await superviseAll(
+    plugins,
+    { handshakeMs: config.handshakeMs, maxCallMs: config.maxCallMs },
+    notices,
+  );
 
   const host = await startHost({
     port: config.port,
@@ -35,6 +40,7 @@ async function main(): Promise<void> {
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),
     shortcuts: () => readSettings(config.home).shortcuts ?? [],
+    notices: (after) => notices.after(after),
   });
   announce(host.port, token, config.home);
   console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);
