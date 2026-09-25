@@ -6,23 +6,23 @@
  * the browser never speaks MCP itself (ADR-0003).
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { JsonRpcMessage, PluginServer } from './mcp.ts';
+import { HOST_ERROR, type JsonRpcMessage, type PluginServer } from './mcp.ts';
+import type { PluginState } from './supervisor.ts';
 
 /** The largest tool call the Host will read. A tool call is not an upload. */
-export const BODY_LIMIT_BYTES = 1_048_576;
+const BODY_LIMIT_BYTES = 1_048_576;
 
 /** JSON-RPC's own numbers, so that a Plugin Page can tell the faults apart. */
 const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
-/** The range JSON-RPC leaves to the application. This one is the Host's. */
-const HOST_ERROR = -32000;
 
+/** Answer one tool call from a Plugin Page with its Plugin Server's answer, or a fault. */
 export async function callTools(
   request: IncomingMessage,
   response: ServerResponse,
   name: string,
   server: PluginServer | null,
-  state: 'running' | 'stopped' | 'no-plugin-server',
+  state: PluginState,
 ): Promise<void> {
   if (state === 'no-plugin-server') {
     // Nothing is wrong here: this Plugin ships a page and no tools.
@@ -38,6 +38,8 @@ export async function callTools(
   try {
     body = await read(request);
   } catch (cause) {
+    // The rest of the body is never read, so this connection is done with.
+    response.setHeader('connection', 'close');
     sendFault(response, 413, null, INVALID_REQUEST, message(cause));
     return;
   }
@@ -73,15 +75,18 @@ function read(request: IncomingMessage): Promise<string> {
   return new Promise((done, fail) => {
     const chunks: Buffer[] = [];
     let size = 0;
-    request.on('data', (chunk: Buffer) => {
+    const take = (chunk: Buffer): void => {
       size += chunk.byteLength;
       if (size > BODY_LIMIT_BYTES) {
+        // The request is left open rather than destroyed, so that the 413
+        // still reaches the caller: a destroyed socket carries no answer.
+        request.removeListener('data', take);
         fail(new Error(`A tool call may not be larger than ${BODY_LIMIT_BYTES} bytes.`));
-        request.destroy();
         return;
       }
       chunks.push(chunk);
-    });
+    };
+    request.on('data', take);
     request.once('end', () => done(Buffer.concat(chunks).toString('utf8')));
     request.once('error', fail);
   });

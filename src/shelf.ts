@@ -22,7 +22,7 @@ import { readSettings } from './settings.ts';
 export const SHELF_VARIABLE = 'FIRSTMATE_SHELF';
 
 /** The Shelf's directory inside the Host's home, until the operator moves it. */
-export const SHELF_DIRECTORY = 'shelf';
+const SHELF_DIRECTORY = 'shelf';
 
 /**
  * The longest a Shelf may be, counted in bytes rather than in characters,
@@ -67,7 +67,9 @@ export function checkShelf(given: string, home: string): string {
     real = realpathSync(wanted);
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`${wanted} does not exist. Create it, then set it as the Shelf.`);
+      throw new Error(`${wanted} does not exist. Create it, then set it as the Shelf.`, {
+        cause,
+      });
     }
     throw new Error(`${wanted} cannot be reached.`, { cause });
   }
@@ -105,7 +107,7 @@ function lexical(given: string): string {
   if (Buffer.byteLength(trimmed) > PATH_LIMIT) {
     throw new Error(`A Shelf is ${PATH_LIMIT} bytes at most, and that path is longer.`);
   }
-  if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
+  if (/\p{Cc}/u.test(trimmed)) {
     throw new Error('A Shelf may not hold a control character.');
   }
   const inside = wslPathOf(trimmed);

@@ -25,6 +25,7 @@ const METHOD_NOT_FOUND = -32601;
 /** The range JSON-RPC leaves to the application. This one is the Host's. */
 export const HOST_ERROR = -32000;
 
+/** One JSON-RPC message, read no further than its fields. */
 export type JsonRpcMessage = Record<string, unknown>;
 
 /**
@@ -34,9 +35,7 @@ export type JsonRpcMessage = Record<string, unknown>;
  * target Plugin's own answer unchanged, so the Host must be able to pass on a
  * shape it did not write and add nothing the caller has to strip off.
  */
-export type Answer =
-  | { readonly result: unknown }
-  | { readonly error: unknown };
+export type Answer = { readonly result: unknown } | { readonly error: unknown };
 
 /**
  * What the Host answers a Plugin Server that asks it for something.
@@ -57,6 +56,7 @@ export function noSuchMethod(method: string): Answer {
 /** A Host that has been given nothing to answer with carries nothing. */
 const CARRIES_NOTHING: Answering = (method) => Promise.resolve(noSuchMethod(method));
 
+/** One running Plugin Server, as the Host speaks to it. */
 export type PluginServer = {
   /** True while the process is alive. */
   alive(): boolean;
@@ -75,6 +75,7 @@ type Pending = {
   readonly timer: NodeJS.Timeout;
 };
 
+/** Open the JSON-RPC connection to a Plugin Server the Host has spawned. */
 export function speak(
   child: ChildProcess,
   name: string,

@@ -6,9 +6,10 @@
 # attestation on its own, which says which workflow, which commit and which
 # repository built the tarball.
 #
-# The types check and the whole suite run before anything is published, so a
-# broken release cannot leave the machine. The tag and the version in
-# package.json have to agree, because a tag that lies is worse than no tag.
+# The whole check (types, lint, layout, dead code, tests) runs before anything
+# is published, so a broken release cannot leave the machine. The tag and the
+# version in package.json have to agree, because a tag that lies is worse than
+# no tag.
 name: Release
 
 on:
@@ -47,9 +48,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run typecheck
-
-      - run: npm test
+      - run: npm run check
 
       # Trusted publishing wants npm 11.5.1 or newer. Node 24 ships a newer one
       # already; this keeps a release from resting on that staying true.

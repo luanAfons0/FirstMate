@@ -62,7 +62,11 @@ test('a request carrying the wrong token is refused', async (t) => {
 
   const wrong = 'f'.repeat(host.token.length);
   const query = await host.raw({ path: `/?token=${wrong}`, anonymous: true });
-  const cookie = await host.raw({ path: '/', anonymous: true, headers: { cookie: cookieFor(wrong) } });
+  const cookie = await host.raw({
+    path: '/',
+    anonymous: true,
+    headers: { cookie: cookieFor(wrong) },
+  });
 
   assert.equal(query.status, 403);
   assert.equal(cookie.status, 403);

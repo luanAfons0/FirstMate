@@ -20,4 +20,5 @@ else
 fi
 
 systemctl --user daemon-reload
-printf 'firstmate: lingering is left as it is. Turn it off with: loginctl disable-linger %s\n' "$USER"
+printf 'firstmate: lingering is left as it is. Turn it off with: loginctl disable-linger %s\n' \
+  "${USER:-$(id -un)}"

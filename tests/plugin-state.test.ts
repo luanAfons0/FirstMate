@@ -41,7 +41,7 @@ test('the Index Page shows each Plugin as Running, Stopped, or shipping no Plugi
   assert.equal(stateOf(page, 'unrunnable'), 'Stopped', 'an mcp that cannot be run is Stopped');
 });
 
-test('Plugin Server output reaches the Host\'s own output', async (t) => {
+test("Plugin Server output reaches the Host's own output", async (t) => {
   const host = await bootHost(t, EVERY_FIXTURE);
   await host.fetch('/');
 
@@ -53,7 +53,7 @@ test('Plugin Server output reaches the Host\'s own output', async (t) => {
   assert.match(output, /the Plugin named quitter is Stopped/, 'and the Host says what it saw');
 });
 
-test('a Plugin Server runs in its own Plugin\'s directory', async (t) => {
+test("a Plugin Server runs in its own Plugin's directory", async (t) => {
   const host = await bootHost(t, EVERY_FIXTURE);
 
   await host.fetch('/');

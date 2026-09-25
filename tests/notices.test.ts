@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import test from 'node:test';
-import { bootHost, type Booted } from './helpers/host.ts';
+import { bootHost, until, type Booted } from './helpers/host.ts';
 
 type Notice = { sequence: number; title: string; body: string; address: string };
 type Listed = { latest: number; notices: Notice[] };
@@ -24,20 +24,6 @@ async function noticesOf(host: Booted, after?: number): Promise<Listed> {
   assert.equal(answer.status, 200);
   assert.match(answer.headers.get('content-type') ?? '', /^application\/json/);
   return (await answer.json()) as Listed;
-}
-
-/**
- * Wait for a line in the Host's output. A Plugin Server's stderr arrives when
- * the Plugin Server writes it, which is not when the Host answered a request.
- */
-async function until(host: Booted, pattern: RegExp): Promise<RegExpExecArray> {
-  const deadline = Date.now() + 15_000;
-  for (;;) {
-    const found = pattern.exec(host.output());
-    if (found !== null) return found;
-    assert.ok(Date.now() < deadline, `the Host never said ${pattern}\n${host.output()}`);
-    await new Promise((done) => setTimeout(done, 20));
-  }
 }
 
 /** Every answer the `notifier` fixture was given, in the order it sent them. */
@@ -61,7 +47,7 @@ test('a Plugin Server sends a Notice and is answered with its own id', async (t)
   assert.equal(said[3], 'accepted');
 });
 
-test('the Notice is listed under the sender\'s name, with the address a click opens', async (t) => {
+test("the Notice is listed under the sender's name, with the address a click opens", async (t) => {
   const host = await bootHost(t, NOTIFIER);
   await until(host, /notifier: sent every notice/);
 
@@ -91,7 +77,7 @@ test('a Notice with no path opens the root of the Plugin Page', async (t) => {
 test('the Tray asks for what came after its cursor, and gets it in order', async (t) => {
   const plugins = ['one', 'two', 'three'].map((name) => ({ name, directory: 'notifier' }));
   const host = await bootHost(t, plugins);
-  await until(host, /(notifier: sent every notice[^]*){3}/);
+  await until(host, /(notifier: sent every notice[\s\S]*){3}/);
 
   const all = await noticesOf(host);
   assert.equal(all.latest, 3);
@@ -114,7 +100,7 @@ test('the Host holds the last 20 Notices, and the oldest go first', async (t) =>
     directory: 'notifier',
   }));
   const host = await bootHost(t, plugins);
-  await until(host, /(notifier: sent every notice[^]*){22}/);
+  await until(host, /(notifier: sent every notice[\s\S]*){22}/);
 
   const listed = await noticesOf(host);
 
@@ -233,11 +219,7 @@ test('each bad Notice is refused with a sentence, and never listed', async (t) =
 });
 
 test('a title and a body at the limit are accepted whole', async (t) => {
-  const host = await bootHost(
-    t,
-    NOTIFIER,
-    sends({ title: 't'.repeat(64), body: 'b'.repeat(200) }),
-  );
+  const host = await bootHost(t, NOTIFIER, sends({ title: 't'.repeat(64), body: 'b'.repeat(200) }));
 
   assert.deepEqual(await answersOf(host, 1), ['accepted']);
   const [notice] = (await noticesOf(host)).notices;
@@ -257,7 +239,7 @@ test('a Plugin may send one Notice every 5 s', async (t) => {
     ),
   );
 
-  await until(host, /(notifier: sent every notice[^]*){2}/);
+  await until(host, /(notifier: sent every notice[\s\S]*){2}/);
   const answers = [...host.output().matchAll(/notifier: notice \d+ answered id \d+: (.+)/g)].map(
     (answer) => answer[1] ?? '',
   );
@@ -272,12 +254,7 @@ test('a Plugin may send one Notice every 5 s', async (t) => {
   }
 
   const titles = (await noticesOf(host)).notices.map((notice) => notice.title).sort();
-  assert.deepEqual(titles, [
-    'notifier: First',
-    'notifier: Later',
-    'other: First',
-    'other: Later',
-  ]);
+  assert.deepEqual(titles, ['notifier: First', 'notifier: Later', 'other: First', 'other: Later']);
 });
 
 test('a Plugin that goes Stopped gets a Notice from the Host', async (t) => {

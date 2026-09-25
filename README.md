@@ -153,6 +153,10 @@ installs FirstMate can run what they installed.
 | `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for the Tray to read. |
 | `FIRSTMATE_SHELF`       | `~/.firstmate/shelf` | The Shelf: where a fetched Plugin lands. |
 
+A `_MS` variable is a whole number of milliseconds, from 1 to 2147483647 (about
+24 days, the longest wait a Node timer holds). The Host refuses to start on any
+other value, and says which.
+
 ## The Shelf
 
 The Shelf is the directory a fetched Plugin lands in. Say where it is, or move

@@ -57,7 +57,7 @@ export type Booted = {
   raw(request: RawRequest): Promise<RawResponse>;
 };
 
-export type RawRequest = {
+type RawRequest = {
   readonly method?: string;
   /** The request target, sent exactly as written. */
   readonly path: string;
@@ -67,7 +67,7 @@ export type RawRequest = {
   readonly anonymous?: boolean;
 };
 
-export type RawResponse = {
+type RawResponse = {
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
@@ -85,6 +85,26 @@ export async function makeHome(t: TestContext): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), 'firstmate-test-'));
   t.after(() => rm(home, { recursive: true, force: true }));
   return home;
+}
+
+/**
+ * Wait for a line in the Host's output. A Plugin Server's stderr arrives when
+ * the Plugin Server writes it, which is not when the Host answered a request.
+ */
+export async function until(
+  host: Booted,
+  pattern: RegExp,
+  timeoutMs = 15_000,
+): Promise<RegExpExecArray> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const found = pattern.exec(host.output());
+    if (found !== null) return found;
+    if (Date.now() > deadline) {
+      throw new Error(`the Host never said ${String(pattern)}\n${host.output()}`);
+    }
+    await new Promise((done) => setTimeout(done, 20));
+  }
 }
 
 /**
@@ -120,8 +140,8 @@ export async function bootHostIn(
   });
 
   let output = '';
-  child.stdout!.setEncoding('utf8').on('data', (chunk: string) => (output += chunk));
-  child.stderr!.setEncoding('utf8').on('data', (chunk: string) => (output += chunk));
+  collectText(child.stdout, (chunk) => (output += chunk));
+  collectText(child.stderr, (chunk) => (output += chunk));
 
   let exited: number | null = null;
   child.once('exit', (code) => (exited = code));
@@ -131,7 +151,11 @@ export async function bootHostIn(
     await once(child);
   });
 
-  const runtime = await waitForRuntimeFile(home, () => exited, () => output);
+  const runtime = await waitForRuntimeFile(
+    home,
+    () => exited,
+    () => output,
+  );
   return {
     port: runtime.port,
     token: runtime.token,
@@ -151,7 +175,7 @@ export async function bootHostIn(
 }
 
 /** The Registry file, as the Host reads it. */
-export async function writeRegistry(home: string, rows: readonly Row[]): Promise<void> {
+async function writeRegistry(home: string, rows: readonly Row[]): Promise<void> {
   const plugins = rows.map((row) => ({
     name: row.name,
     directory: resolve(row.directory.startsWith('/') ? row.directory : fixture(row.directory)),
@@ -211,8 +235,8 @@ export function firstmate(
     });
     let stdout = '';
     let stderr = '';
-    child.stdout!.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
-    child.stderr!.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+    collectText(child.stdout, (chunk) => (stdout += chunk));
+    collectText(child.stderr, (chunk) => (stderr += chunk));
     child.once('error', fail);
     child.once('exit', (code) => done({ code, stdout, stderr }));
   });
@@ -274,4 +298,15 @@ function parseRawResponse(received: string): RawResponse {
 function once(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
   return new Promise((done) => child.once('exit', () => done()));
+}
+
+/**
+ * Read one output stream of a spawned process as text, chunk by chunk.
+ *
+ * `stdio: ['ignore', 'pipe', 'pipe']` guarantees Node gives back a stream, but
+ * the type is still nullable; this fails loudly instead of asserting past it.
+ */
+function collectText(stream: NodeJS.ReadableStream | null, add: (chunk: string) => void): void {
+  if (stream === null) throw new Error('The spawned process has no stream to read output from.');
+  stream.setEncoding('utf8').on('data', (chunk: string) => add(chunk));
 }

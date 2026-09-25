@@ -12,9 +12,14 @@ import test from 'node:test';
 import { bootHost, firstmate, makeHome } from './helpers/host.ts';
 
 test('the Host starts from the command line, and serves what is registered', async (t) => {
-  const host = await bootHost(t, [{ name: 'both', directory: 'both' }], {}, {
-    viaCommandLine: true,
-  });
+  const host = await bootHost(
+    t,
+    [{ name: 'both', directory: 'both' }],
+    {},
+    {
+      viaCommandLine: true,
+    },
+  );
 
   const page = await host.fetch('/');
   assert.equal(page.status, 200, 'the Index Page is served');
@@ -29,9 +34,14 @@ test('the Host starts from the command line, and serves what is registered', asy
 });
 
 test('the same environment variables move it, and its output is unchanged', async (t) => {
-  const host = await bootHost(t, [{ name: 'both', directory: 'both' }], {}, {
-    viaCommandLine: true,
-  });
+  const host = await bootHost(
+    t,
+    [{ name: 'both', directory: 'both' }],
+    {},
+    {
+      viaCommandLine: true,
+    },
+  );
 
   // FIRSTMATE_HOME and FIRSTMATE_PORT are what the seam sets, so a Host that
   // answers here read both of them.

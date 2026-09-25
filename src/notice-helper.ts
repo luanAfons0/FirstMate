@@ -17,8 +17,8 @@
  *
  * It speaks in lines, as the Shortcut helper does (`hotkeys.ts`): one Notice
  * per line in on stdin, and one event per line out on stdout. When stdin
- * closes, it ends. Nothing is ever spliced into the script: the ID and the icon
- * travel in the environment, and each text travels on stdin as base64, or as
+ * closes, it ends. Nothing is ever spliced into the script: the ID, the icon
+ * and how many pop-ups to hold travel in the environment, and each text travels on stdin as base64, or as
  * `-` when it is empty (#45).
  */
 import { spawn } from 'node:child_process';
@@ -83,8 +83,10 @@ function Read-Text([string] $base64) {
   [Security.SecurityElement]::Escape(
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($base64)))
 }
-# Every pop-up shown is held, so that its handlers live as long as it can be
-# clicked: in the corner, and then in the notification centre.
+# The last pop-ups shown are held, so that their handlers live as long as they
+# can be clicked: in the corner, and then in the notification centre. The Tray
+# answers a click for no more than these, so an older one is let go.
+$held = [int] $env:FIRSTMATE_ON_SCREEN
 $shown = New-Object System.Collections.ArrayList
 [FirstMateNotice]::Say('ready')
 while ($null -ne ($line = [Console]::In.ReadLine())) {
@@ -103,6 +105,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
     foreach ($name in 'Activated', 'Dismissed', 'Failed') { Add-Heard $popUp $heard $name }
     $notifier.Show($popUp)
     [void]$shown.Add($popUp)
+    if ($shown.Count -gt $held) { $shown.RemoveAt(0) }
     [FirstMateNotice]::Say('shown ' + $parts[1])
   } catch {
     $why = $_.Exception.Message -replace '\\s+', ' '
@@ -110,6 +113,12 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
   }
 }
 `;
+
+/**
+ * How many shown Notices a click is still answered for. The helper holds this
+ * many pop-ups and the Tray remembers this many, and both let the older go.
+ */
+export const ON_SCREEN = 20;
 
 /** The running helper: a way to show one Notice, and a way to end it. */
 export type NoticeHelper = {
@@ -158,7 +167,12 @@ export function startNoticeHelper(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],
     {
-      env: { ...process.env, FIRSTMATE_IDENTITY: IDENTITY, FIRSTMATE_ICON: fileURLToPath(icon) },
+      env: {
+        ...process.env,
+        FIRSTMATE_IDENTITY: IDENTITY,
+        FIRSTMATE_ICON: fileURLToPath(icon),
+        FIRSTMATE_ON_SCREEN: String(ON_SCREEN),
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     },

@@ -34,8 +34,7 @@ function packedFiles(): Promise<readonly string[]> {
     child.once('exit', (code) => {
       if (code !== 0) return fail(new Error(`npm pack exited ${code}\n${stderr}`));
       const reported = JSON.parse(stdout) as
-        | { files: { path: string }[] }[]
-        | { files: { path: string }[] };
+        { files: { path: string }[] }[] | { files: { path: string }[] };
       const one = Array.isArray(reported) ? reported[0] : reported;
       done((one?.files ?? []).map((file) => file.path));
     });

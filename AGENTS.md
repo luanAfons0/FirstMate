@@ -24,6 +24,10 @@ Run every command from the repository root.
 | `node --test`                        | Every test. This is the whole test suite.       |
 | `node --test tests/security.test.ts` | One test file, while you work on it.            |
 | `npm install && npx tsc --noEmit`    | Check the types. `npm run typecheck` is the same. |
+| `npm run lint`                       | Lint with Biome. Warnings fail too.             |
+| `npm run format`                     | Format with Prettier. `format:check` only looks. |
+| `npm run knip`                       | Find unused files, exports and dependencies.    |
+| `npm run check`                      | All of the above, then every test. CI runs it.  |
 | `npm run build`                      | Compile into `dist/`. Packing does this; you do not. |
 | `node src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node src/cli.ts start`              | The same Host, from the command line.           |
@@ -49,7 +53,8 @@ fetched Plugin lands in). Tests use all six. The Shelf is the one setting that d
 from the environment alone: the variable beats the settings file, which beats
 the default (ADR-0012).
 
-`npm test` and `npm run typecheck` must both pass before you call work done.
+`npm run check` must pass before you call work done: types, lint, format,
+knip and every test.
 
 ## Tech stack
 
@@ -60,6 +65,8 @@ the default (ADR-0012).
 - **TypeScript 5.8**, `strict`, `noUncheckedIndexedAccess`,
   `erasableSyntaxOnly`. `typescript` is a dev dependency and is used only to
   check the types.
+- **Biome, Prettier and knip**, as dev dependencies, for the lint, the layout
+  and the dead code. None of them runs in the Host or ships in the package.
 - **One runtime dependency, and the Host uses none of it.** The Host speaks MCP
   over stdio with about 140 lines of its own JSON-RPC (`src/mcp.ts`) rather than
   take a dependency. Keep it that way. The desktop program draws its window with
@@ -166,8 +173,13 @@ What that shows, and what every file follows:
 - `readonly` on every field of an exported type. Data in, data out.
 - Node built-ins carry the `node:` prefix. Local imports carry the `.ts`
   extension, because Node runs the TypeScript directly.
-- Single quotes, semicolons, two-space indent, lines under 100 columns. There
-  is no formatter config; match the file you are in.
+- Single quotes, semicolons, two-space indent, lines under 100 columns.
+  Prettier owns the layout (`.prettierrc.json`); run `npm run format` and do
+  not argue with it. Markdown is left alone: prose line breaks are chosen by
+  hand.
+- Biome (`biome.json`) lints. `biome/no-class.grit` refuses a class. Suppress
+  a rule only where the code is right and the rule is wrong, with
+  `// biome-ignore lint/<group>/<rule>: <why>`.
 - Errors are sentences a person can act on:
   `` `The Registry at ${path} needs a "plugins" array.` ``. Fail loudly and
   early; say nothing when nothing is wrong.
@@ -205,7 +217,7 @@ and drives it over HTTP, exactly as a browser does.
 - Read `CONTEXT.md` and the ADRs of the area first, and use their words.
 - Keep tests black-box, over HTTP, through `tests/helpers/host.ts`.
 - Update `README.md` when you change a command, an address or a variable.
-- Leave `npm test` and `npm run typecheck` green.
+- Leave `npm run check` green.
 
 ⚠️ **Ask first**
 

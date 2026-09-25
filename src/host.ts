@@ -21,6 +21,7 @@ import { callTools } from './tool-call.ts';
 /** Every Plugin address starts here: /p/<name>/. */
 const PLUGIN_PATH = /^\/p\/([^/]+)(\/.*)?$/;
 
+/** Everything the Host is started with: the Registry, the token, and what the Supervisor knows. */
 export type HostOptions = {
   /** The port to listen on. Zero asks the system for a free one. */
   readonly port: number;
@@ -71,12 +72,14 @@ const SHORTCUTS_PATH = '/shortcuts.json';
  */
 const NOTICES_PATH = '/notices.json';
 
+/** A Host that is listening, and the way to stop it. */
 export type Host = {
   /** The port the Host actually listened on. */
   readonly port: number;
   close(): Promise<void>;
 };
 
+/** Listen on loopback and answer every request that passes the security check. */
 export async function startHost(options: HostOptions): Promise<Host> {
   const plugins = new Map(options.plugins.map((plugin) => [plugin.name, plugin]));
   // The security check names this Host by the port it answers on, which is
@@ -114,9 +117,7 @@ async function handle(
     return;
   }
   if (admission.kind === 'admit') {
-    response
-      .writeHead(303, { 'set-cookie': admission.cookie, location: admission.location })
-      .end();
+    response.writeHead(303, { 'set-cookie': admission.cookie, location: admission.location }).end();
     return;
   }
 
@@ -288,7 +289,7 @@ function sendJson(response: ServerResponse, value: unknown, headOnly: boolean): 
   response.end(headOnly ? undefined : body);
 }
 
-export function sendText(response: ServerResponse, status: number, text: string): void {
+function sendText(response: ServerResponse, status: number, text: string): void {
   const body = Buffer.from(`${text}\n`, 'utf8');
   response.writeHead(status, {
     'content-type': 'text/plain; charset=utf-8',

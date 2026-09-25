@@ -9,8 +9,9 @@
  *
  * The window is told its own identity and where its icon is, and Windows then
  * draws the button from that. There is no way to reach the shell's property
- * store from Node, so FirstMate asks PowerShell to do it; the helper that
- * holds the Shortcuts (`hotkeys.ts`) is the only other thing it asks of it.
+ * store from Node, so FirstMate asks PowerShell to do it, as it does for the
+ * helpers that hold the Shortcuts (`hotkeys.ts`) and show the Notices
+ * (`notice-helper.ts`).
  * Every value travels in the environment rather than spliced into the script,
  * so no value is ever read as code (#45).
  */
@@ -110,7 +111,9 @@ if ($code -ne 0) { throw ('0x{0:X8}' -f $code) }
  * caller is free to carry on.
  */
 export function nameTheWindow(handle: bigint, icon: URL): Promise<string | undefined> {
-  if (process.platform !== 'win32') return Promise.resolve('Windows draws this button, and this is not Windows.');
+  if (process.platform !== 'win32') {
+    return Promise.resolve('Windows draws this button, and this is not Windows.');
+  }
   return new Promise((done) => {
     execFile(
       'powershell.exe',
@@ -126,8 +129,8 @@ export function nameTheWindow(handle: bigint, icon: URL): Promise<string | undef
         windowsHide: true,
       },
       (fault, _stdout, stderr) => {
-        if (fault === null) return done(undefined);
-        done(stderr.trim() === '' ? fault.message : stderr.trim());
+        if (fault === null) done(undefined);
+        else done(stderr.trim() === '' ? fault.message : stderr.trim());
       },
     );
   });

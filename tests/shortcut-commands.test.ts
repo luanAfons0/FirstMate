@@ -185,7 +185,7 @@ test('list prints the Shortcuts after the Plugins', async (t) => {
   );
 });
 
-test('remove takes the Plugin\'s Shortcuts with it, and says which', async (t) => {
+test("remove takes the Plugin's Shortcuts with it, and says which", async (t) => {
   const home = await homeWithBoth(t);
   await firstmate(home, ['add', 'page-only', fixture('page-only')]);
   await firstmate(home, ['bind', 'Ctrl+Alt+N', 'both', 'new.html']);

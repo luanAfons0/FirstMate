@@ -19,7 +19,7 @@
 export const SCHEME = 'firstmate:';
 
 /** The address the control asks for. The program refuses it and acts instead. */
-export const PLUGIN_LIST = `${SCHEME}plugin-list`;
+const PLUGIN_LIST = `${SCHEME}plugin-list`;
 
 /** What the strip says is open when the content view is on the Index Page. */
 export const THE_PLUGIN_LIST = 'the Plugin list';

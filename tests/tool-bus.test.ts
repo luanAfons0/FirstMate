@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import test from 'node:test';
-import { bootHost, type Booted } from './helpers/host.ts';
+import { bootHost, until, type Booted } from './helpers/host.ts';
 
 type Said = {
   readonly id: unknown;
@@ -57,7 +57,10 @@ test("a Plugin with a Grant can list the other Plugin's tools", async (t) => {
 
   const said = await ask(host, 'asker', 'catalogue', { plugin: 'server-only' });
 
-  assert.deepEqual(said.result?.tools?.map((tool) => tool.name), ['ping']);
+  assert.deepEqual(
+    said.result?.tools?.map((tool) => tool.name),
+    ['ping'],
+  );
 });
 
 test('a Plugin with no Grant is refused, and the answer names both Plugins', async (t) => {
@@ -158,17 +161,6 @@ const SLOW_PAIR = [
   { name: 'slow', directory: 'slow' },
 ];
 
-/** Wait until the Host's output says this, so that no test guesses at a delay. */
-async function until(host: Booted, said: RegExp): Promise<void> {
-  const deadline = Date.now() + 5_000;
-  while (!said.test(host.output())) {
-    if (Date.now() > deadline) {
-      throw new Error(`The Host never said ${String(said)}.\n${host.output()}`);
-    }
-    await new Promise((done) => setTimeout(done, 20));
-  }
-}
-
 test('a call that asks for a longer wait than it needs is answered, not cut short', async (t) => {
   const host = await bootHost(t, SLOW_PAIR);
 
@@ -264,7 +256,7 @@ test('a late answer nobody is owed is dropped, and the pipe stays clear', async 
   });
   // The answer nobody is owed is written on the same pipe every other call
   // uses. Wait for it rather than guess at it.
-  await until(host, /slow: answered after 600 ms/);
+  await until(host, /slow: answered after 600 ms/, 5_000);
 
   const said = await ask(host, 'asker', 'reach', { plugin: 'slow', tool: 'now' });
 
@@ -272,7 +264,7 @@ test('a late answer nobody is owed is dropped, and the pipe stays clear', async 
   assert.equal(
     said.result?.content?.[0]?.text,
     'slow answered at once',
-    'and nobody was handed somebody else\'s answer',
+    "and nobody was handed somebody else's answer",
   );
 });
 

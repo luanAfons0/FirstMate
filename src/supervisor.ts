@@ -19,11 +19,12 @@ import type { PluginRow } from './registry.ts';
 import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */
-export const SERVER_FILE = 'mcp';
+const SERVER_FILE = 'mcp';
 
 /** The MCP version the Host asks for when it starts a Plugin Server. */
 const PROTOCOL_VERSION = '2025-06-18';
 
+/** What the Host knows about a Plugin's Plugin Server. */
 export type PluginState =
   /** The Plugin Server is up and has answered the handshake. */
   | 'running'
@@ -32,6 +33,7 @@ export type PluginState =
   /** The Plugin ships no Plugin Server at all. */
   | 'no-plugin-server';
 
+/** The Plugin Servers of one run, and the way to stop them all. */
 export type Supervisor = {
   stateOf(name: string): PluginState;
   serverOf(name: string): PluginServer | null;
@@ -49,6 +51,7 @@ export type Waits = {
   readonly maxCallMs: number;
 };
 
+/** Start every Plugin Server in the Registry, and resolve once each has answered or failed. */
 export async function superviseAll(
   plugins: readonly PluginRow[],
   waits: Waits,
@@ -66,11 +69,11 @@ export async function superviseAll(
   const stateOf = (name: string): PluginState => {
     if (shipsNone.has(name)) return 'no-plugin-server';
     const server = servers.get(name);
-    return server !== undefined && server.alive() ? 'running' : 'stopped';
+    return server?.alive() === true ? 'running' : 'stopped';
   };
   const serverOf = (name: string): PluginServer | null => {
     const server = servers.get(name);
-    return server !== undefined && server.alive() ? server : null;
+    return server?.alive() === true ? server : null;
   };
 
   // The Tool Bus is opened over this same map, which is still empty. A call is

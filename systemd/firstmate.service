@@ -23,7 +23,8 @@ StartLimitBurst=3
 [Service]
 Type=simple
 WorkingDirectory=@REPOSITORY@
-ExecStart=@NODE@ @REPOSITORY@/src/main.ts
+# Quoted, so that a path with a space in it is still one argument.
+ExecStart="@NODE@" "@REPOSITORY@/src/main.ts"
 
 # The Host keeps no logs of its own, and neither do its Plugin Servers: their
 # output passes through to the Host's, and the journal takes it (ADR-0005).

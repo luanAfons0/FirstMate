@@ -1,0 +1,10 @@
+// AGENTS.md's code style, said where a machine reads it: plain functions and
+// object literals, no classes.
+language js
+
+or {
+  `class $name { $body }`,
+  `class $name extends $base { $body }`
+} where {
+  register_diagnostic(span=$name, message="Write plain functions, not classes.")
+}

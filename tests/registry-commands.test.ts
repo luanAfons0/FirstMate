@@ -22,9 +22,7 @@ test('a Plugin is added by name and directory, and the Host then serves it', asy
   assert.match(added.stdout, /restart the Host/);
 
   const written = await registry(home);
-  assert.deepEqual(written.plugins, [
-    { name: 'both', directory: fixture('both'), grants: [] },
-  ]);
+  assert.deepEqual(written.plugins, [{ name: 'both', directory: fixture('both'), grants: [] }]);
 
   const host = await bootHostIn(t, home);
   const page = await (await host.fetch('/')).text();
@@ -242,7 +240,9 @@ test('the Registry keeps room for Grants, which v1 never enforces', async (t) =>
 
   // A Grant written by hand today is a Grant the Host will read tomorrow.
   const written = await registry(home);
-  written.plugins[0]!.grants = ['page-only'];
+  const [both] = written.plugins;
+  assert.ok(both, 'the Registry holds a row for "both"');
+  both.grants = ['page-only'];
   await import('node:fs/promises').then((fs) =>
     fs.writeFile(join(home, 'registry.json'), JSON.stringify(written, null, 2)),
   );

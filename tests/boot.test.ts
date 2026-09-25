@@ -57,6 +57,17 @@ test('a ceiling on a call that is not a number stops the Host with a sentence', 
   );
 });
 
+test('a ceiling longer than a timer can hold stops the Host with a sentence', async (t) => {
+  const home = await makeHome(t);
+
+  const said = await firstmate(home, ['start'], { FIRSTMATE_MAX_CALL_MS: '3000000000' });
+
+  // Node would fire a timer this long after one millisecond, so every call
+  // would be cut short at once. Better to refuse the setting than to obey it.
+  assert.equal(said.code, 1);
+  assert.match(said.stderr, /FIRSTMATE_MAX_CALL_MS may be 2147483647 milliseconds at most/);
+});
+
 function ownAddress(): string | null {
   for (const addresses of Object.values(networkInterfaces())) {
     for (const address of addresses ?? []) {
