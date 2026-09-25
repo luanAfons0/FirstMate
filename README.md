@@ -182,10 +182,10 @@ Plugin. The Tray holds it, and pressing it opens that address in a Popup: a
 small window with no frame, on top of every other window.
 
 ```sh
-node src/cli.ts bind Ctrl+Alt+N daily new.html  # open /p/daily/new.html
-node src/cli.ts bind Ctrl+Alt+D daily           # open the Plugin Page
+node src/cli.ts bind Ctrl+Alt+N worklog new.html  # open /p/worklog/new.html
+node src/cli.ts bind Ctrl+Alt+W worklog           # open the Plugin Page
 node src/cli.ts unbind Ctrl+Alt+N
-node src/cli.ts list                            # the Shortcuts follow the Plugins
+node src/cli.ts list                              # the Shortcuts follow the Plugins
 ```
 
 The keys are one or more of `Ctrl`, `Alt`, `Shift` and `Win`, and one key: a
