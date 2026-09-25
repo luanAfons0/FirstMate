@@ -22,6 +22,9 @@ import { readKeys, type KeyChord } from './shortcut.ts';
 /** The command Windows reaches a distribution through. */
 const WSL = 'wsl.exe';
 
+/** The command that hands an address to Windows' own handler for it. */
+const OPENER = 'rundll32.exe';
+
 /** How long one wsl.exe call may take before the program gives up on it. */
 const WSL_TIMEOUT_MS = 10_000;
 
@@ -504,6 +507,48 @@ export function leavesPopup(own: string, address: string): boolean {
     return true;
   }
   return there.origin !== here.origin || there.pathname !== here.pathname;
+}
+
+/** The kinds of address the system browser is given. Nothing else leaves the
+ *  program, so a page cannot make Windows run a file or a protocol handler. */
+const OUTSIDE_PROTOCOLS: ReadonlySet<string> = new Set(['http:', 'https:', 'mailto:']);
+
+/**
+ * Whether an address belongs in the system browser and not in the window.
+ *
+ * The window shows the Host and nothing else. A link to anywhere else, in a
+ * new tab or the same one, is the person going to the web, and the browser
+ * they chose is where the web is: signed in, with its own tabs and history.
+ * The blank page and anything that cannot be read stay in the window, because
+ * they are not the web.
+ */
+export function leavesTheHost(runtime: Runtime, address: string): boolean {
+  let there: URL;
+  try {
+    there = new URL(address);
+  } catch {
+    return false;
+  }
+  if (!OUTSIDE_PROTOCOLS.has(there.protocol)) return false;
+  return there.origin !== `http://127.0.0.1:${runtime.port}`;
+}
+
+/**
+ * Give an address to the system browser.
+ *
+ * url.dll opens it with whatever Windows has for its protocol, which is the
+ * default browser for the web. The address is one argument and never a command
+ * line, so nothing in it is read by a shell.
+ */
+export function openInBrowser(address: string): Promise<string | undefined> {
+  return new Promise((done) => {
+    execFile(
+      OPENER,
+      ['url.dll,FileProtocolHandler', address],
+      { timeout: WSL_TIMEOUT_MS, windowsHide: true },
+      (fault) => done(fault === null ? undefined : fault.message),
+    );
+  });
 }
 
 /**

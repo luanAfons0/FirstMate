@@ -10,7 +10,8 @@
  *
  * The window is a viewer and never a frame. The content view loads the Host's
  * own address and shows the bytes the Host serves; nothing is injected into a
- * Plugin Page, wrapped around it or read out of it (ADR-0008).
+ * Plugin Page, wrapped around it or read out of it (ADR-0008). It shows the
+ * Host and nothing else: a link to anywhere else goes to the system browser.
  *
  * The Popup is a second window of the same kind, opened by a Shortcut. It is a
  * viewer too: it loads one Plugin address, and it hides when its page leaves
@@ -41,8 +42,10 @@ import {
   hasDesktop,
   indexAddress,
   leavesPopup,
+  leavesTheHost,
   NO_DESKTOP,
   noticeAddress,
+  openInBrowser,
   pluginAddress,
   pluginOpenAt,
   popupAddress,
@@ -225,12 +228,20 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   // The content view is made with nothing in it, so that what it is showing is
   // known from its first navigation onwards. Nothing is ever injected into it,
   // wrapped around it or read out of it: the window is a viewer (ADR-0008).
+  // A link off the Host, in a new tab or this one, is refused here and given
+  // to the system browser, the same "refuse the navigation and act" the strip
+  // uses. The page is not touched to do it.
   const content = window.createWebview({
     x: 0,
     y: STRIP,
     width: size.width,
     height: size.height - STRIP,
     webContext: context,
+    navigationHandler: (address) => {
+      if (!leavesTheHost(run, address)) return true;
+      setTimeout(() => toBrowser(address), 0);
+      return false;
+    },
   });
 
   /** What went wrong with the last thing the person asked for, until they do
@@ -351,6 +362,14 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     }
   };
 
+  /** Give a link off the Host to the system browser, and say so if Windows
+   *  would not take it. The address is not said: it may carry anything. */
+  const toBrowser = (address: string): void => {
+    void openInBrowser(address).then((fault) => {
+      if (fault !== undefined) notify(`The system browser would not open that link: ${fault}`);
+    });
+  };
+
   // The Popup is made once, hidden, and shown by a Shortcut. It has no frame,
   // it stays on top, and it asks for no taskbar button.
   const popup = app.createBrowserWindow({
@@ -382,6 +401,11 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     height: POPUP_HEIGHT,
     webContext: context,
     navigationHandler: (address) => {
+      // A link to the web is not the page saying it is finished.
+      if (leavesTheHost(run, address)) {
+        setTimeout(() => toBrowser(address), 0);
+        return false;
+      }
       if (popupOwn === undefined || !leavesPopup(popupOwn, address)) return true;
       setTimeout(() => hidePopup(), 0);
       return false;
