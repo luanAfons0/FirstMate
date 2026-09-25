@@ -176,7 +176,7 @@ export type Plugins =
 export type ShortcutSeen = {
   /** What `RegisterHotKey` needs, read from the keys by the one parser. */
   readonly chord: KeyChord;
-  /** The path on the Host it opens, such as `/p/daily/new.html`. */
+  /** The path on the Host it opens, such as `/p/worklog/new.html`. */
   readonly address: string;
 };
 
