@@ -189,6 +189,28 @@ export type Shortcuts =
   | { readonly kind: 'told'; readonly shortcuts: readonly ShortcutSeen[] }
   | { readonly kind: 'untold' };
 
+/** One Notice, as the Tray holds it: what the pop-up says, and where a click
+ *  goes. */
+export type NoticeSeen = {
+  /** Its place on the Host's queue, in this run of the Host. */
+  readonly sequence: number;
+  /** `<sender>: <title>`, as the Host wrote it. */
+  readonly title: string;
+  readonly body: string;
+  /** The path on the Host a click opens: under `/p/<name>/`, or `/`. */
+  readonly address: string;
+};
+
+/** What the Host said about its Notices, or the fact that it would not say. */
+export type Notices =
+  | {
+      readonly kind: 'told';
+      /** The last sequence number the Host gave out in this run, or zero. */
+      readonly latest: number;
+      readonly notices: readonly NoticeSeen[];
+    }
+  | { readonly kind: 'untold' };
+
 /** What the program knows about the Host at one moment. */
 export type Pulse = {
   /** What the icon shows and the tooltip says. */
@@ -199,6 +221,8 @@ export type Pulse = {
   readonly plugins: Plugins;
   /** Every Shortcut the Host reports, or the fact that it would not report. */
   readonly shortcuts: Shortcuts;
+  /** The Notices sent since the last beat, to show now. Often none. */
+  readonly notices: readonly NoticeSeen[];
 };
 
 /**
@@ -280,6 +304,99 @@ function oneShortcut(row: unknown): readonly ShortcutSeen[] {
 }
 
 /**
+ * The Notices after a sequence number, or the fact that the Host would not say.
+ *
+ * Asked on the same beat as the Plugins and the Shortcuts, so that a Notice
+ * appears within one beat of being sent, with no second connection (ADR-0014).
+ */
+export async function askForNotices(runtime: Runtime, after: number): Promise<Notices> {
+  let said: unknown;
+  try {
+    const url = new URL(address(runtime, '/notices.json'));
+    url.searchParams.set('after', String(after));
+    const answer = await fetch(url, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+    });
+    if (!answer.ok) return { kind: 'untold' };
+    said = await answer.json();
+  } catch {
+    return { kind: 'untold' };
+  }
+  if (typeof said !== 'object' || said === null) return { kind: 'untold' };
+  const { latest, notices } = said as { readonly latest?: unknown; readonly notices?: unknown };
+  if (!isSequence(latest) || !Array.isArray(notices)) return { kind: 'untold' };
+  return { kind: 'told', latest, notices: notices.flatMap(oneNotice) };
+}
+
+/** One row of that answer, or none of it. A click may only ever open an
+ *  address on the Host, so a row that names any other is never shown. */
+function oneNotice(row: unknown): readonly NoticeSeen[] {
+  if (typeof row !== 'object' || row === null) return [];
+  const { sequence, title, body, address: path } = row as {
+    readonly sequence?: unknown;
+    readonly title?: unknown;
+    readonly body?: unknown;
+    readonly address?: unknown;
+  };
+  if (!isSequence(sequence) || typeof title !== 'string' || typeof body !== 'string') return [];
+  if (typeof path !== 'string' || (path !== '/' && !path.startsWith('/p/'))) return [];
+  return [{ sequence, title, body, address: path }];
+}
+
+function isSequence(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Where the Tray stands on the Host's queue: the last sequence number it has
+ * seen, and the run of the Host that number belongs to. Nothing, before the
+ * first read.
+ */
+export type NoticeCursor =
+  | { readonly token: string; readonly sequence: number }
+  | undefined;
+
+/** What one read of the queue means: what to show, and where to stand next. */
+export type NoticesRead = {
+  readonly show: readonly NoticeSeen[];
+  readonly cursor: NoticeCursor;
+};
+
+/**
+ * The number to ask the Host for Notices after.
+ *
+ * A new run of the Host starts its sequence numbers again at one, and its
+ * queue lives in memory, so everything on it is new: it is asked from zero.
+ */
+export function askAfter(cursor: NoticeCursor, runtime: Runtime): number {
+  return cursor === undefined || cursor.token !== runtime.token ? 0 : cursor.sequence;
+}
+
+/**
+ * What a read of the queue means for the Tray.
+ *
+ * The first read shows nothing and only takes the latest number, because a
+ * Tray that starts late must not show old news in a burst (ADR-0014). After
+ * that, each read shows what came after the cursor. A latest number below the
+ * cursor means the Host started again under a run the Tray did not notice, so
+ * the Tray stands on the new latest number and shows nothing it cannot place.
+ * A Host that would not say moves nothing.
+ */
+export function readNotices(
+  cursor: NoticeCursor,
+  runtime: Runtime,
+  said: Notices,
+): NoticesRead {
+  if (said.kind === 'untold') return { show: [], cursor };
+  const here = { token: runtime.token, sequence: said.latest };
+  if (cursor === undefined) return { show: [], cursor: here };
+  const after = askAfter(cursor, runtime);
+  if (said.latest < after) return { show: [], cursor: here };
+  return { show: said.notices.filter((notice) => notice.sequence > after), cursor: here };
+}
+
+/**
  * The keys Windows holds for the Popup while it is shown, and only then, so
  * that Esc works as it always does everywhere else.
  */
@@ -358,6 +475,12 @@ export function popupAddress(runtime: Runtime, path: string): string {
   return url.href;
 }
 
+/** The address a click on a Notice opens in the window, carrying the token
+ *  the same way the Popup's does. */
+export function noticeAddress(runtime: Runtime, notice: NoticeSeen): string {
+  return popupAddress(runtime, notice.address);
+}
+
 /**
  * Whether a navigation leaves a Popup's own address, which is how its page
  * says it is finished (ADR-0013).
@@ -430,6 +553,7 @@ export function watchTheHost(
 ): () => void {
   let held: Runtime | undefined = from;
   let lastRead = Date.now();
+  let cursor: NoticeCursor;
   let beating = false;
   let watching = true;
 
@@ -453,15 +577,20 @@ export function watchTheHost(
           runtime: undefined,
           plugins: { kind: 'untold' },
           shortcuts: { kind: 'untold' },
+          notices: [],
         });
         return;
       }
-      const [plugins, shortcuts] = await Promise.all([
-        askForPlugins(held),
-        askForShortcuts(held),
+      const run = held;
+      const [plugins, shortcuts, notices] = await Promise.all([
+        askForPlugins(run),
+        askForShortcuts(run),
+        askForNotices(run, askAfter(cursor, run)),
       ]);
       if (!watching) return;
-      tell({ state: 'running', runtime: held, plugins, shortcuts });
+      const read = readNotices(cursor, run, notices);
+      cursor = read.cursor;
+      tell({ state: 'running', runtime: run, plugins, shortcuts, notices: read.show });
     } catch (fault: unknown) {
       // One beat may fail. The program may not. An unhandled throw inside a
       // handler is what took the Tray down, and it took the whole application

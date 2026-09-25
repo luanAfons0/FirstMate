@@ -15,10 +15,16 @@
  * The Popup is a second window of the same kind, opened by a Shortcut. It is a
  * viewer too: it loads one Plugin address, and it hides when its page leaves
  * that address, which is the only thing a Plugin Page can say to it (ADR-0013).
+ *
+ * A Notice is shown as a Windows pop-up, and a click on it opens the Notice's
+ * address in the window (ADR-0014). On Windows a helper shows it under
+ * FirstMate's own name (`notice-helper.ts`); elsewhere the webview library
+ * does.
  */
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   BrowserWindow,
   MenuItemOptions,
@@ -36,6 +42,7 @@ import {
   indexAddress,
   leavesPopup,
   NO_DESKTOP,
+  noticeAddress,
   pluginAddress,
   pluginOpenAt,
   popupAddress,
@@ -45,6 +52,7 @@ import {
   releaseCommand,
   restartTheHost,
   watchTheHost,
+  type NoticeSeen,
   type PluginSeen,
   type Plugins,
   type Pulse,
@@ -53,6 +61,7 @@ import {
   type Where,
 } from './desktop-state.ts';
 import { startHotkeys, type Hotkeys } from './hotkeys.ts';
+import { readNoticeEvent, startNoticeHelper, type NoticeHelper } from './notice-helper.ts';
 import { STATE_WORDS } from './index-page.ts';
 import { readLogon, setLogon } from './logon.ts';
 import { nameTheWindow } from './taskbar.ts';
@@ -100,6 +109,15 @@ const MARKS: Readonly<Record<Pulse['state'], URL>> = {
   stopped: new URL('../icons/firstmate-stopped.ico', import.meta.url),
 };
 
+/**
+ * The number the Tray's own pop-ups are shown under. The Host numbers its
+ * Notices from one, so no Notice is ever this, and a click on it opens nothing.
+ */
+const TRAY_SAYS = 0;
+
+/** How many shown Notices a click is still answered for. */
+const ON_SCREEN = 20;
+
 /** What the menu items ask for. A Plugin's item carries its Plugin Name. */
 const OPEN = 'open-firstmate';
 const QUIT = 'quit';
@@ -124,6 +142,7 @@ let shown:
       readonly popup: BrowserWindow;
       readonly popupView: Webview;
       readonly hotkeys: Hotkeys | undefined;
+      readonly noticeHelper: NoticeHelper | undefined;
     }
   | undefined;
 
@@ -260,6 +279,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
       runtime: run,
       plugins: { kind: 'untold' },
       shortcuts: { kind: 'untold' },
+      notices: [],
     }),
     menu: menu({ plugins: { kind: 'untold' }, running: true, logon: readLogon(process.env).on }),
     // A click opens the window, which is the thing wanted nearly every time.
@@ -280,9 +300,18 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     window.setVisible(false);
   });
 
-  /** Say something the operator must know, in a Windows notification. */
+  /**
+   * Say something the operator must know, in a Windows pop-up. It goes through
+   * the Notice helper while that runs, so that it says FirstMate as a Notice
+   * does, and through the webview library when the helper is gone. It is the
+   * Tray speaking about itself and not a Notice, so a click on it opens nothing.
+   */
+  /** The helper that shows Notices on Windows, once it is started below. */
+  let noticeHelper: NoticeHelper | undefined;
+
   const notify = (said: string): void => {
     console.error(`firstmate: ${said}`);
+    if (noticeHelper?.show(TRAY_SAYS, TITLE, said) === true) return;
     try {
       new webview.Notification(TITLE, { body: said });
     } catch {
@@ -424,6 +453,90 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     }
   };
 
+  /**
+   * Open a Notice's address in the window and show the window. A click while
+   * the Host is not there is said, as a Shortcut's press is: a click is never
+   * lost in silence.
+   */
+  const opened = async (notice: NoticeSeen): Promise<void> => {
+    const says = await askTheHost(run);
+    if (says === 'absent') {
+      notify('That Notice opened nothing: the Host is not running.');
+      return;
+    }
+    if (says === 'stale') {
+      notify(
+        'That Notice opened nothing: the Host has just restarted. Click it again in a moment.',
+      );
+      return;
+    }
+    content.loadUrl(noticeAddress(run, notice));
+    window.setVisible(true);
+    window.focus();
+  };
+
+  const clicked = (notice: NoticeSeen): void => {
+    void opened(notice).catch((fault: unknown) => {
+      const said = fault instanceof Error ? fault.message : String(fault);
+      console.error(`firstmate: a click on a Notice went nowhere: ${said}`);
+    });
+  };
+
+  /**
+   * The Notices Windows may still hand back a click for, by sequence number.
+   * Only the last few are kept, as the Host keeps only the last few.
+   */
+  const onScreen = new Map<number, NoticeSeen>();
+
+  noticeHelper =
+    process.platform === 'win32'
+      ? startNoticeHelper(
+          MARKS.running,
+          (line) => {
+            const event = readNoticeEvent(line);
+            if (event.kind === 'clicked') {
+              const notice = onScreen.get(event.sequence);
+              onScreen.delete(event.sequence);
+              if (notice !== undefined) clicked(notice);
+            } else if (event.kind === 'dismissed') {
+              // A pop-up that times out goes on to the notification centre and
+              // can still be clicked there. Only the operator's own dismissal
+              // puts it away for good, and Windows does not say which it was.
+            } else if (event.kind === 'failed') {
+              onScreen.delete(event.sequence);
+              console.error(`firstmate: Windows would not show a Notice: ${event.reason}`);
+            } else if (event.kind === 'unknown') {
+              console.error(`firstmate: the Notice helper said something unknown: ${event.line}`);
+            }
+          },
+          (why) => notify(`Notices stopped showing until FirstMate starts again: ${why}`),
+        )
+      : undefined;
+
+  /**
+   * Show one Notice in a Windows pop-up: through the helper while it runs, and
+   * through the webview library where there is none, or once it has ended.
+   */
+  const showNotice = (notice: NoticeSeen): void => {
+    onScreen.set(notice.sequence, notice);
+    for (const old of onScreen.keys()) {
+      if (onScreen.size <= ON_SCREEN) break;
+      onScreen.delete(old);
+    }
+    if (noticeHelper?.show(notice.sequence, notice.title, notice.body) === true) return;
+    onScreen.delete(notice.sequence);
+    try {
+      const popUp = new webview.Notification(notice.title, {
+        body: notice.body,
+        icon: fileURLToPath(MARKS.running),
+      });
+      popUp.on('click', () => clicked(notice));
+    } catch (fault: unknown) {
+      const said = fault instanceof Error ? fault.message : String(fault);
+      console.error(`firstmate: a Notice could not be shown: ${said}`);
+    }
+  };
+
   popup.on('blur', () => {
     setTimeout(() => {
       if (popupKeys !== undefined && !popup.isFocused()) hidePopup();
@@ -493,6 +606,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     }
 
     holdShortcuts(pulse.shortcuts);
+    for (const notice of pulse.notices) showNotice(notice);
 
     if (pulse.runtime === undefined) return;
     if (pulse.runtime.port === run.port && pulse.runtime.token === run.token) return;
@@ -503,7 +617,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     content.loadUrl(open === undefined ? indexAddress(run) : pluginAddress(run, open));
   });
 
-  shown = { window, strip, content, context, tray, popup, popupView, hotkeys };
+  shown = { window, strip, content, context, tray, popup, popupView, hotkeys, noticeHelper };
   content.loadUrl(indexAddress(run));
   // The first beat is a few seconds away, and a Shortcut should work sooner.
   void askForShortcuts(run).then(holdShortcuts);
@@ -521,6 +635,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   stopWatching();
   // Closing the helper's input releases every key it holds.
   hotkeys?.stop();
+  noticeHelper?.stop();
   shown = undefined;
   try {
     app.exit();

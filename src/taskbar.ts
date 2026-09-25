@@ -17,8 +17,11 @@
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-/** What this program is, to Windows. It names the button and nothing else. */
-const IDENTITY = 'LuanAfonso.FirstMate';
+/**
+ * What this program is, to Windows. It names the button, and the Notices are
+ * sent under it too, so that both say FirstMate.
+ */
+export const IDENTITY = 'LuanAfonso.FirstMate';
 
 /** How long PowerShell has. It is one small thing and the window is already up. */
 const TIMEOUT_MS = 20_000;

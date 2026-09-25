@@ -347,11 +347,19 @@ only while the Popup is shown, and works as always everywhere else.
 The Tray asks Windows for exactly the keys you bound, with `RegisterHotKey`,
 through a small PowerShell helper, and sees no other key. A key another program
 already holds, and a press while the Host is not running, are each said in a
-Windows notification.
+Windows pop-up.
+
+It also shows each Notice a Plugin Server sends, and the Host's own Notice when
+a Plugin goes Stopped, as a Windows pop-up named FirstMate and wearing its mark.
+A click opens the Notice's address in the FirstMate window. A Tray that starts
+late shows no Notice sent before it started
+([ADR-0014](docs/adr/0014-a-notice-travels-on-the-pipe-and-the-poll.md)).
 
 Start at logon is one file, `FirstMate.vbs` in the Startup folder. Turning it
-off deletes exactly that file. Nothing is written to the registry and nothing is
-scheduled.
+off deletes exactly that file, and nothing is scheduled. The one thing the Tray
+writes to the registry is the key that names its pop-ups to Windows,
+`HKCU\Software\Classes\AppUserModelId\LuanAfonso.FirstMate`; it writes it at
+every start, and `windows/uninstall-tray.ps1` removes it.
 
 Install it with `windows/install-tray.ps1`, remove it with
 `windows/uninstall-tray.ps1`; both are in

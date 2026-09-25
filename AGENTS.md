@@ -69,9 +69,10 @@ the default (ADR-0012).
   binary to clone a Plugin: an external tool the command line assumes, not a
   package dependency, and the Host still calls nothing outside Node.
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
-  removing the Windows side, for the logon task, and for the two things the
-  running Tray asks of it: the taskbar button (`src/taskbar.ts`) and the
-  helper that holds the Shortcuts (`src/hotkeys.ts`), **systemd** for the service, **WSL
+  removing the Windows side, for the logon task, and for the three things the
+  running Tray asks of it: the taskbar button (`src/taskbar.ts`), the
+  helper that holds the Shortcuts (`src/hotkeys.ts`) and the helper that shows
+  the Notices (`src/notice-helper.ts`), **systemd** for the service, **WSL
   Debian** for the machine it all runs on (ADR-0007). The Tray itself is
   TypeScript, in `src/desktop*.ts`, and runs on Windows Node.
 
@@ -112,6 +113,8 @@ src/         the Host. Every file is one job.
                    button wears FirstMate's mark and not node.exe's.
   hotkeys.ts       the PowerShell helper that holds the Shortcuts in Windows:
                    one command per line in, one event per line out.
+  notice-helper.ts the PowerShell helper that shows Notices under FirstMate's
+                   own name and mark, and hears a click on one.
 tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
 icons/       the mark, running and stopped. The window wears it; the Tray
              draws with both. Packed with the program.
