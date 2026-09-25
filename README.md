@@ -359,11 +359,13 @@ Start at logon is one file, `FirstMate.vbs` in the Startup folder. Turning it
 off deletes exactly that file, and nothing is scheduled. The one thing the Tray
 writes to the registry is the key that names its pop-ups to Windows,
 `HKCU\Software\Classes\AppUserModelId\LuanAfonso.FirstMate`; it writes it at
-every start, and `windows/uninstall-tray.ps1` removes it.
+every start, and nothing removes it on its own.
 
-Install it with `windows/install-tray.ps1`, remove it with
-`windows/uninstall-tray.ps1`; both are in
-[`docs/deploy.md`](docs/deploy.md).
+Install it with `npm install -g @luan-afonso/firstmate`, then `firstmate
+desktop`; update it by running the same install again; remove it with `npm
+uninstall -g @luan-afonso/firstmate` and the registry key above. The exact
+steps, and how to run this repository's own code instead of the published
+package, are in [`docs/deploy.md`](docs/deploy.md).
 
 A browser still works. The address still opens, and a Plugin Page is still a
 whole page that anything can load. The window is another door, not the only one.
