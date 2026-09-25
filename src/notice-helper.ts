@@ -12,7 +12,8 @@
  * Windows knows the ID from one key under the current user:
  * `HKCU\Software\Classes\AppUserModelId\<ID>`, with the name and the icon. The
  * helper writes that key every time it starts, so the icon follows the program
- * wherever npm puts it, and `windows/uninstall-tray.ps1` removes it.
+ * wherever npm puts it. Nothing removes the key on its own; removing FirstMate
+ * removes it by hand (see `docs/deploy.md`, "Windows: the Tray").
  *
  * It speaks in lines, as the Shortcut helper does (`hotkeys.ts`): one Notice
  * per line in on stdin, and one event per line out on stdout. When stdin

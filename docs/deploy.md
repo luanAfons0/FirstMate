@@ -88,29 +88,56 @@ Get-ScheduledTaskInfo -TaskName 'FirstMate Host'
 ## Windows: the Tray
 
 The Tray is FirstMate's Windows program: a notification-area icon and a window
-of FirstMate's own. It needs Node 24 on Windows. Install it the same way, from
-this repository over `\\wsl.localhost\`:
+of FirstMate's own. It needs Node 24 on Windows.
+
+Install, from Windows PowerShell:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-  \\wsl.localhost\Debian\home\<user>\.first-mate\windows\install-tray.ps1
+npm install -g @luan-afonso/firstmate
+firstmate desktop
 ```
 
-It installs the published package with `npm`, writes one launcher into
-`%LOCALAPPDATA%\FirstMate`, puts a shortcut to it in the Start Menu, and starts
-the program at once. It asks the distribution once where the Host's home
-directory is, so that the program never has to ask again. Add `-FromHere` to
-install the code in this repository instead of the published package.
+`firstmate desktop` works out the distribution and the Host's home directory
+itself, so there is nothing to type beyond that. It asks the distribution once,
+the first time it needs to, and every later run finds the same runtime file on
+its own (see "Open it from Windows" in `README.md`).
 
-The launcher is a script rather than a shortcut because the program is a console
-program, and a console program started from a shortcut flashes a window.
+Turn on start at logon from the icon's own menu, "Start at logon".
+
+Update it the same way:
+
+```powershell
+npm install -g @luan-afonso/firstmate
+```
+
+Quit the Tray first, from the icon's menu. `npm install -g` replaces the whole
+package directory the program runs out of, and a running program holds those
+files open.
+
+Run the code in this repository instead of the published package:
+
+```sh
+# in WSL, inside the repository
+npm pack --pack-destination /tmp
+```
+
+```powershell
+# on Windows, over \\wsl.localhost\
+npm install -g \\wsl.localhost\Debian\tmp\luan-afonso-firstmate-<version>.tgz
+```
 
 Remove it:
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-  \\wsl.localhost\Debian\home\<user>\.first-mate\windows\uninstall-tray.ps1
-```
+1. Turn "Start at logon" off from the icon's menu.
+2. Quit the Tray, from the icon's menu.
+3. `npm uninstall -g @luan-afonso/firstmate`
+4. Remove the registry key the Tray writes so its Windows pop-ups say
+   "FirstMate" and wear its mark (`src/notice-helper.ts`). Nothing removes it
+   on its own:
+
+   ```powershell
+   Remove-Item -LiteralPath 'HKCU:\Software\Classes\AppUserModelId\LuanAfonso.FirstMate' -Recurse -Force
+   ```
 
 What the icon does:
 
@@ -137,9 +164,9 @@ at all is read again no more than every thirty seconds, and `wsl.exe` is asked
 whether the distribution is running before any path into it is touched. Looking
 at FirstMate does not wake WSL.
 
-Start at logon is one file, `FirstMate.vbs` in the Startup folder. The installer
-does not write it; the menu does, and turning the toggle off deletes exactly
-that file. Nothing goes in the registry and nothing is scheduled.
+Start at logon is one file, `FirstMate.vbs` in the Startup folder. The menu
+writes it, and turning the toggle off deletes exactly that file. Nothing goes
+in the registry and nothing is scheduled.
 
 On Windows 11 a new notification-area icon starts hidden: click the chevron
 (`^`) beside the clock and drag the FirstMate icon out to keep it on the
