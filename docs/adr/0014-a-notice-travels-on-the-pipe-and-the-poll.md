@@ -34,6 +34,19 @@ A Notice that is too long, or sent too soon after the last one from the same
 Plugin, is refused with a sentence to the Plugin Server. The Host never cuts it
 short or drops it in silence.
 
+On Windows the Tray shows a Notice through a PowerShell helper of its own, not
+through the webview library's `Notification`. The library sends every pop-up
+under PowerShell's Application User Model ID and ignores the icon, so its
+pop-ups say "Windows PowerShell". The helper sends them under FirstMate's own
+ID, the one the taskbar button carries, and writes the one registry key that
+names that ID to Windows. The webview class stays as the fallback when the
+helper is not there.
+
+A Tray that starts takes the latest sequence number and shows nothing. A Tray
+that sees a new run of the Host, by a new token, asks for every Notice of that
+run: the queue of a new run holds nothing old, and taking its latest number
+would lose the Notices sent before the Tray noticed the restart.
+
 A Plugin sets the title, the body and the click path, and nothing else.
 Buttons would need a way back from the Tray to the Plugin Server, and that is a
 larger design.

@@ -7,7 +7,8 @@
     It removes exactly what install-tray.ps1 wrote: the launcher, the Start
     Menu shortcut, and the package. It also removes the Startup entry the
     program writes for itself, because leaving that behind would start a
-    program that is no longer installed.
+    program that is no longer installed, and the key that names FirstMate's
+    Notices to Windows, which the program writes every time it starts.
 
     It never reaches into the repository, the Registry, or a Plugin directory,
     and it leaves the Host running where it is - the Tray is a door, not the
@@ -100,6 +101,16 @@ if (Test-Path -LiteralPath $data) {
     Write-Output "removed $data"
 } else {
     Write-Output "not present: $data"
+}
+
+# The key that tells Windows a Notice from FirstMate is called FirstMate and
+# wears its mark. The program writes it at every start (src/notice-helper.ts).
+$noticeKey = 'HKCU:\Software\Classes\AppUserModelId\LuanAfonso.FirstMate'
+if (Test-Path -LiteralPath $noticeKey) {
+    Remove-Item -LiteralPath $noticeKey -Recurse -Force
+    Write-Output "removed $noticeKey"
+} else {
+    Write-Output "not present: $noticeKey"
 }
 
 if ($KeepPackage) {
