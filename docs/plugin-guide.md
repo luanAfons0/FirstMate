@@ -200,6 +200,45 @@ Plugin's tools. Both hand you the other Plugin's own answer, unchanged.
 - **A Plugin Page cannot do this.** The Tool Bus is on the pipe, and a
   browser holds no end of it. Your page reaches your Plugin and no other.
 
+## Sending a Notice
+
+Your Plugin Server can ask the Tray to show the operator a Windows pop-up:
+a **Notice**. Write one JSON-RPC request on your stdout, on the same pipe
+([ADR-0014](adr/0014-a-notice-travels-on-the-pipe-and-the-poll.md)):
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"firstmate/notice",
+ "params":{"title":"Build done","body":"All 12 steps passed.","path":"runs/7.html"}}
+```
+
+The Host answers on your stdin with your id and `"result":{}`. That means
+"accepted" and nothing more: the Host promises nothing about delivery.
+
+- **Your name comes first.** The operator sees `<your Plugin Name>: <title>`.
+  You cannot speak as FirstMate or as another Plugin.
+- **A click opens your own address.** `path` is relative to `/p/<name>/`.
+  Leave it out and a click opens your Plugin Page's root.
+- **The limits.** `title` is a string of 1 to 64 characters. `body` is a
+  string of at most 200 characters, and may be empty. `path`, if given, is a
+  string that stays under `/p/<name>/`. You may send one Notice every 5 s.
+- **Every refusal is a sentence**, as a JSON-RPC error: a title or a body
+  that is missing, is not a string or is too long; a path that leaves your
+  address; a Notice sent less than 5 s after your last one. The Host never
+  cuts your text short, and never drops a Notice in silence. A refused
+  Notice is not shown.
+- **Nobody may be watching.** A Notice lives for a minute
+  (`FIRSTMATE_NOTICE_MS`). If no Tray reads it in that time, it is gone. A
+  Tray that starts later does not show it. The Host writes nothing of it to
+  disk.
+- **The handshake tells you it is there.** The `initialize` the Host sends
+  you carries `capabilities.experimental.firstmate.notice`.
+- **A Plugin Page cannot send one.** Give your Plugin Server a tool that
+  sends it, and call that tool from your page.
+
+The Host sends Notices of its own too: when your Plugin goes **Stopped**,
+the operator sees `FirstMate: <name> is Stopped` and why, and a click opens
+the Index Page.
+
 ## The token, which your page never handles
 
 The Host mints a token when it starts and refuses every request that does

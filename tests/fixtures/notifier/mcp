@@ -1,0 +1,76 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that sends Notices. After the handshake it sends each
+// step of NOTIFIER_SENDS in turn, waits for the Host's answer, and says on
+// stderr what came back, so that a test reads the answer off the Host's output.
+//
+// NOTIFIER_SENDS is a JSON array. A step is the params of one firstmate/notice,
+// or {"waitMs": n} to wait before the next one. The Host passes its own
+// environment to every Plugin Server, which is how a test reaches this one.
+// With nothing set, it sends one good Notice.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const say = (text) => process.stderr.write(`notifier: ${text}\n`);
+
+const steps = JSON.parse(
+  process.env.NOTIFIER_SENDS ??
+    JSON.stringify([{ title: 'Build done', body: 'All 12 steps passed.', path: 'runs/7.html' }]),
+);
+
+/** Whoever here is waiting for the Host, by the id it asked with. */
+const owed = new Map();
+
+function ask(id, params) {
+  return new Promise((answered) => {
+    owed.set(id, answered);
+    const message = { jsonrpc: '2.0', id, method: 'firstmate/notice' };
+    // A step of `null` sends no params at all, which is a malformed call too.
+    if (params !== null) message.params = params;
+    reply(message);
+  });
+}
+
+async function send() {
+  let id = 100;
+  for (const step of steps) {
+    if (step !== null && typeof step.waitMs === 'number') {
+      await new Promise((done) => setTimeout(done, step.waitMs));
+      continue;
+    }
+    id += 1;
+    const answer = await ask(id, step);
+    say(`notice ${id} answered id ${answer.id}: ${answer.error?.message ?? 'accepted'}`);
+  }
+  say('sent every notice');
+}
+
+createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.trim() === '') return;
+  const message = JSON.parse(line);
+  if (message.method === undefined) {
+    const answered = owed.get(message.id);
+    if (answered === undefined) return;
+    owed.delete(message.id);
+    answered(message);
+    return;
+  }
+  if (message.id === undefined || message.id === null) return;
+  if (message.method === 'initialize') {
+    reply({
+      jsonrpc: '2.0',
+      id: message.id,
+      result: {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'notifier', version: '1.0.0' },
+      },
+    });
+    void send();
+    return;
+  }
+  reply({
+    jsonrpc: '2.0',
+    id: message.id,
+    error: { code: -32601, message: `no such method: ${message.method}` },
+  });
+});

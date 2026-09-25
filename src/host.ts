@@ -1,6 +1,6 @@
 /**
  * The Host's HTTP surface: the Index Page, the same list as JSON, the
- * Shortcuts as JSON, every Plugin Page, and nothing else yet.
+ * Shortcuts and the Notices as JSON, every Plugin Page, and nothing else yet.
  *
  * It binds the loopback address alone, so nothing else on the network reaches
  * it, and it is the one seam this project is tested through.
@@ -9,6 +9,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { existsSync } from 'node:fs';
 import { BIND_ADDRESS } from './config.ts';
 import { indexPage, type PluginView } from './index-page.ts';
+import type { NoticesAfter } from './notices.ts';
 import type { PluginRow } from './registry.ts';
 import { checkRequest, startedByOwnPage } from './security.ts';
 import { shortcutAddress, type Shortcut } from './shortcut.ts';
@@ -41,6 +42,8 @@ export type HostOptions = {
    * restart of the Host or the Tray (ADR-0013).
    */
   readonly shortcuts: () => readonly Shortcut[];
+  /** The Notices after a sequence number that have not expired (ADR-0014). */
+  readonly notices: (after: number) => NoticesAfter;
 };
 
 /** Where a Plugin Page calls its own Plugin's tools. */
@@ -60,6 +63,13 @@ const PLUGINS_PATH = '/plugins.json';
  * (ADR-0012, ADR-0013).
  */
 const SHORTCUTS_PATH = '/shortcuts.json';
+
+/**
+ * The Notices, for the Tray, which shows them. It is read-only: a Notice comes
+ * from a Plugin Server on its pipe or from the Host, and never from a page,
+ * because every Plugin Page shares this origin (ADR-0009, ADR-0014).
+ */
+const NOTICES_PATH = '/notices.json';
 
 export type Host = {
   /** The port the Host actually listened on. */
@@ -139,6 +149,16 @@ async function handle(
       return;
     }
     sendJson(response, { shortcuts: shortcuts.map(shortcutView) }, method === 'HEAD');
+    return;
+  }
+  if (path === NOTICES_PATH) {
+    if (!readOnly(response, method)) return;
+    const after = readSequence(url.searchParams.get('after'));
+    if (after === null) {
+      sendText(response, 400, 'The "after" of /notices.json must be a whole number from 0 up.');
+      return;
+    }
+    sendJson(response, options.notices(after), method === 'HEAD');
     return;
   }
   const address = PLUGIN_PATH.exec(path);
@@ -233,6 +253,13 @@ async function sendPluginPage(
   } else if (result === 'missing') {
     sendText(response, 404, `The Plugin named ${plugin.name} serves nothing at ${rest}.`);
   }
+}
+
+/** The Tray's cursor. Asking with none is asking from the start of the run. */
+function readSequence(given: string | null): number | null {
+  if (given === null || given === '') return 0;
+  const sequence = Number(given);
+  return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : null;
 }
 
 function decodeName(raw: string): string | null {

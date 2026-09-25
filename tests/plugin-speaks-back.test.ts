@@ -70,6 +70,17 @@ test('the Host declares in the handshake that it answers a Plugin Server', async
   );
 });
 
+test('the Host declares in the handshake that it takes a Notice', async (t) => {
+  const host = await bootHost(t, SPEAKER);
+
+  const said = await until(host, /speaker: the Host offers (.+)/);
+  const offered = JSON.parse(said[1] ?? '{}') as {
+    experimental?: { firstmate?: { notice?: unknown } };
+  };
+
+  assert.deepEqual(offered.experimental?.firstmate?.notice, {}, 'firstmate/notice is there');
+});
+
 test("a Plugin Server's own request number is never read as an answer", async (t) => {
   const host = await bootHost(t, SPEAKER);
 

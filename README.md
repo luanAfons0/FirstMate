@@ -150,6 +150,7 @@ installs FirstMate can run what they installed.
 | `FIRSTMATE_PORT`        | `4747`         | The port. Zero asks the system for a free one.    |
 | `FIRSTMATE_HANDSHAKE_MS`| `10000`        | How long a Plugin Server has to answer the handshake. |
 | `FIRSTMATE_MAX_CALL_MS` | `600000`       | The longest a Tool Bus call may ask the Host to wait. |
+| `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for the Tray to read. |
 | `FIRSTMATE_SHELF`       | `~/.firstmate/shelf` | The Shelf: where a fetched Plugin lands. |
 
 ## The Shelf
@@ -220,6 +221,7 @@ a key in all of Windows
 | `/`                  | The Index Page: every Plugin, its state, the Shelf. |
 | `/plugins.json`      | The same list, for the Tray. Nothing is written.   |
 | `/shortcuts.json`    | Every Shortcut and the address it opens, for the Tray. Nothing is written. |
+| `/notices.json?after=<n>` | The Notices after `n`, for the Tray. Nothing is written. |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
 

@@ -38,13 +38,14 @@ Run every command from the repository root.
 | `scripts/install-service.sh`         | Install and start the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
-Five environment variables move the Host: `FIRSTMATE_HOME` (default
+Six environment variables move the Host: `FIRSTMATE_HOME` (default
 `~/.firstmate`), `FIRSTMATE_PORT` (default `4747`; zero asks the system for a
 free port), `FIRSTMATE_HANDSHAKE_MS` (default `10000`, how long a Plugin
 Server has to answer the handshake), `FIRSTMATE_MAX_CALL_MS` (default
-`600000`, the longest a Tool Bus call may ask the Host to wait) and
-`FIRSTMATE_SHELF` (default `$FIRSTMATE_HOME/shelf`, the Shelf a fetched Plugin
-lands in). Tests use all five. The Shelf is the one setting that does not come
+`600000`, the longest a Tool Bus call may ask the Host to wait),
+`FIRSTMATE_NOTICE_MS` (default `60000`, how long the Host holds a Notice for
+the Tray) and `FIRSTMATE_SHELF` (default `$FIRSTMATE_HOME/shelf`, the Shelf a
+fetched Plugin lands in). Tests use all six. The Shelf is the one setting that does not come
 from the environment alone: the variable beats the settings file, which beats
 the default (ADR-0012).
 
@@ -91,6 +92,7 @@ src/         the Host. Every file is one job.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
                    a git URL, and run none of what lands.
   host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
+                   /notices.json,
                    /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
@@ -99,6 +101,7 @@ src/         the Host. Every file is one job.
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
+  notices.ts       hold the Notices for the Tray, and refuse a bad one.
   desktop-state.ts the part that decides: where the Host is, and whether it is
                    there. Imports nothing native, owns no window.
   desktop.ts       the part that shows: the window, and the one dependency.
