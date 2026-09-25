@@ -19,8 +19,9 @@ import { isPluginName } from './registry.ts';
 import { isPluginPath, normalKeys, type Shortcut } from './shortcut.ts';
 
 /** The settings file, inside the Host's home directory. */
-export const SETTINGS_FILE = 'settings.json';
+const SETTINGS_FILE = 'settings.json';
 
+/** What the settings file holds. */
 export type Settings = {
   /** The Shelf the operator chose, absent until one is chosen. */
   readonly shelf?: string;
@@ -28,7 +29,7 @@ export type Settings = {
   readonly shortcuts?: readonly Shortcut[];
 };
 
-export function settingsPath(home: string): string {
+function settingsPath(home: string): string {
   return join(home, SETTINGS_FILE);
 }
 

@@ -11,7 +11,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
 /** The Registry file, inside the Host's home directory. */
-export const REGISTRY_FILE = 'registry.json';
+const REGISTRY_FILE = 'registry.json';
 
 /**
  * A Plugin Name identifies the Plugin in every address, so it holds only what
@@ -19,6 +19,7 @@ export const REGISTRY_FILE = 'registry.json';
  */
 const PLUGIN_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** One Plugin in the Registry. */
 export type PluginRow = {
   /** The name the Plugin is given when it enters the Registry. */
   readonly name: string;
@@ -31,10 +32,12 @@ export type PluginRow = {
   readonly grants: readonly string[];
 };
 
+/** The path of the Registry file in this home directory. */
 export function registryPath(home: string): string {
   return join(home, REGISTRY_FILE);
 }
 
+/** Whether this is a Plugin Name, and so safe in every address. */
 export function isPluginName(name: string): boolean {
   return PLUGIN_NAME.test(name);
 }
@@ -85,7 +88,16 @@ function parseRegistry(text: string, path: string): PluginRow[] {
   if (!Array.isArray(rows)) {
     throw new Error(`The Registry at ${path} needs a "plugins" array.`);
   }
-  return rows.map((row, index) => parseRow(row, index, path));
+  const plugins = rows.map((row, index) => parseRow(row, index, path));
+  // A Plugin Name is an address, and one address cannot serve two Plugins.
+  const seen = new Set<string>();
+  for (const { name } of plugins) {
+    if (seen.has(name)) {
+      throw new Error(`The Registry at ${path} names ${name} twice. Remove one of the two.`);
+    }
+    seen.add(name);
+  }
+  return plugins;
 }
 
 function parseRow(row: unknown, index: number, path: string): PluginRow {
@@ -95,14 +107,15 @@ function parseRow(row: unknown, index: number, path: string): PluginRow {
   const directory = record?.['directory'];
   const grants = record?.['grants'] ?? [];
   if (typeof name !== 'string' || !isPluginName(name)) {
-    throw new Error(
-      `${where} needs a Plugin Name of lower-case letters, digits and hyphens.`,
-    );
+    throw new Error(`${where} needs a Plugin Name of lower-case letters, digits and hyphens.`);
   }
   if (typeof directory !== 'string' || !isAbsolute(directory)) {
     throw new Error(`${where} needs an absolute directory path.`);
   }
-  if (!Array.isArray(grants) || grants.some((grant) => typeof grant !== 'string')) {
+  if (
+    !Array.isArray(grants) ||
+    grants.some((grant) => typeof grant !== 'string' || !isPluginName(grant))
+  ) {
     throw new Error(`${where} needs its Grants as an array of Plugin Names.`);
   }
   return { name, directory, grants: grants as string[] };

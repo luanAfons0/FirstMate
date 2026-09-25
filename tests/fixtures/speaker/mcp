@@ -48,11 +48,13 @@ async function serve(request) {
       break;
     case 'tools/list':
       result(request.id, {
-        tools: [{
-          name: 'speak-back',
-          description: 'Ask the Host for a method it does not carry.',
-          inputSchema: { type: 'object', properties: {} },
-        }],
+        tools: [
+          {
+            name: 'speak-back',
+            description: 'Ask the Host for a method it does not carry.',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        ],
       });
       break;
     case 'tools/call':

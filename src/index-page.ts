@@ -22,6 +22,7 @@
 
 import type { PluginState } from './supervisor.ts';
 
+/** One Plugin, as the Index Page and the Tray both see it. */
 export type PluginView = {
   /** The Plugin Name, which is also its address. */
   readonly name: string;
@@ -44,6 +45,7 @@ export const STATE_WORDS: Readonly<Record<PluginState, string>> = {
  */
 const FILTER_FROM = 7;
 
+/** The whole Index Page, as one HTML document. */
 export function indexPage(
   plugins: readonly PluginView[],
   registryPath: string,

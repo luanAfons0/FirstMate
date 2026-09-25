@@ -24,8 +24,8 @@
  * in the Shelf and says nothing.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { cp, rename, rm } from 'node:fs/promises';
+import { lstatSync } from 'node:fs';
+import { cp, realpath, rename, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 
 /** A source git can clone: a URL with a scheme, or the scp-like short form. */
@@ -42,13 +42,10 @@ export function isGitUrl(source: string): boolean {
  * give back the directory it landed in. A fetch that fails leaves nothing
  * behind, so a caller can write a Registry row knowing the files are there.
  */
-export async function fetchPlugin(
-  source: string,
-  shelf: string,
-  name: string,
-): Promise<string> {
+export async function fetchPlugin(source: string, shelf: string, name: string): Promise<string> {
   const target = join(shelf, name);
-  if (existsSync(target)) {
+  // lstat, not exists: a symlink there that points nowhere is still in the way.
+  if (lstatSync(target, { throwIfNoEntry: false }) !== undefined) {
     throw new Error(`${target} already exists. Take it away, or give the Plugin another name.`);
   }
 
@@ -66,13 +63,18 @@ export async function fetchPlugin(
 }
 
 async function copyDirectory(source: string, staging: string, shelf: string): Promise<void> {
+  // The source is taken to its real path first. A source that is itself a
+  // symlink would otherwise be copied as a symlink, and the Shelf would hold
+  // a pointer back to the original rather than a copy of it. The Shelf is a
+  // real path already, so both sides of the check below are real.
+  const real = await realpath(source);
   // Copying a directory into something it holds never ends.
-  if (isInside(shelf, source)) {
+  if (isInside(shelf, real)) {
     throw new Error(`The Shelf is inside ${source}, so a Plugin cannot be copied from there.`);
   }
-  // Symlinks are copied as the Plugin wrote them, and nothing is followed out
-  // of the Plugin's own directory.
-  await cp(source, staging, { recursive: true, verbatimSymlinks: true });
+  // Symlinks inside the Plugin are copied as the Plugin wrote them, and
+  // nothing is followed out of the Plugin's own directory.
+  await cp(real, staging, { recursive: true, verbatimSymlinks: true });
 }
 
 /**
@@ -89,7 +91,9 @@ function clone(url: string, staging: string): Promise<void> {
     git.once('error', (cause: NodeJS.ErrnoException) => {
       fail(
         cause.code === 'ENOENT'
-          ? new Error('git is not on the PATH, and a URL needs it. Install git, or give a directory.')
+          ? new Error(
+              'git is not on the PATH, and a URL needs it. Install git, or give a directory.',
+            )
           : new Error(`git could not be run: ${cause.message}`, { cause }),
       );
     });

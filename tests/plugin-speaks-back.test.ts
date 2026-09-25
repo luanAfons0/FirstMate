@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bootHost, type Booted } from './helpers/host.ts';
+import { bootHost, until, type Booted } from './helpers/host.ts';
 
 const SPEAKER = [{ name: 'speaker', directory: 'speaker' }];
 
@@ -21,20 +21,6 @@ function ask(host: Booted, name: string, call: unknown): Promise<Response> {
     },
     body: JSON.stringify(call),
   });
-}
-
-/**
- * Wait for a line in the Host's output. A Plugin Server's stderr arrives when
- * the Plugin Server writes it, which is not when the Host answered a request.
- */
-async function until(host: Booted, pattern: RegExp): Promise<RegExpExecArray> {
-  const deadline = Date.now() + 15_000;
-  for (;;) {
-    const found = pattern.exec(host.output());
-    if (found !== null) return found;
-    assert.ok(Date.now() < deadline, `the Host never said ${pattern}\n${host.output()}`);
-    await new Promise((done) => setTimeout(done, 20));
-  }
 }
 
 test('a Plugin Server that asks the Host is answered on its own stdin', async (t) => {

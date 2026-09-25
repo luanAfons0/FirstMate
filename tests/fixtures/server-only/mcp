@@ -22,11 +22,13 @@ for await (const line of createInterface({ input: process.stdin })) {
       break;
     case 'tools/list':
       result(request.id, {
-        tools: [{
-          name: 'ping',
-          description: 'Answer pong.',
-          inputSchema: { type: 'object', properties: {} },
-        }],
+        tools: [
+          {
+            name: 'ping',
+            description: 'Answer pong.',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        ],
       });
       break;
     case 'tools/call':

@@ -26,9 +26,10 @@ export type Logon = {
 };
 
 /** Where Windows keeps what it runs at logon. */
-export function startupFolder(env: NodeJS.ProcessEnv): string {
+function startupFolder(env: NodeJS.ProcessEnv): string {
   const roaming = env['APPDATA'];
-  const under = roaming === undefined || roaming === '' ? join(homedir(), 'AppData', 'Roaming') : roaming;
+  const under =
+    roaming === undefined || roaming === '' ? join(homedir(), 'AppData', 'Roaming') : roaming;
   return join(under, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
 }
 
@@ -44,7 +45,11 @@ export function readLogon(env: NodeJS.ProcessEnv): Logon {
  * Returns nothing when it worked, and a sentence a person can act on when it
  * did not: a Startup folder that cannot be written to is worth saying out loud.
  */
-export function setLogon(env: NodeJS.ProcessEnv, on: boolean, command: readonly string[]): string | undefined {
+export function setLogon(
+  env: NodeJS.ProcessEnv,
+  on: boolean,
+  command: readonly string[],
+): string | undefined {
   const { path } = readLogon(env);
   try {
     if (!on) {
@@ -84,9 +89,19 @@ shell.Run ${vbsString(line)}, 0, False
 `;
 }
 
-/** One argument of a Windows command line, quoted the way Windows reads it. */
+/**
+ * One argument of a Windows command line, quoted the way Windows reads it.
+ *
+ * Inside quotes, a run of backslashes is literal unless a quote follows it, so
+ * the run before an escaped quote, and the run before the closing quote, is
+ * written twice. Without that, a path that ends in a backslash swallows the
+ * closing quote and the next argument with it. An empty argument is written as
+ * two quotes, or it is no argument at all.
+ */
 function quoted(argument: string): string {
-  return /[\s"]/.test(argument) ? `"${argument.replaceAll('"', '\\"')}"` : argument;
+  if (argument !== '' && !/[\s"]/.test(argument)) return argument;
+  const inside = argument.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1');
+  return `"${inside}"`;
 }
 
 /** One VBScript string literal. A quote inside it is written twice. */
@@ -94,6 +109,7 @@ function vbsString(text: string): string {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
+/** Whether a file is at this path. */
 function exists(path: string): boolean {
   return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
 }

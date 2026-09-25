@@ -47,7 +47,7 @@ test('the Host serves nexus as a Plugin Page, byte for byte', async (t) => {
   const onDisk = await readFile(join(NEXUS, 'web', 'index.html'));
 
   assert.equal(answer.status, 200);
-  assert.deepEqual(served, onDisk, 'the page is nexus\'s own bytes');
+  assert.deepEqual(served, onDisk, "the page is nexus's own bytes");
 
   const assets = assetsOf(onDisk.toString('utf8'));
   assert.ok(assets.length > 0, 'the page asks for something');

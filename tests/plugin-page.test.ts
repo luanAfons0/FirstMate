@@ -10,7 +10,7 @@ const REGISTRY = [
   { name: 'server-only', directory: 'server-only' },
 ];
 
-test('a Plugin Page is served from the Plugin\'s web directory', async (t) => {
+test("a Plugin Page is served from the Plugin's web directory", async (t) => {
   const host = await bootHost(t, REGISTRY);
 
   const answer = await host.fetch('/p/both/');
@@ -19,7 +19,7 @@ test('a Plugin Page is served from the Plugin\'s web directory', async (t) => {
 
   assert.equal(answer.status, 200);
   assert.match(answer.headers.get('content-type') ?? '', /^text\/html/);
-  assert.deepEqual(body, onDisk, 'the bytes are the Plugin\'s own, unmodified');
+  assert.deepEqual(body, onDisk, "the bytes are the Plugin's own, unmodified");
 });
 
 test('every asset under the web directory is served with its own type', async (t) => {

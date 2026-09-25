@@ -9,8 +9,8 @@
 '
 ' It runs only what sits beside it - the first argument is reduced to a file
 ' name in this folder, and must be a .ps1 - and passes the rest through, so the
-' machine-specific values live in the task or the shortcut that calls this shim
-' and in no configuration file.
+' machine-specific values live in the task that calls this shim and in no
+' configuration file.
 
 Option Explicit
 

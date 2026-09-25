@@ -15,11 +15,12 @@ import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 
 /** The cookie the Host admits a browser with. It is host-only and per run. */
-export const COOKIE_NAME = 'firstmate_token';
+const COOKIE_NAME = 'firstmate_token';
 
 /** The query parameter the token arrives on, once. */
 export const TOKEN_PARAMETER = 'token';
 
+/** What a request is checked against: this run's port and this run's token. */
 export type Doorstep = {
   /** The port the Host listened on, which names it in a Host header. */
   readonly port: number;
@@ -27,6 +28,7 @@ export type Doorstep = {
   readonly token: string;
 };
 
+/** What the security check decides about one request. */
 export type Admission =
   /** The request is mine. Answer it. */
   | { readonly kind: 'serve' }
@@ -36,11 +38,8 @@ export type Admission =
   /** The request is not mine. */
   | { readonly kind: 'refuse'; readonly reason: string };
 
-export function checkRequest(
-  request: IncomingMessage,
-  url: URL,
-  doorstep: Doorstep,
-): Admission {
+/** Check the Host header, the Origin, Sec-Fetch-Site, and the token, in that order. */
+export function checkRequest(request: IncomingMessage, url: URL, doorstep: Doorstep): Admission {
   const hostHeader = request.headers.host;
   if (hostHeader === undefined || !hostNames(doorstep.port).has(hostHeader)) {
     return refuse(`the Host header ${hostHeader ?? 'is missing'}`);

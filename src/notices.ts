@@ -17,25 +17,25 @@ import { isPluginPath } from './shortcut.ts';
 export const SEND_NOTICE = 'firstmate/notice';
 
 /** How many Notices the Host holds at once. The oldest go first. */
-export const QUEUE_LIMIT = 20;
+const QUEUE_LIMIT = 20;
 
 /** The longest title a Plugin may give, before the Host puts its name in front. */
-export const TITLE_LIMIT = 64;
+const TITLE_LIMIT = 64;
 
 /** The longest body a Plugin may give. */
-export const BODY_LIMIT = 200;
+const BODY_LIMIT = 200;
 
 /**
  * How long a Plugin waits between two Notices. A Plugin that sends more often
  * would bury the operator's screen in pop-ups, so the Host refuses, and says so.
  */
-export const NOTICE_GAP_MS = 5_000;
+const NOTICE_GAP_MS = 5_000;
 
 /** The name a Host Notice speaks under. No Plugin Name can be it: those are lowercase. */
 const HOST_NAME = 'FirstMate';
 
 /** One Notice, as the Tray reads it. */
-export type Notice = {
+type Notice = {
   /** Its place on the queue. It only goes up while the Host runs. */
   readonly sequence: number;
   /** `<sender>: <title>`, so that the sender is always named first. */
@@ -52,6 +52,7 @@ export type NoticesAfter = {
   readonly notices: readonly Notice[];
 };
 
+/** The queue of Notices for one run of the Host. */
 export type Notices = {
   /** Take a Notice from a Plugin Server, or refuse it with a sentence. */
   send(from: string, params: unknown): Answer;
@@ -128,20 +129,20 @@ function check(from: string, asked: Record<string, unknown>): string | null {
   if (typeof title !== 'string' || title === '') {
     return `A ${SEND_NOTICE} needs a "title": a string of 1 to ${TITLE_LIMIT} characters.`;
   }
-  if ([...title].length > TITLE_LIMIT) {
+  if (characters(title) > TITLE_LIMIT) {
     return (
       `The "title" of a Notice may be ${TITLE_LIMIT} characters long, ` +
-      `and this one is ${[...title].length}.`
+      `and this one is ${characters(title)}.`
     );
   }
   const body = asked['body'];
   if (typeof body !== 'string') {
     return `A ${SEND_NOTICE} needs a "body": a string of at most ${BODY_LIMIT} characters.`;
   }
-  if ([...body].length > BODY_LIMIT) {
+  if (characters(body) > BODY_LIMIT) {
     return (
       `The "body" of a Notice may be ${BODY_LIMIT} characters long, ` +
-      `and this one is ${[...body].length}.`
+      `and this one is ${characters(body)}.`
     );
   }
   const path = asked['path'];
@@ -152,6 +153,15 @@ function check(from: string, asked: Record<string, unknown>): string | null {
     return `The "path" ${JSON.stringify(path)} leaves the address of ${from}, /p/${from}/.`;
   }
   return null;
+}
+
+/**
+ * How long a text is, in code points: a letter outside the Basic Multilingual
+ * Plane counts as one, as a person would count it, and not as the two UTF-16
+ * units `length` would say.
+ */
+function characters(text: string): number {
+  return [...text].length;
 }
 
 /** Every refusal is a sentence the Plugin author can act on. */

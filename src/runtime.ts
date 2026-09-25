@@ -11,6 +11,7 @@ import { join } from 'node:path';
 /** The runtime file, inside the Host's home directory. */
 export const RUNTIME_FILE = 'runtime.json';
 
+/** What the runtime file holds. */
 export type Runtime = {
   /** The port the Host listened on, which is never zero. */
   readonly port: number;
@@ -18,6 +19,7 @@ export type Runtime = {
   readonly token: string;
 };
 
+/** The path of the runtime file in a home directory. */
 export function runtimePath(home: string): string {
   return join(home, RUNTIME_FILE);
 }
@@ -31,6 +33,9 @@ export function writeRuntimeFile(home: string, runtime: Runtime): void {
   mkdirSync(home, { recursive: true, mode: 0o700 });
   const path = runtimePath(home);
   const pending = `${path}.pending`;
+  // A mode is given to a file only when it is created, so a pending file some
+  // earlier run left behind goes first rather than lend the token its mode.
+  rmSync(pending, { force: true });
   writeFileSync(pending, `${JSON.stringify(runtime, null, 2)}\n`, { mode: 0o600 });
   renameSync(pending, path);
 }

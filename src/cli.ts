@@ -21,13 +21,7 @@
 import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
 import { readConfig, type Config } from './config.ts';
-import {
-  isPluginName,
-  readRegistry,
-  registryPath,
-  writeRegistry,
-  type PluginRow,
-} from './registry.ts';
+import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
 import { readSettings, writeSettings, type Settings } from './settings.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 import { checkShelf, defaultShelf, SHELF_VARIABLE, shelfInEnvironment } from './shelf.ts';
@@ -71,10 +65,12 @@ change: systemctl --user restart firstmate`;
 /** What the operator did wrong, as against what went wrong. */
 const USAGE_FAULT = 2;
 
-async function main(argv: readonly string[]): Promise<number> {
+async function main(argv: readonly string[]): Promise<number | undefined> {
   const [command, ...rest] = argv;
-  const config = readConfig();
-  const home = config.home;
+  // Read only by the commands that use it. The Host reads its own, and the
+  // window runs on Windows, where this machine's settings mean nothing; and
+  // --help has to work while an environment variable holds nonsense.
+  const home = (): string => readConfig().home;
 
   switch (command) {
     case 'start':
@@ -82,23 +78,23 @@ async function main(argv: readonly string[]): Promise<number> {
     case 'desktop':
       return desktop(rest);
     case 'add':
-      return add(home, rest);
+      return add(home(), rest);
     case 'remove':
-      return remove(home, rest);
+      return remove(home(), rest);
     case 'list':
-      return list(home, rest);
+      return list(home(), rest);
     case 'grant':
-      return grant(home, rest);
+      return grant(home(), rest);
     case 'revoke':
-      return revoke(home, rest);
+      return revoke(home(), rest);
     case 'shelf':
-      return shelf(config, rest);
+      return shelf(readConfig(), rest);
     case 'install':
-      return install(config, rest);
+      return install(readConfig(), rest);
     case 'bind':
-      return bind(home, rest);
+      return bind(home(), rest);
     case 'unbind':
-      return unbind(home, rest);
+      return unbind(home(), rest);
     case undefined:
     case '-h':
     case '--help':
@@ -118,16 +114,17 @@ async function main(argv: readonly string[]): Promise<number> {
  * what keeps `firstmate start` and `node src/main.ts` the same Host, reading
  * the same environment variables and printing the same output.
  */
-async function start(argv: readonly string[]): Promise<number> {
+async function start(argv: readonly string[]): Promise<number | undefined> {
   if (argv.length > 0) {
     console.error(`firstmate: start takes nothing.\n\n${USAGE}`);
     return USAGE_FAULT;
   }
 
   await import('./main.ts');
-  // The Host is listening and owns the process now. It ends on a signal, and
-  // reports its own fault if it could not start at all.
-  return 0;
+  // The Host owns the process now, and its exit code with it. It ends on a
+  // signal, and sets its own code when it could not start at all, which may
+  // be before or after this line runs; a code set here would overwrite it.
+  return undefined;
 }
 
 /**
@@ -216,7 +213,13 @@ function remove(home: string, argv: readonly string[]): number {
   const shortcuts = settings.shortcuts ?? [];
   const dropped = shortcuts.filter((shortcut) => shortcut.plugin === name);
   if (dropped.length > 0) {
-    writeSettings(home, withShortcuts(settings, shortcuts.filter((s) => s.plugin !== name)));
+    writeSettings(
+      home,
+      withShortcuts(
+        settings,
+        shortcuts.filter((s) => s.plugin !== name),
+      ),
+    );
   }
 
   writeRegistry(home, left);
@@ -410,7 +413,18 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
   const shelf = checkShelf(config.shelf, config.home);
   const directory = await fetchPlugin(source, shelf, name);
 
-  writeRegistry(config.home, [...rows, { name, directory, grants: [] }]);
+  // Read again, because a clone can take minutes, and a row another command
+  // wrote in the meantime must not be lost to the rows read before it.
+  const now = readRegistry(config.home);
+  const late = now.find((row) => row.name === name);
+  if (late !== undefined) {
+    console.error(
+      `firstmate: ${name} was registered at ${late.directory} while it was fetched. ` +
+        `The files are at ${directory}; take them away, or add them under another name.`,
+    );
+    return 1;
+  }
+  writeRegistry(config.home, [...now, { name, directory, grants: [] }]);
   console.log(`firstmate: installed ${name} at ${directory}`);
   console.log('firstmate: restart the Host to pick it up.');
   return 0;
@@ -489,24 +503,35 @@ function unbind(home: string, argv: readonly string[]): number {
     return 1;
   }
 
-  writeSettings(home, withShortcuts(settings, shortcuts.filter((s) => s !== held)));
+  writeSettings(
+    home,
+    withShortcuts(
+      settings,
+      shortcuts.filter((s) => s !== held),
+    ),
+  );
   console.log(`firstmate: unbound ${keys}, which opened ${shortcutAddress(held)}`);
   return 0;
 }
 
 /**
  * The settings with these Shortcuts in them. No Shortcut at all leaves no
- * array behind, so a file that never held one reads as it did before.
+ * array behind, because JSON writes no undefined field, so a file that never
+ * held one reads as it did before.
  */
 function withShortcuts(settings: Settings, shortcuts: readonly Shortcut[]): Settings {
-  const { shortcuts: _old, ...rest } = settings;
-  return shortcuts.length === 0 ? rest : { ...rest, shortcuts };
+  return { ...settings, shortcuts: shortcuts.length === 0 ? undefined : shortcuts };
 }
 
-/** The Plugin Name a source suggests: its last segment, with no git suffix. */
+/**
+ * The Plugin Name a source suggests: its last segment, with no git suffix. In
+ * the short form of a git URL, `git@host:plugin.git`, a colon ends a segment
+ * too.
+ */
 function nameOf(source: string): string {
-  const last = basename(source.replace(/[/\\]+$/, ''));
-  return isGitUrl(source) ? last.replace(/\.git$/, '') : last;
+  const trimmed = source.replace(/[/\\]+$/, '');
+  if (!isGitUrl(trimmed)) return basename(trimmed);
+  return (trimmed.split(/[/\\:]/).pop() ?? '').replace(/\.git$/, '');
 }
 
 function list(home: string, argv: readonly string[]): number {
@@ -528,7 +553,8 @@ function describe(row: PluginRow): string {
 }
 
 try {
-  process.exitCode = await main(process.argv.slice(2));
+  const code = await main(process.argv.slice(2));
+  if (code !== undefined) process.exitCode = code;
 } catch (fault: unknown) {
   console.error(`firstmate: ${fault instanceof Error ? fault.message : String(fault)}`);
   process.exitCode = 1;

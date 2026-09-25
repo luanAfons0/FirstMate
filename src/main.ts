@@ -7,7 +7,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { readConfig } from './config.ts';
-import { startHost } from './host.ts';
+import { startHost, type Host } from './host.ts';
 import { openNotices } from './notices.ts';
 import { readRegistry, registryPath } from './registry.ts';
 import { removeRuntimeFile, runtimePath, writeRuntimeFile } from './runtime.ts';
@@ -31,6 +31,8 @@ async function main(): Promise<void> {
     notices,
   );
 
+  // From here a failure must take the Plugin Servers down with it: their pipes
+  // would otherwise hold a Host that serves nothing up for ever.
   const host = await startHost({
     port: config.port,
     plugins,
@@ -41,20 +43,31 @@ async function main(): Promise<void> {
     serverOf: (name) => supervisor.serverOf(name),
     shortcuts: () => readSettings(config.home).shortcuts ?? [],
     notices: (after) => notices.after(after),
+  }).catch((fault: unknown) => {
+    supervisor.stopAll();
+    throw fault;
   });
-  announce(host.port, token, config.home);
-  console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);
-  // The Shelf is a setting the Host remembers, so the Host says which
-  // one it read. A terminal and the Host that disagree is worth seeing.
-  console.log(`FirstMate: the Shelf is ${config.shelf}`);
+  try {
+    announce(host.port, token, config.home);
+    console.log(`FirstMate: ${plugins.length} Plugin(s) in ${registryPath(config.home)}`);
+    // The Shelf is a setting the Host remembers, so the Host says which
+    // one it read. A terminal and the Host that disagree is worth seeing.
+    console.log(`FirstMate: the Shelf is ${config.shelf}`);
 
-  // Written last, because the runtime file is how the Tray and every test
-  // know the Host is up. Whoever finds it then finds everything said above.
-  writeRuntimeFile(config.home, { port: host.port, token });
+    // Written last, because the runtime file is how the Tray and every test
+    // know the Host is up. Whoever finds it then finds everything said above.
+    writeRuntimeFile(config.home, { port: host.port, token });
+  } catch (fault) {
+    await stop(host, supervisor, config.home);
+    throw fault;
+  }
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
-      void stop(host, supervisor, config.home);
+      stop(host, supervisor, config.home).catch((fault: unknown) => {
+        console.error('FirstMate: the Host did not stop cleanly.', fault);
+        process.exitCode = 1;
+      });
     });
   }
 }
@@ -76,11 +89,7 @@ function announce(port: number, token: string, home: string): void {
   console.log(`FirstMate: the token to open it with is in ${runtimePath(home)}`);
 }
 
-async function stop(
-  host: { close(): Promise<void> },
-  supervisor: Supervisor,
-  home: string,
-): Promise<void> {
+async function stop(host: Host, supervisor: Supervisor, home: string): Promise<void> {
   // The runtime file describes a run. This one is over, so it goes with it.
   removeRuntimeFile(home);
   supervisor.stopAll();

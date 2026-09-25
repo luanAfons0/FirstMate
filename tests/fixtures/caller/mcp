@@ -37,7 +37,7 @@ function handOn(id, answer) {
 const TOOLS = [
   {
     name: 'reach',
-    description: "Call one tool of another Plugin, and say how long it may take.",
+    description: 'Call one tool of another Plugin, and say how long it may take.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -75,12 +75,15 @@ async function called(id, name, given) {
       // was not given at all, so that a test reads the Host's own answer to
       // the number it asked for — including the answer to a number that is
       // not one.
-      handOn(id, await ask('firstmate/tools/call', {
-        plugin: given.plugin,
-        name: given.tool,
-        arguments: given.arguments ?? {},
-        ...(given.timeoutMs === undefined ? {} : { timeoutMs: given.timeoutMs }),
-      }));
+      handOn(
+        id,
+        await ask('firstmate/tools/call', {
+          plugin: given.plugin,
+          name: given.tool,
+          arguments: given.arguments ?? {},
+          ...(given.timeoutMs === undefined ? {} : { timeoutMs: given.timeoutMs }),
+        }),
+      );
       return;
     case 'catalogue':
       handOn(id, await ask('firstmate/tools/list', { plugin: given.plugin }));
@@ -88,11 +91,14 @@ async function called(id, name, given) {
     case 'bounce':
       // Each end sends the call straight back to the other, for ever, unless
       // the Host counts the Plugins the chain has passed through and stops it.
-      handOn(id, await ask('firstmate/tools/call', {
-        plugin: given.there,
-        name: 'bounce',
-        arguments: { there: given.back, back: given.there },
-      }));
+      handOn(
+        id,
+        await ask('firstmate/tools/call', {
+          plugin: given.there,
+          name: 'bounce',
+          arguments: { there: given.back, back: given.there },
+        }),
+      );
       return;
     default:
       reply({ jsonrpc: '2.0', id, error: { code: -32602, message: `no such tool: ${name}` } });

@@ -29,17 +29,18 @@ dependency and is used only to check the types.
 FirstMate has runtime dependencies: none. Keep it that way. If you believe a
 change needs one, open an issue and make the case before you write the code.
 
-## The two commands that must be green
+## The check that must be green
 
 ```sh
 npm ci
-npm run typecheck
-npm test
+npm run check
 ```
 
-Both must pass before you open a pull request. The same two commands run on
-every pull request in the [Check](.github/workflows/check.yml) workflow, so a
-machine says so too, not only you.
+`npm run check` checks the types, lints with Biome, checks the layout with
+Prettier, looks for dead code with knip, and runs every test. It must pass
+before you open a pull request. The same steps run on every pull request in the
+[Check](.github/workflows/check.yml) workflow, so a machine says so too, not
+only you. `npm run format` fixes the layout for you.
 
 Every test boots a real Host against a temporary home directory and drives it
 over HTTP, exactly as a browser does. No test imports a module of the Host: the

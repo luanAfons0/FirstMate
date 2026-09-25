@@ -29,17 +29,17 @@ import type { PluginRow } from './registry.ts';
 import type { PluginState } from './supervisor.ts';
 
 /** The method a Plugin Server calls another Plugin's tool with. */
-export const CALL_TOOL = 'firstmate/tools/call';
+const CALL_TOOL = 'firstmate/tools/call';
 
 /** The method a Plugin Server lists another Plugin's tools with. */
-export const LIST_TOOLS = 'firstmate/tools/list';
+const LIST_TOOLS = 'firstmate/tools/list';
 
 /**
  * How many Plugins one call may pass through. Two Plugins granted to each
  * other can call each other without end, so the Host counts and fails loudly
  * rather than spin. Nothing honest goes this deep.
  */
-export const CHAIN_LIMIT = 8;
+const CHAIN_LIMIT = 8;
 
 /** Where a call can go: the Plugin Servers the Supervisor is holding. */
 export type Reach = {
@@ -47,6 +47,7 @@ export type Reach = {
   serverOf(name: string): PluginServer | null;
 };
 
+/** The Tool Bus, open over one Registry. */
 export type ToolBus = {
   /** What the Host answers the Plugin Server of this one Plugin. */
   answering(from: string): Answering;
@@ -191,9 +192,7 @@ function without(
   params: Record<string, unknown>,
   ...keys: readonly string[]
 ): Record<string, unknown> {
-  const rest = { ...params };
-  for (const key of keys) delete rest[key];
-  return rest;
+  return Object.fromEntries(Object.entries(params).filter(([key]) => !keys.includes(key)));
 }
 
 /** A "timeoutMs" is a whole number of milliseconds above zero, or it is nothing. */

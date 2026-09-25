@@ -156,10 +156,7 @@ export type Hotkeys = {
  * Start the helper. Each line it writes is handed to `heard`; `ended` is told
  * once, with a sentence, if it stops while it is still wanted.
  */
-export function startHotkeys(
-  heard: (line: string) => void,
-  ended: (why: string) => void,
-): Hotkeys {
+export function startHotkeys(heard: (line: string) => void, ended: (why: string) => void): Hotkeys {
   const child = spawn(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],

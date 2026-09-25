@@ -49,6 +49,7 @@ if ($null -eq $distro) {
 $here = Split-Path -Path $PSCommandPath -Parent
 $home_ = Join-Path $env:LOCALAPPDATA 'FirstMate'
 New-Item -ItemType Directory -Path $home_ -Force | Out-Null
+# uninstall-logon-task.ps1 removes these two files by name. Keep the lists the same.
 foreach ($file in 'hold-distribution.ps1', 'firstmate-hidden.vbs') {
     Copy-Item -Path (Join-Path $here $file) -Destination $home_ -Force
 }

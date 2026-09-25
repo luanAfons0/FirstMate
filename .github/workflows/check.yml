@@ -1,4 +1,6 @@
-# The two commands AGENTS.md already names, run by a machine on every change.
+# The checks AGENTS.md already names, run by a machine on every change: the
+# types, the lint, the layout, the dead code and the tests. Each is its own
+# step, so a red run says which one failed.
 #
 # There is no build step, because Node 24 runs the TypeScript directly. There
 # is no matrix either: the Host runs in WSL Debian under systemd (ADR-0007),
@@ -12,7 +14,7 @@ on:
 
 jobs:
   check:
-    name: Types and tests
+    name: Types, lint, layout, dead code and tests
     runs-on: ubuntu-latest
 
     steps:
@@ -26,5 +28,11 @@ jobs:
       - run: npm ci
 
       - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm run format:check
+
+      - run: npm run knip
 
       - run: npm test

@@ -20,19 +20,19 @@ import { readShelf } from './shelf.ts';
 export const HOME_VARIABLE = 'FIRSTMATE_HOME';
 
 /** The environment variable that moves the Host's port. */
-export const PORT_VARIABLE = 'FIRSTMATE_PORT';
+const PORT_VARIABLE = 'FIRSTMATE_PORT';
 
 /** The environment variable that moves the handshake a Plugin Server must answer. */
-export const HANDSHAKE_VARIABLE = 'FIRSTMATE_HANDSHAKE_MS';
+const HANDSHAKE_VARIABLE = 'FIRSTMATE_HANDSHAKE_MS';
 
 /** The environment variable that moves the ceiling on a Tool Bus call. */
-export const MAX_CALL_VARIABLE = 'FIRSTMATE_MAX_CALL_MS';
+const MAX_CALL_VARIABLE = 'FIRSTMATE_MAX_CALL_MS';
 
 /** The environment variable that moves how long the Host holds a Notice. */
-export const NOTICE_VARIABLE = 'FIRSTMATE_NOTICE_MS';
+const NOTICE_VARIABLE = 'FIRSTMATE_NOTICE_MS';
 
 /** The fixed port, so that the address is predictable and can be bookmarked. */
-export const DEFAULT_PORT = 4747;
+const DEFAULT_PORT = 4747;
 
 /**
  * How long a Plugin Server has to answer `initialize` before it is Stopped.
@@ -42,7 +42,7 @@ export const DEFAULT_PORT = 4747;
  * one. It moves for the same reason the port does — proving that a silent
  * Plugin Server ends up Stopped would otherwise cost a test all ten seconds.
  */
-export const DEFAULT_HANDSHAKE_MS = 10_000;
+const DEFAULT_HANDSHAKE_MS = 10_000;
 
 /**
  * The longest the Host will wait for a Plugin Server on a Tool Bus call.
@@ -55,7 +55,7 @@ export const DEFAULT_HANDSHAKE_MS = 10_000;
  * in minutes (ADR-0012 keeps the Shelf in the settings file; this is the other
  * kind of number, which nobody changes).
  */
-export const DEFAULT_MAX_CALL_MS = 600_000;
+const DEFAULT_MAX_CALL_MS = 600_000;
 
 /**
  * How long the Host holds a Notice for the Tray to read.
@@ -64,11 +64,12 @@ export const DEFAULT_MAX_CALL_MS = 600_000;
  * not running never finds old news waiting (ADR-0014). It moves so that a test
  * proves the expiry in milliseconds rather than in a minute.
  */
-export const DEFAULT_NOTICE_MS = 60_000;
+const DEFAULT_NOTICE_MS = 60_000;
 
 /** The one address the Host answers on. Nothing else on the network reaches it. */
 export const BIND_ADDRESS = '127.0.0.1';
 
+/** Everything the Host is moved by: the environment, and the one setting it keeps. */
 export type Config = {
   /** The absolute path of the Host's home directory. */
   readonly home: string;
@@ -84,6 +85,7 @@ export type Config = {
   readonly shelf: string;
 };
 
+/** Read the Config, failing loudly on a variable that holds nonsense. */
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const home = readHome(env);
   return {
@@ -118,6 +120,12 @@ function readPort(env: NodeJS.ProcessEnv): number {
   return port;
 }
 
+/**
+ * The longest wait a timer can hold. Node fires a longer one after a single
+ * millisecond instead, which would turn a generous setting into no wait at all.
+ */
+const LONGEST_TIMER_MS = 2_147_483_647;
+
 function readMilliseconds(env: NodeJS.ProcessEnv, variable: string, fallback: number): number {
   const given = env[variable];
   if (given === undefined || given === '') {
@@ -128,6 +136,12 @@ function readMilliseconds(env: NodeJS.ProcessEnv, variable: string, fallback: nu
     throw new Error(
       `${variable} must be a whole number of milliseconds above zero, ` +
         `not ${JSON.stringify(given)}.`,
+    );
+  }
+  if (ms > LONGEST_TIMER_MS) {
+    throw new Error(
+      `${variable} may be ${LONGEST_TIMER_MS} milliseconds at most, about 24 days, ` +
+        `not ${given}.`,
     );
   }
   return ms;

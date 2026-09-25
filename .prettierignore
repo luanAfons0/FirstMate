@@ -1,0 +1,6 @@
+# Prose is written by hand, and its line breaks are chosen. The formatter
+# owns code and config, not the ADRs and the docs.
+*.md
+
+dist/
+package-lock.json

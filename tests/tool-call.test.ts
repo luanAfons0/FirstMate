@@ -61,8 +61,18 @@ test('two calls on one connection do not see each other', async (t) => {
   const host = await bootHost(t, EVERY_FIXTURE);
 
   const answers = await Promise.all([
-    ask(host, 'both', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo', arguments: { text: 'one' } } }),
-    ask(host, 'both', { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'echo', arguments: { text: 'two' } } }),
+    ask(host, 'both', {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'echo', arguments: { text: 'one' } },
+    }),
+    ask(host, 'both', {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'echo', arguments: { text: 'two' } },
+    }),
   ]);
   const said = (await Promise.all(answers.map((answer) => answer.json()))) as {
     id: number;
@@ -76,7 +86,12 @@ test('two calls on one connection do not see each other', async (t) => {
 test('a Plugin Page may reach only its own Plugin', async (t) => {
   const host = await bootHost(t, EVERY_FIXTURE);
 
-  const answer = await ask(host, 'server-only', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'both');
+  const answer = await ask(
+    host,
+    'server-only',
+    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    'both',
+  );
 
   assert.equal(answer.status, 403);
   assert.match(await answer.text(), /Only the Plugin Page of server-only/);
@@ -122,7 +137,12 @@ test('every security check applies to a tool call', async (t) => {
   const host = await bootHost(t, EVERY_FIXTURE);
   const call = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
 
-  const stranger = await host.raw({ method: 'POST', path: '/p/both/rpc', body: call, anonymous: true });
+  const stranger = await host.raw({
+    method: 'POST',
+    path: '/p/both/rpc',
+    body: call,
+    anonymous: true,
+  });
   assert.equal(stranger.status, 403, 'no token');
 
   const foreign = await host.raw({

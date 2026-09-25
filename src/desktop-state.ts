@@ -41,7 +41,7 @@ const DISTRIBUTION_PREFIX = '\\\\wsl.localhost\\';
  *
  * Asking its port costs nothing, so the icon can be honest every few seconds.
  */
-export const POLL_MS = 5_000;
+const POLL_MS = 5_000;
 
 /**
  * How seldom the runtime file is read when the Host will not answer.
@@ -49,7 +49,7 @@ export const POLL_MS = 5_000;
  * Reading it crosses into the distribution, and a Host that is simply down must
  * not become a running cost.
  */
-export const REREAD_MS = 30_000;
+const REREAD_MS = 30_000;
 
 /** How long the Host has to answer one poll. */
 const POLL_TIMEOUT_MS = 2_000;
@@ -67,6 +67,7 @@ export const NO_DESKTOP =
   'It belongs on Windows, beside the notification area. The Host stays where it ' +
   'is, and the two meet over 127.0.0.1.';
 
+/** Where the Host runs: the distribution, and its home directory in it. */
 export type Where = {
   /** The WSL distribution the Host runs in, for example Debian. */
   readonly distribution: string;
@@ -74,6 +75,7 @@ export type Where = {
   readonly home: string;
 };
 
+/** The run of the Host that was found, or the sentence that says why none was. */
 export type Found =
   /** The Host is running, and this is the run to talk to. */
   | { readonly kind: 'found'; readonly where: Where; readonly runtime: Runtime }
@@ -97,7 +99,7 @@ export function hasDesktop(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): b
  * `/home/luanh/.firstmate` in Debian becomes
  * `\\wsl.localhost\Debian\home\luanh\.firstmate\runtime.json`.
  */
-export function runtimePathIn(where: Where): string {
+function runtimePathIn(where: Where): string {
   const inside = where.home.replaceAll('/', '\\').replace(/\\+$/, '');
   return `${DISTRIBUTION_PREFIX}${where.distribution}${inside}\\${RUNTIME_FILE}`;
 }
@@ -124,6 +126,7 @@ function pluginsAddress(runtime: Runtime): string {
   return address(runtime, '/plugins.json');
 }
 
+/** One address on the Host, with the token on it once. */
 function address(runtime: Runtime, path: string): string {
   const token = encodeURIComponent(runtime.token);
   return `http://127.0.0.1:${runtime.port}${path}?${TOKEN_PARAMETER}=${token}`;
@@ -202,7 +205,7 @@ export type NoticeSeen = {
 };
 
 /** What the Host said about its Notices, or the fact that it would not say. */
-export type Notices =
+type Notices =
   | {
       readonly kind: 'told';
       /** The last sequence number the Host gave out in this run, or zero. */
@@ -232,7 +235,7 @@ export type Pulse = {
  * cannot read a page. It is one loopback GET, the same trip the poll already
  * makes: no wsl.exe call and no file read.
  */
-export async function askForPlugins(runtime: Runtime): Promise<Plugins> {
+async function askForPlugins(runtime: Runtime): Promise<Plugins> {
   let said: unknown;
   try {
     const answer = await fetch(pluginsAddress(runtime), {
@@ -309,7 +312,7 @@ function oneShortcut(row: unknown): readonly ShortcutSeen[] {
  * Asked on the same beat as the Plugins and the Shortcuts, so that a Notice
  * appears within one beat of being sent, with no second connection (ADR-0014).
  */
-export async function askForNotices(runtime: Runtime, after: number): Promise<Notices> {
+async function askForNotices(runtime: Runtime, after: number): Promise<Notices> {
   let said: unknown;
   try {
     const url = new URL(address(runtime, '/notices.json'));
@@ -333,7 +336,12 @@ export async function askForNotices(runtime: Runtime, after: number): Promise<No
  *  address on the Host, so a row that names any other is never shown. */
 function oneNotice(row: unknown): readonly NoticeSeen[] {
   if (typeof row !== 'object' || row === null) return [];
-  const { sequence, title, body, address: path } = row as {
+  const {
+    sequence,
+    title,
+    body,
+    address: path,
+  } = row as {
     readonly sequence?: unknown;
     readonly title?: unknown;
     readonly body?: unknown;
@@ -353,12 +361,10 @@ function isSequence(value: unknown): value is number {
  * seen, and the run of the Host that number belongs to. Nothing, before the
  * first read.
  */
-export type NoticeCursor =
-  | { readonly token: string; readonly sequence: number }
-  | undefined;
+type NoticeCursor = { readonly token: string; readonly sequence: number } | undefined;
 
 /** What one read of the queue means: what to show, and where to stand next. */
-export type NoticesRead = {
+type NoticesRead = {
   readonly show: readonly NoticeSeen[];
   readonly cursor: NoticeCursor;
 };
@@ -369,7 +375,7 @@ export type NoticesRead = {
  * A new run of the Host starts its sequence numbers again at one, and its
  * queue lives in memory, so everything on it is new: it is asked from zero.
  */
-export function askAfter(cursor: NoticeCursor, runtime: Runtime): number {
+function askAfter(cursor: NoticeCursor, runtime: Runtime): number {
   return cursor === undefined || cursor.token !== runtime.token ? 0 : cursor.sequence;
 }
 
@@ -383,11 +389,7 @@ export function askAfter(cursor: NoticeCursor, runtime: Runtime): number {
  * the Tray stands on the new latest number and shows nothing it cannot place.
  * A Host that would not say moves nothing.
  */
-export function readNotices(
-  cursor: NoticeCursor,
-  runtime: Runtime,
-  said: Notices,
-): NoticesRead {
+function readNotices(cursor: NoticeCursor, runtime: Runtime, said: Notices): NoticesRead {
   if (said.kind === 'untold') return { show: [], cursor };
   const here = { token: runtime.token, sequence: said.latest };
   if (cursor === undefined) return { show: [], cursor: here };
@@ -450,6 +452,7 @@ export type HotkeyEvent =
   | { readonly kind: 'refused'; readonly keys: string; readonly reason: string }
   | { readonly kind: 'unknown'; readonly line: string };
 
+/** Read one line the Shortcut helper wrote. */
 export function readHotkeyEvent(line: string): HotkeyEvent {
   const [word = '', keys = '', ...rest] = line.trim().split(' ');
   if (word === 'ready' && keys === '') return { kind: 'ready' };
@@ -534,7 +537,7 @@ export async function askTheHost(runtime: Runtime): Promise<HostSays> {
  * refused. A Host that does not answer at all is read again seldom, because
  * reading it crosses into the distribution.
  */
-export function readAgain(says: HostSays, sinceRead: number): boolean {
+function readAgain(says: HostSays, sinceRead: number): boolean {
   if (says === 'running') return false;
   if (says === 'stale') return true;
   return sinceRead >= REREAD_MS;
@@ -822,7 +825,7 @@ function names(output: string): readonly string[] {
 
 /** What wsl.exe wrote, with the UTF-16 padding of an older one taken out. */
 function plain(output: string): string {
-  return output.replaceAll('\u0000', '').replaceAll('﻿', '');
+  return output.replaceAll('\u0000', '').replaceAll('\uFEFF', '');
 }
 
 function read(env: NodeJS.ProcessEnv, name: string): string | undefined {
@@ -842,5 +845,7 @@ function complain(fault: unknown): void {
   const said = fault instanceof Error ? fault.message : String(fault);
   if (complained.has(said)) return;
   complained.add(said);
-  console.error(`firstmate: a look at the Host went wrong, and the next one will try again: ${said}`);
+  console.error(
+    `firstmate: a look at the Host went wrong, and the next one will try again: ${said}`,
+  );
 }
