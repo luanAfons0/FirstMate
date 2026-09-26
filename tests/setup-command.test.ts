@@ -189,3 +189,52 @@ test('a clone that fails names the Plugin, and the others are still installed', 
     ['worklog', 'nexus'],
   );
 });
+
+test('a Plugin that calls others is offered Grants to every other Plugin', async (t) => {
+  if (!(await hasGit())) {
+    t.skip('this machine has no git to clone with');
+    return;
+  }
+  const env = await officialSources(t);
+  const home = await makeHome(t);
+  const mine = await directory(home, 'mine');
+  await firstmate(home, ['add', 'mine', mine]);
+
+  // Install scheduler and worklog, then let scheduler call mine.
+  const run = await firstmate(home, ['setup'], env, answers('', '1 2', '1', ''));
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stdout, /The Plugins scheduler may call:\n {2} 1\. mine\n {2} 2\. worklog\n/);
+  assert.match(run.stdout, /granted scheduler the right to call mine's tools/);
+  assert.match(run.stdout, / {2}scheduler may call mine\n/);
+  const rows = await registry(home);
+  assert.deepEqual(rows.find((row) => row.name === 'scheduler')?.grants, ['mine']);
+  assert.deepEqual(rows.find((row) => row.name === 'worklog')?.grants, [], 'no Grant for worklog');
+
+  // A second run shows the Grant given, offers the rest, and Enter gives none.
+  const again = await firstmate(home, ['setup'], env, answers('', '', '', ''));
+  assert.equal(again.code, 0, again.stderr);
+  assert.match(again.stdout, / {6}mine \(granted\)\n {2} 1\. worklog\n/);
+  assert.deepEqual((await registry(home)).find((row) => row.name === 'scheduler')?.grants, [
+    'mine',
+  ]);
+});
+
+test('setup never takes a Grant back, and asks nothing of a Plugin that calls none', async (t) => {
+  const home = await makeHome(t);
+  const scheduler = await directory(home, 'scheduler');
+  const worklog = await directory(home, 'worklog');
+  await firstmate(home, ['add', 'scheduler', scheduler]);
+  await firstmate(home, ['add', 'worklog', worklog]);
+  await firstmate(home, ['grant', 'scheduler', 'worklog']);
+
+  const run = await firstmate(home, ['setup'], {}, answers('', '', ''));
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stdout, / {6}worklog \(granted\)\n/);
+  assert.doesNotMatch(run.stdout, /Which may scheduler call/, 'every Grant is given already');
+  assert.doesNotMatch(run.stdout, /The Plugins worklog may call/);
+  assert.deepEqual((await registry(home)).find((row) => row.name === 'scheduler')?.grants, [
+    'worklog',
+  ]);
+});

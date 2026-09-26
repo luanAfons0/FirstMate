@@ -56,6 +56,11 @@ for none. One already in the Registry, under that Plugin Name, is marked
 installed and is not offered. A clone that fails names the Plugin and says why,
 and the others are still fetched.
 
+For each installed Official Plugin that calls other Plugins, such as
+`scheduler`, it asks which Plugins it may call, and gives those Grants. Every
+Plugin in the Registry but the caller is on the list; a Grant already given is
+shown and not offered. `setup` gives Grants and never takes one back.
+
 Each answer is written when it is given, so Ctrl-C keeps the steps that
 finished. `setup` never removes anything, so it is safe to run again. A script
 can pipe the answers in, one per line; when the input ends before every
