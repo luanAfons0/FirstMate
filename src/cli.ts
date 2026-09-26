@@ -7,6 +7,7 @@
  * wherever it already lives.
  *
  *   node src/cli.ts start
+ *   node src/cli.ts setup
  *   node src/cli.ts desktop
  *   node src/cli.ts add <name> <directory>
  *   node src/cli.ts remove <name>
@@ -34,6 +35,7 @@ import { readConfig, type Config } from './config.ts';
 import { OFFICIAL_PLUGINS } from './official-plugins.ts';
 import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
 import { readSettings, writeSettings } from './settings.ts';
+import { setup } from './setup.ts';
 import { shortcutAddress } from './shortcut.ts';
 import { SHELF_VARIABLE } from './shelf.ts';
 
@@ -41,6 +43,7 @@ const OFFICIAL_NAMES = OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ');
 
 const USAGE = `usage:
   firstmate start                    run the Host until it is stopped.
+  firstmate setup                    answer a few questions, and have FirstMate set up.
   firstmate desktop                  open the FirstMate window. Windows only.
   firstmate add <name> <directory>   register a Plugin. The directory is not copied.
   firstmate remove <name>            take a Plugin out of the Registry.
@@ -60,6 +63,10 @@ registers what it put there, under the last segment of the source or under the
 name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.
+
+setup asks where the Shelf is, and each answer is written as it is given, by the
+same code the plain commands use. It never removes anything. Answers can be
+piped in, one per line.
 
 The window works out which distribution holds the Host and where the Host keeps
 its home directory. Say them yourself with --distribution <name> and
@@ -91,6 +98,12 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
       return start(rest);
     case 'desktop':
       return desktop(rest);
+    case 'setup':
+      if (rest.length > 0) {
+        console.error(`firstmate: setup takes nothing. It asks.\n\n${USAGE}`);
+        return USAGE_FAULT;
+      }
+      return setup();
     case 'add':
       return add(home(), rest);
     case 'remove':
