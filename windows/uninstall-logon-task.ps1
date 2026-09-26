@@ -1,8 +1,9 @@
 <#
-    Remove the logon task from Windows. Run it from Windows:
+    Remove the logon task from Windows. Run it from Windows. `firstmate service
+    off` prints the exact command, which is of this form:
 
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-        \\wsl.localhost\<Distro>\<home>\.first-mate\windows\uninstall-logon-task.ps1
+        \\wsl.localhost\<Distro>\<path to FirstMate>\windows\uninstall-logon-task.ps1
 
     It removes exactly what install-logon-task.ps1 wrote: the Task Scheduler
     entry and the two files it copied into the FirstMate Home on Windows. The

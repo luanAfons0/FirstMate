@@ -70,13 +70,27 @@ test('the package holds the desktop program and the icons it draws with', async 
   assert.ok(files.includes('icons/firstmate-stopped.ico'));
 });
 
+test('the package holds the Windows logon task, so an npm install can hold WSL up', async () => {
+  const files = await packedFiles();
+
+  // `firstmate service on` prints the command that runs these from where the
+  // package is, so they have to be there.
+  for (const file of [
+    'install-logon-task.ps1',
+    'uninstall-logon-task.ps1',
+    'hold-distribution.ps1',
+    'firstmate-hidden.vbs',
+  ]) {
+    assert.ok(files.includes(`windows/${file}`), file);
+  }
+});
+
 test('the package holds nothing a stranger has no use for', async () => {
   const files = await packedFiles();
 
   const unwanted: Readonly<Record<string, RegExp>> = {
     'a test': /^tests\//,
     'a fixture': /fixtures\//,
-    'the PowerShell': /\.ps1$|^windows\//,
     'the systemd unit': /^systemd\/|\.service$/,
     'a shell script': /^scripts\/|\.sh$/,
     'the documentation': /^docs\//,

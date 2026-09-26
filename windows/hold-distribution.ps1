@@ -10,7 +10,7 @@
     so it never shows a window. Run it by hand to see what it does:
 
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-        \\wsl.localhost\<Distro>\<home>\.first-mate\windows\hold-distribution.ps1 `
+        \\wsl.localhost\<Distro>\<path to FirstMate>\windows\hold-distribution.ps1 `
         -Distro Debian
 #>
 [CmdletBinding()]

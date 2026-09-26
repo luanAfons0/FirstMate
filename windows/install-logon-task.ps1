@@ -1,9 +1,12 @@
 <#
-    Install the logon task on Windows. Run it once, from Windows, from the
-    FirstMate repository over \\wsl.localhost\:
+    Install the logon task on Windows. Run it once, from Windows, from where
+    FirstMate is inside WSL, over \\wsl.localhost\. `firstmate service on`
+    prints the exact command, which is of this form:
 
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-        \\wsl.localhost\<Distro>\<home>\.first-mate\windows\install-logon-task.ps1
+        \\wsl.localhost\<Distro>\<path to FirstMate>\windows\install-logon-task.ps1
+
+    <path to FirstMate> is a clone, or the directory npm installed the package in.
 
     It writes exactly two places outside the repository:
 
@@ -29,7 +32,7 @@ $TaskName = 'FirstMate Host'
 function Get-Distribution {
     <#
         The WSL distribution, read out of the path this script is running from.
-        `\\wsl.localhost\Debian\home\luanh\.first-mate\windows\...` names it; a
+        `\\wsl.localhost\Debian\home\<user>\...\windows\...` names it; a
         copy on the Windows filesystem does not.
     #>
     param([string] $Path)
@@ -40,9 +43,9 @@ function Get-Distribution {
 
 $distro = Get-Distribution -Path $PSCommandPath
 if ($null -eq $distro) {
-    Write-Error ("Run this from the repository over \\wsl.localhost\, so that it can tell " +
-        "which distribution holds the Host. It is at " +
-        "\\wsl.localhost\<Distro>\<home>\.first-mate\windows\install-logon-task.ps1.")
+    Write-Error ("Run this from inside WSL over \\wsl.localhost\, so that it can tell " +
+        "which distribution holds the Host. Inside WSL, firstmate service on prints " +
+        "the exact command.")
     exit 1
 }
 

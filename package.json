@@ -28,7 +28,8 @@
   },
   "files": [
     "dist",
-    "icons"
+    "icons",
+    "windows"
   ],
   "scripts": {
     "start": "node src/main.ts",
