@@ -18,7 +18,7 @@ import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** What `service` and every other caller say where there is no systemd. */
-const NO_SYSTEMD =
+export const NO_SYSTEMD =
   'No systemd here, so the Host does not run as a service. Start it with `firstmate start`.';
 
 /** The unit's name, which is also how `systemctl` is asked about it. */
@@ -104,6 +104,32 @@ export function serviceOff(env: NodeJS.ProcessEnv = process.env): void {
     console.log('firstmate: to remove the logon task that holds WSL up, run this on Windows:');
     console.log(logon);
   }
+}
+
+/** The command that restarts the Host, for a person to run by hand. */
+export const RESTART_COMMAND = 'systemctl --user restart firstmate';
+
+/** Whether the Host runs as a service now, and whether it could. */
+export type ServiceState = 'active' | 'inactive' | 'no-systemd';
+
+/** Ask systemd whether the Host's service is running. */
+export function serviceState(env: NodeJS.ProcessEnv = process.env): ServiceState {
+  try {
+    needSystemd(env);
+  } catch {
+    return 'no-systemd';
+  }
+  const active = attempt(env, 'systemctl', ['--user', 'is-active', '--quiet', 'firstmate']);
+  return active.error === undefined && active.status === 0 ? 'active' : 'inactive';
+}
+
+/**
+ * Restart the Host's service, so that it reads the Registry again. The
+ * Registry is read only when the Host starts.
+ */
+export function restartService(env: NodeJS.ProcessEnv = process.env): void {
+  const [command = 'systemctl', ...argv] = RESTART_COMMAND.split(' ');
+  run(env, command, argv);
 }
 
 /**

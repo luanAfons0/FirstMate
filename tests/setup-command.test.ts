@@ -6,9 +6,23 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import { hasGit, officialSources } from './helpers/git.ts';
-import { firstmate, makeHome } from './helpers/host.ts';
+import { firstmate, makeHome, type CommandResult } from './helpers/host.ts';
+import { binWith, machine } from './helpers/systemd.ts';
+
+/**
+ * One run of `setup` on a machine with no systemd: git is on `PATH`, and no
+ * `systemctl` is, so no test here can reach the real one.
+ */
+async function setupIn(
+  t: TestContext,
+  home: string,
+  input: string,
+  env: NodeJS.ProcessEnv = {},
+): Promise<CommandResult> {
+  return firstmate(home, ['setup'], { PATH: await binWith(t, ['git']), ...env }, input);
+}
 
 async function registry(
   home: string,
@@ -49,7 +63,7 @@ function answers(...lines: readonly string[]): string {
 test('Enter keeps the Shelf, and a run that changes nothing says nothing more', async (t) => {
   const home = await makeHome(t);
 
-  const run = await firstmate(home, ['setup'], {}, answers('', ''));
+  const run = await setupIn(t, home, answers('', ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.ok(run.stdout.includes(`[${join(home, 'shelf')}]`), 'the Shelf in force is the default');
@@ -61,7 +75,7 @@ test('a path moves the Shelf, and the summary says so', async (t) => {
   const home = await makeHome(t);
   const shelf = await directory(home, 'plugins');
 
-  const run = await firstmate(home, ['setup'], {}, answers(shelf, ''));
+  const run = await setupIn(t, home, answers(shelf, ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, /setup changed:\n {2}the Shelf is now .*plugins/);
@@ -73,7 +87,7 @@ test('a bad Shelf is refused in the words shelf uses, and asked for again', asyn
   const shelf = await directory(home, 'plugins');
 
   const alone = await firstmate(home, ['shelf', 'relative/path']);
-  const run = await firstmate(home, ['setup'], {}, answers('relative/path', shelf, ''));
+  const run = await setupIn(t, home, answers('relative/path', shelf, ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.equal(run.stderr, alone.stderr, 'one rule, one sentence');
@@ -85,18 +99,18 @@ test('input that ends early stops setup, keeps what finished, and never hangs', 
   const home = await makeHome(t);
   const shelf = await directory(home, 'plugins');
 
-  const nothing = await firstmate(home, ['setup'], {}, '');
+  const nothing = await setupIn(t, home, '');
   assert.equal(nothing.code, 1);
   assert.match(nothing.stderr, /setup ended before it had every answer\./);
 
   // A bad answer, then the end: the question was asked, refused, and cut off.
-  const cut = await firstmate(home, ['setup'], {}, answers('relative/path'));
+  const cut = await setupIn(t, home, answers('relative/path'));
   assert.equal(cut.code, 1);
   assert.match(cut.stderr, /setup ended before it had every answer\./);
   assert.deepEqual(await settings(home), {});
 
   // The Shelf is answered, then the input ends at the next question.
-  const kept = await firstmate(home, ['setup'], {}, answers(shelf));
+  const kept = await setupIn(t, home, answers(shelf));
   assert.equal(kept.code, 1);
   assert.match(kept.stderr, /setup ended before it had every answer\./);
   assert.equal((await settings(home)).shelf, shelf, 'the step that finished is kept');
@@ -122,7 +136,7 @@ test('the Official Plugins chosen are fetched into the Shelf and registered', as
   const home = await makeHome(t);
   const shelf = await directory(home, 'plugins');
 
-  const run = await firstmate(home, ['setup'], env, answers(shelf, '1, 3', ''));
+  const run = await setupIn(t, home, answers(shelf, '1, 3', ''), env);
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, / 1\. worklog +keeps what you work on/);
@@ -140,7 +154,7 @@ test('the Official Plugins chosen are fetched into the Shelf and registered', as
   );
 
   // A second run shows them as installed, and offers only what is left.
-  const again = await firstmate(home, ['setup'], env, answers('', '', ''));
+  const again = await setupIn(t, home, answers('', '', ''), env);
   assert.equal(again.code, 0, again.stderr);
   assert.match(again.stdout, /worklog +keeps what you work on.* \(installed\)/);
   assert.match(again.stdout, / 1\. scheduler/);
@@ -153,7 +167,7 @@ test('a Plugin registered from elsewhere under an official name shows as install
   const elsewhere = await directory(home, 'nexus-clone');
   await firstmate(home, ['add', 'nexus', elsewhere]);
 
-  const run = await firstmate(home, ['setup'], {}, answers('', '', ''));
+  const run = await setupIn(t, home, answers('', '', ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, /nexus +manages .* \(installed\)/);
@@ -164,7 +178,7 @@ test('a Plugin registered from elsewhere under an official name shows as install
 test('Enter installs nothing, and a number off the list is asked again', async (t) => {
   const home = await makeHome(t);
 
-  const run = await firstmate(home, ['setup'], {}, answers('', '7', 'two', ''));
+  const run = await setupIn(t, home, answers('', '7', 'two', ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stderr, /7 is not on the list\. Type a number from 1 to 3\./);
@@ -180,7 +194,7 @@ test('a clone that fails names the Plugin, and the others are still installed', 
   const env = await officialSources(t, ['worklog', 'nexus']);
   const home = await makeHome(t);
 
-  const run = await firstmate(home, ['setup'], env, answers('', '1 2 3', ''));
+  const run = await setupIn(t, home, answers('', '1 2 3', ''), env);
 
   assert.equal(run.code, 1, 'a step failed, and the exit code says so');
   assert.match(run.stderr, /could not install scheduler: git could not clone/);
@@ -201,7 +215,7 @@ test('a Plugin that calls others is offered Grants to every other Plugin', async
   await firstmate(home, ['add', 'mine', mine]);
 
   // Install scheduler and worklog, then let scheduler call mine.
-  const run = await firstmate(home, ['setup'], env, answers('', '1 2', '1', ''));
+  const run = await setupIn(t, home, answers('', '1 2', '1', ''), env);
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, /The Plugins scheduler may call:\n {2} 1\. mine\n {2} 2\. worklog\n/);
@@ -212,7 +226,7 @@ test('a Plugin that calls others is offered Grants to every other Plugin', async
   assert.deepEqual(rows.find((row) => row.name === 'worklog')?.grants, [], 'no Grant for worklog');
 
   // A second run shows the Grant given, offers the rest, and Enter gives none.
-  const again = await firstmate(home, ['setup'], env, answers('', '', '', ''));
+  const again = await setupIn(t, home, answers('', '', '', ''), env);
   assert.equal(again.code, 0, again.stderr);
   assert.match(again.stdout, / {6}mine \(granted\)\n {2} 1\. worklog\n/);
   assert.deepEqual((await registry(home)).find((row) => row.name === 'scheduler')?.grants, [
@@ -228,7 +242,7 @@ test('setup never takes a Grant back, and asks nothing of a Plugin that calls no
   await firstmate(home, ['add', 'worklog', worklog]);
   await firstmate(home, ['grant', 'scheduler', 'worklog']);
 
-  const run = await firstmate(home, ['setup'], {}, answers('', '', ''));
+  const run = await setupIn(t, home, answers('', '', ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, / {6}worklog \(granted\)\n/);
@@ -245,10 +259,9 @@ test('Shortcuts are bound one after another, until Enter at the keys', async (t)
   await firstmate(home, ['add', 'beta', await directory(home, 'beta')]);
   await firstmate(home, ['bind', 'Ctrl+Alt+A', 'alpha']);
 
-  const run = await firstmate(
+  const run = await setupIn(
+    t,
     home,
-    ['setup'],
-    {},
     answers('', '', 'alt+ctrl+b', '2', 'notes/today', 'Ctrl+Shift+Z', '1', '', ''),
   );
 
@@ -276,10 +289,9 @@ test('keys and paths that bind refuses are refused in its words, and asked again
   const held = await firstmate(home, ['bind', 'ctrl+alt+a', 'alpha']);
   const climbs = await firstmate(home, ['bind', 'Ctrl+Alt+B', 'alpha', '../other']);
 
-  const run = await firstmate(
+  const run = await setupIn(
+    t,
     home,
-    ['setup'],
-    {},
     answers('', '', 'N', 'ctrl+alt+a', 'Ctrl+Alt+B', '1', '../other', '', ''),
   );
 
@@ -298,13 +310,101 @@ test('keys and paths that bind refuses are refused in its words, and asked again
 test('Enter at the keys binds nothing, and an empty Registry asks nothing', async (t) => {
   const home = await makeHome(t);
 
-  const empty = await firstmate(home, ['setup'], {}, answers('', ''));
+  const empty = await setupIn(t, home, answers('', ''));
   assert.equal(empty.code, 0, empty.stderr);
   assert.doesNotMatch(empty.stdout, /Keys for a new Shortcut/);
 
   await firstmate(home, ['add', 'alpha', await directory(home, 'alpha')]);
-  const none = await firstmate(home, ['setup'], {}, answers('', '', ''));
+  const none = await setupIn(t, home, answers('', '', ''));
   assert.equal(none.code, 0, none.stderr);
   assert.match(none.stdout, /Keys for a new Shortcut/);
   assert.equal((await settings(home)).shortcuts, undefined);
+});
+
+const INACTIVE = { systemctl: [{ when: '--user is-active', code: 3 }] };
+
+/** A Registry where `setup` has one Grant to offer, so it can change the Registry. */
+async function schedulerAndWorklog(home: string): Promise<void> {
+  await firstmate(home, ['add', 'scheduler', await directory(home, 'scheduler')]);
+  await firstmate(home, ['add', 'worklog', await directory(home, 'worklog')]);
+}
+
+test('with no systemd, setup says so in the words service uses, and goes on', async (t) => {
+  const home = await makeHome(t);
+  const alone = await firstmate(home, ['service', 'on'], { PATH: await binWith(t, []) });
+
+  const run = await setupIn(t, home, answers('', ''));
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.ok(run.stdout.includes(alone.stderr), 'one sentence, in both places');
+  assert.doesNotMatch(run.stdout, /Run the Host as a systemd user service\?/);
+});
+
+test('yes to the service installs it as service on does, and needs no restart', async (t) => {
+  const m = await machine(t, INACTIVE);
+  const home = await makeHome(t);
+  await schedulerAndWorklog(home);
+
+  const run = await setupIn(t, home, answers('', '', '1', '', 'y'), m.env);
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.ok(run.stdout.includes(`installed ${m.unit}`), run.stdout);
+  assert.match(await readFile(m.unit, 'utf8'), /^ExecStart=/m);
+  const calls = await m.calls();
+  assert.ok(calls.includes('systemctl --user enable --now firstmate.service'), calls.join('\n'));
+  assert.ok(calls.includes('loginctl enable-linger mate'));
+  assert.match(run.stdout, / {2}the Host runs as a systemd user service\n/);
+  assert.doesNotMatch(run.stdout, /Restart the Host now/, 'a service that just started is fresh');
+  assert.doesNotMatch(run.stdout, /restart the Host to pick it up/);
+});
+
+test('no to the service installs nothing', async (t) => {
+  const m = await machine(t, INACTIVE);
+  const home = await makeHome(t);
+
+  const run = await setupIn(t, home, answers('', '', 'n'), m.env);
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stdout, /Run the Host as a systemd user service\? \[Y\/n\]/);
+  await assert.rejects(readFile(m.unit, 'utf8'), 'no unit is written');
+  assert.ok(!(await m.calls()).some((call) => call.includes('enable')));
+});
+
+test('a running service is not asked about, and a changed Registry asks to restart', async (t) => {
+  const m = await machine(t);
+  const home = await makeHome(t);
+  await schedulerAndWorklog(home);
+
+  const yes = await setupIn(t, home, answers('', '', '1', '', 'y'), m.env);
+
+  assert.equal(yes.code, 0, yes.stderr);
+  assert.doesNotMatch(yes.stdout, /Run the Host as a systemd user service\?/);
+  assert.match(yes.stdout, /Restart the Host now, so that it picks the changes up\? \[Y\/n\]/);
+  assert.ok((await m.calls()).includes('systemctl --user restart firstmate'));
+  assert.match(yes.stdout, / {2}restarted the Host\n/);
+});
+
+test('no to the restart prints the command to run later', async (t) => {
+  const m = await machine(t);
+  const home = await makeHome(t);
+  await schedulerAndWorklog(home);
+
+  const no = await setupIn(t, home, answers('', '', '1', '', 'n'), m.env);
+
+  assert.equal(no.code, 0, no.stderr);
+  assert.match(no.stdout, /restart it when you are ready: systemctl --user restart firstmate/);
+  assert.ok(!(await m.calls()).some((call) => call.includes('restart')));
+});
+
+test('a run that changes no Plugin and no Grant does not ask to restart', async (t) => {
+  const m = await machine(t);
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'alpha', await directory(home, 'alpha')]);
+
+  const run = await setupIn(t, home, answers('', '', 'Ctrl+Alt+A', '1', '', ''), m.env);
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stdout, /bound Ctrl\+Alt\+A/);
+  assert.doesNotMatch(run.stdout, /Restart the Host now/);
+  assert.ok(!(await m.calls()).some((call) => call.includes('restart')));
 });

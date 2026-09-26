@@ -66,12 +66,19 @@ another: the keys, the Plugin by number, and the path, where `/` is the Plugin
 Page. Keys and paths are checked as `bind` checks them. Enter at the keys ends
 the step. The Tray picks the new Shortcuts up with no restart.
 
+Last, when the Host does not run as a service yet, it asks whether it should,
+and on yes does what `firstmate service on` does. Where there is no systemd it
+says so and goes on. When the service runs and this run added a Plugin or a
+Grant, it asks once whether to restart the Host, because the Host reads the
+Registry only when it starts; no prints `systemctl --user restart firstmate`.
+
 Each answer is written when it is given, so Ctrl-C keeps the steps that
 finished. `setup` never removes anything, so it is safe to run again. A script
 can pipe the answers in, one per line; when the input ends before every
 question is answered, `setup` stops with "setup ended before it had every
-answer" and exits non-zero. At the end it says what it changed, and nothing
-when nothing changed.
+answer" and exits non-zero. A step that fails, such as one clone, lets the
+others go on, and `setup` then exits non-zero too. At the end it says what it
+changed, and nothing when nothing changed.
 
 ## Where it runs
 
