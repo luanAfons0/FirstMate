@@ -139,7 +139,8 @@ docs/adr/    the decisions that are expensive to reverse.
 docs/agents/ how an agent works in this repo. See "Agent skills" below.
 docs/brand/  the anchor, at the sizes GitHub asks for.
 windows/     install and remove the Windows side, and the logon task that
-             holds the distribution up. PowerShell, and nothing else.
+             holds the distribution up. PowerShell, and nothing else. Packed
+             with the program, so an npm install can run it too.
 ```
 
 ## Code style

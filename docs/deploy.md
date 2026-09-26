@@ -68,8 +68,20 @@ changed one is picked up.
 
 ## Windows: the logon task
 
-Run this once, from Windows PowerShell, from this repository over
-`\\wsl.localhost\`:
+Inside WSL, `firstmate service on` ends by printing the one command that
+installs the logon task from where FirstMate really is, and `firstmate service
+off` prints the one that removes it. They only print: a command inside WSL does
+not write Windows state. Run the printed command once, from Windows PowerShell.
+
+From an npm install, the scripts are in the package's own `windows/` directory,
+so the command is of this form:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  \\wsl.localhost\Debian\<npm prefix>\lib\node_modules\@luan-afonso\firstmate\windows\install-logon-task.ps1
+```
+
+From a clone, it names the clone's `windows/` directory:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
@@ -80,17 +92,21 @@ It works out the distribution from the path it is run from. It writes two
 places: `%LOCALAPPDATA%\FirstMate`, holding a copy of the holder and the launch
 shim, and one Task Scheduler entry named `FirstMate Host`.
 
+The logon task is not the Tray's "Start at logon". The task holds WSL up so
+that the Host runs; the Tray's entry starts the window.
+
 Start it now, without logging out:
 
 ```powershell
 Start-ScheduledTask -TaskName 'FirstMate Host'
 ```
 
-Remove it:
+Remove it with the command `firstmate service off` prints, which runs
+`uninstall-logon-task.ps1` from the same `windows/` directory:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-  \\wsl.localhost\Debian\home\<user>\.first-mate\windows\uninstall-logon-task.ps1
+  \\wsl.localhost\Debian\<path to FirstMate>\windows\uninstall-logon-task.ps1
 ```
 
 See it:

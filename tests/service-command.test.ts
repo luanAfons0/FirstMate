@@ -272,3 +272,42 @@ test('service on refuses a Node older than 24', async (t) => {
   assert.match(run.stderr, /is Node v2\d\.\d+\.\d+\. The Host needs Node 24 or later\./);
   assert.deepEqual(await m.calls(), [], 'systemd is never asked');
 });
+
+/** The command that runs one of this program's own logon task scripts from Windows. */
+function logonCommand(script: string): string {
+  const path = join(REPOSITORY, 'windows', script).replaceAll('/', '\\');
+  return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File \\\\wsl.localhost\\Debian${path}`;
+}
+
+test('inside WSL, service on prints the command that installs the logon task', async (t) => {
+  const m = await machine(t);
+
+  const on = await service(m, 'on', { WSL_DISTRO_NAME: 'Debian' });
+
+  assert.equal(on.code, 0, on.stderr);
+  assert.ok(on.stdout.includes(`\n${logonCommand('install-logon-task.ps1')}\n`), on.stdout);
+  // The script it names is really there, beside the running program.
+  await readFile(join(REPOSITORY, 'windows', 'install-logon-task.ps1'), 'utf8');
+});
+
+test('inside WSL, service off prints the command that removes the logon task', async (t) => {
+  const m = await machine(t);
+  assert.equal((await service(m, 'on')).code, 0);
+
+  const off = await service(m, 'off', { WSL_DISTRO_NAME: 'Debian' });
+
+  assert.equal(off.code, 0, off.stderr);
+  assert.ok(off.stdout.includes(`\n${logonCommand('uninstall-logon-task.ps1')}\n`), off.stdout);
+});
+
+test('outside WSL, neither says anything about Windows', async (t) => {
+  const m = await machine(t);
+
+  const on = await service(m, 'on');
+  const off = await service(m, 'off');
+
+  for (const run of [on, off]) {
+    assert.equal(run.code, 0, run.stderr);
+    assert.doesNotMatch(run.stdout, /Windows|powershell/);
+  }
+});

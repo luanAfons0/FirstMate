@@ -345,6 +345,11 @@ journalctl --user -u firstmate -f   # read it
 firstmate service off               # remove it
 ```
 
+Inside WSL, `firstmate service on` also prints the one `powershell.exe` command
+that installs the Windows logon task from where FirstMate is, whether that is
+the npm install or a clone, and `firstmate service off` prints the one that
+removes it. Run it once, from Windows.
+
 ## Open it from Windows
 
 The Tray is FirstMate's Windows program. It runs on Windows, where the desktop
