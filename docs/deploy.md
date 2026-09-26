@@ -16,19 +16,34 @@ distribution that runs nothing.
 Install:
 
 ```sh
-scripts/install-service.sh
+firstmate service on        # from an npm install
+node src/cli.ts service on  # from a clone
 ```
 
-It writes one file, `~/.config/systemd/user/firstmate.service`, filled in with
-the path of this repository and the path of `node`. It then enables the service,
-starts it, and enables lingering so that the Host runs without an interactive
-login.
+It writes one file, `~/.config/systemd/user/firstmate.service` (under
+`$XDG_CONFIG_HOME` when that is set). The unit starts the program that ran the
+command, with the absolute path of the `node` that ran it: the service's PATH
+has no nvm, so a bare `node` there can be an older one. From an npm install it
+starts the package's `dist/main.js`; from a clone, the clone's `src/main.ts`.
+It then enables the service, starts it, and enables lingering so that the Host
+runs without an interactive login. It refuses a Node older than 24.
+
+Run it again after a new Node or a new install: it writes the unit again.
+
+When `loginctl` refuses to enable lingering, it says so and gives the command
+to run by hand: `sudo loginctl enable-linger <user>`.
 
 Remove:
 
 ```sh
-scripts/uninstall-service.sh
+firstmate service off
 ```
+
+It stops and disables the service and removes exactly the unit file. It leaves
+lingering on, because other services can depend on it.
+
+Where there is no systemd, both say so and do nothing. Run the Host with
+`firstmate start` instead.
 
 Read what it is doing:
 

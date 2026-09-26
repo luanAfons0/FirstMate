@@ -18,6 +18,7 @@
  *   node src/cli.ts install <directory|git-url|official-name> [name]
  *   node src/cli.ts bind <keys> <plugin> [path]
  *   node src/cli.ts unbind <keys>
+ *   node src/cli.ts service on|off
  */
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
@@ -38,6 +39,7 @@ import { readSettings, writeSettings } from './settings.ts';
 import { setup } from './setup.ts';
 import { shortcutAddress } from './shortcut.ts';
 import { SHELF_VARIABLE } from './shelf.ts';
+import { serviceOff, serviceOn } from './service.ts';
 
 const OFFICIAL_NAMES = OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ');
 
@@ -55,6 +57,7 @@ const USAGE = `usage:
   firstmate bind <keys> <plugin> [path]
                                      open a Plugin's address from a Shortcut in Windows.
   firstmate unbind <keys>            free that Shortcut's keys.
+  firstmate service on|off           run the Host as a systemd user service, or stop.
 
 The Shelf is the directory a fetched Plugin lands in. A source is a directory,
 which is copied, a git URL, which is cloned, or the name of an Official Plugin,
@@ -122,6 +125,8 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
       return bind(home(), rest);
     case 'unbind':
       return unbind(home(), rest);
+    case 'service':
+      return service(rest);
     case undefined:
     case '-h':
     case '--help':
@@ -378,6 +383,18 @@ function unbind(home: string, argv: readonly string[]): number {
     ),
   );
   console.log(`firstmate: unbound ${keys}, which opened ${shortcutAddress(held)}`);
+  return 0;
+}
+
+/** Run the Host as a systemd user service, or stop running it as one. */
+function service(argv: readonly string[]): number {
+  const [what] = argv;
+  if (argv.length !== 1 || (what !== 'on' && what !== 'off')) {
+    console.error(`firstmate: service takes on or off.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+  if (what === 'on') serviceOn();
+  else serviceOff();
   return 0;
 }
 
