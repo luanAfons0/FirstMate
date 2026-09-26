@@ -36,6 +36,8 @@ Run every command from the repository root.
 | `node src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
+| `node src/cli.ts grant <from> <to>`  | Let `<from>` call `<to>`'s tools: a Grant.      |
+| `node src/cli.ts revoke <from> <to>` | Take that Grant back.                           |
 | `node src/cli.ts shelf [dir]`        | Say where a fetched Plugin lands, or move it.   |
 | `node src/cli.ts install <dir\|url\|official-name> [name]` | Fetch a Plugin into the Shelf and register it. |
 | `node src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
@@ -77,8 +79,8 @@ knip and every test.
   binary to clone a Plugin: an external tool the command line assumes, not a
   package dependency, and the Host still calls nothing outside Node.
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
-  removing the Windows side, for the logon task, and for the three things the
-  running Tray asks of it: the taskbar button (`src/taskbar.ts`), the
+  removing the logon task, and for the three things the running Tray asks of
+  it: the taskbar button (`src/taskbar.ts`), the
   helper that holds the Shortcuts (`src/hotkeys.ts`) and the helper that shows
   the Notices (`src/notice-helper.ts`), **systemd** for the service, **WSL
   Debian** for the machine it all runs on (ADR-0007). The Tray itself is
@@ -132,15 +134,16 @@ src/         the Host. Every file is one job.
                    one command per line in, one event per line out.
   notice-helper.ts the PowerShell helper that shows Notices under FirstMate's
                    own name and mark, and hears a click on one.
-tests/       one file per behaviour, plus fixtures/ and helpers/host.ts.
+tests/       one file per behaviour, plus fixtures/ and helpers/.
 icons/       the mark, running and stopped. The window wears it; the Tray
              draws with both. Packed with the program.
 docs/adr/    the decisions that are expensive to reverse.
 docs/agents/ how an agent works in this repo. See "Agent skills" below.
 docs/brand/  the anchor, at the sizes GitHub asks for.
-windows/     install and remove the Windows side, and the logon task that
-             holds the distribution up. PowerShell, and nothing else. Packed
-             with the program, so an npm install can run it too.
+windows/     install and remove the logon task that holds the distribution
+             up: three PowerShell scripts and the VBScript shim that starts
+             one with no window. Packed with the program, so an npm install
+             can run it too.
 ```
 
 ## Code style
@@ -204,9 +207,9 @@ and drives it over HTTP, exactly as a browser does.
   lets the whole inside of the Host be rewritten without touching a test.
 - A test asserts on what a browser and the Tray can see: status codes, headers,
   response bytes, and the files the Host writes into its home directory.
-- A fixture Plugin is a directory under `tests/fixtures/`: `both`,
-  `page-only`, `server-only`, `quitter`, `unrunnable`. Add a fixture rather
-  than a mock.
+- A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
+  `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
+  `notifier`. Add a fixture rather than a mock.
 - A test name is a sentence about behaviour:
   `'a request that leaves the web directory does not'`.
 

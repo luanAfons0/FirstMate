@@ -26,8 +26,10 @@ Node 24, and nothing else. Node runs the TypeScript directly, so there is no
 build step, no bundler and no watcher in a clone. `typescript` is a development
 dependency and is used only to check the types.
 
-FirstMate has runtime dependencies: none. Keep it that way. If you believe a
-change needs one, open an issue and make the case before you write the code.
+The Host imports nothing outside Node. Keep it that way. The package has one
+runtime dependency, `@webviewjs/webview`, which draws the FirstMate window and
+loads only when `firstmate desktop` runs (ADR-0011). If you believe a change
+needs another, open an issue and make the case before you write the code.
 
 ## The check that must be green
 
@@ -95,8 +97,8 @@ name.
    Host does, and what the version still does not do.
 
 Pushing the tag starts the [Release](.github/workflows/release.yml) workflow.
-It refuses a tag that disagrees with `package.json`, checks the types, runs the
-whole suite, and only then publishes.
+It refuses a tag that disagrees with `package.json`, runs `npm run check`, and
+only then publishes.
 
 **There is no npm token anywhere.** npm accepts GitHub Actions as a trusted
 publisher over OIDC, so the job asks for an identity token minted for that one

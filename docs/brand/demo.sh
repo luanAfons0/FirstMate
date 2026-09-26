@@ -21,12 +21,14 @@
 # would put that line back in the frame.
 set -euo pipefail
 
-repository="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+repository="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 plugin_name='notes'
 plugin_home="$HOME/firstmate-demo/notes"
 # What the take types. A tilde is shorter on screen than a home directory, and
 # the shell expands it into the absolute path the Registry wants.
 plugin_typed='~/firstmate-demo/notes'
+# The Shortcut the take binds, and presses once the window is hidden.
+shortcut_keys='Ctrl+Alt+D'
 
 # How the prompt reads in the frame, and how fast the demo types. Both are
 # yours to move: a prompt that matches your shell is one less thing a viewer
@@ -77,6 +79,12 @@ check() {
     printf '           npm install -g /tmp/luan-afonso-firstmate-%s.tgz\n' \
       "$(node -p "require('$repository/package.json').version")" >&2
     faults=1
+  elif ! firstmate --help 2>&1 | grep -q 'firstmate bind'; then
+    printf 'firstmate: the firstmate on the PATH is older than bind. Install this repository.\n' >&2
+    printf '           cd %s && npm pack --pack-destination /tmp\n' "$repository" >&2
+    printf '           npm install -g /tmp/luan-afonso-firstmate-%s.tgz\n' \
+      "$(node -p "require('$repository/package.json').version")" >&2
+    faults=1
   fi
 
   if [[ ! -d "$plugin_home/web" ]]; then
@@ -109,6 +117,11 @@ check() {
         "$plugin_name" >&2
       faults=1
     fi
+    if printf '%s' "$registry" | grep -q "^$shortcut_keys"$'\t'; then
+      printf 'firstmate: %s is already bound, so bind would refuse on camera. Unbind it first.\n' \
+        "$shortcut_keys" >&2
+      faults=1
+    fi
   fi
 
   local columns="${COLUMNS:-$(tput cols 2>/dev/null || printf '0')}"
@@ -134,9 +147,10 @@ take() {
 
   type_and_run 'firstmate list'
   type_and_run "firstmate add $plugin_name $plugin_typed"
+  type_and_run "firstmate bind $shortcut_keys $plugin_name"
   type_and_run 'systemctl --user restart firstmate'
   # Nothing is printed after the last command. The mouse has the take from
-  # here, the terminal stays in the frame behind the browser, and a line of
+  # here, the terminal stays in the frame behind the window, and a line of
   # this script in that frame would be a line the Host never wrote. The clicks
   # that are left are in docs/brand/demo-script.md, and check says them before
   # the recorder is running.
@@ -144,7 +158,7 @@ take() {
 
 reset() {
   # The Registry holds the path and nothing else, so removing the Plugin leaves
-  # the directory alone. The restart mints a new token, which is what makes the
+  # the directory alone, and remove takes the Shortcut with it. The restart mints a new token, which is what makes the
   # one a frame may have caught worthless.
   firstmate remove "$plugin_name"
   systemctl --user restart firstmate
