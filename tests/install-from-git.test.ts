@@ -7,61 +7,11 @@
  * is not there.
  */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { cp, readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import test, { type TestContext } from 'node:test';
-import { bootHostIn, firstmate, fixture, makeHome } from './helpers/host.ts';
-
-/** One run of git, with the machine's own configuration kept out of it. */
-function git(cwd: string, argv: readonly string[]): Promise<number | null> {
-  return new Promise((done, fail) => {
-    const child = spawn('git', argv, {
-      cwd,
-      env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
-      stdio: ['ignore', 'ignore', 'inherit'],
-    });
-    child.once('error', fail);
-    child.once('exit', done);
-  });
-}
-
-async function hasGit(): Promise<boolean> {
-  return new Promise((done) => {
-    const probe = spawn('git', ['--version'], { stdio: 'ignore' });
-    probe.once('error', () => done(false));
-    probe.once('exit', (code) => done(code === 0));
-  });
-}
-
-/** A bare repository holding a fixture Plugin, made in this test's own home. */
-async function bareRepositoryOf(t: TestContext, plugin: string, named: string): Promise<string> {
-  const scratch = await makeHome(t);
-  const work = join(scratch, 'work');
-  await cp(fixture(plugin), work, { recursive: true });
-
-  assert.equal(await git(work, ['init', '--quiet', '--initial-branch', 'main']), 0);
-  assert.equal(await git(work, ['add', '--all']), 0);
-  assert.equal(
-    await git(work, [
-      '-c',
-      'user.email=nobody@example.invalid',
-      '-c',
-      'user.name=A Test',
-      '-c',
-      'commit.gpgsign=false',
-      'commit',
-      '--quiet',
-      '-m',
-      'the Plugin',
-    ]),
-    0,
-  );
-
-  const bare = join(scratch, `${named}.git`);
-  assert.equal(await git(scratch, ['clone', '--quiet', '--bare', work, bare]), 0);
-  return bare;
-}
+import test from 'node:test';
+import { bareRepositoryOf, hasGit } from './helpers/git.ts';
+import { bootHostIn, firstmate, makeHome } from './helpers/host.ts';
 
 test('a git URL is cloned into the Shelf, registered, and then served', async (t) => {
   if (!(await hasGit())) {

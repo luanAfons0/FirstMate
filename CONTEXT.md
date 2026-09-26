@@ -51,6 +51,12 @@ _Avoid_: notification, warning, alert, toast
 A directory the Host runs and serves. It may hold a Plugin Page and a Plugin Server, and nothing else is asked of it.
 _Avoid_: extension, addon, module, integration, app
 
+**Official Plugin**:
+A Plugin the FirstMate project itself offers, known to FirstMate by name and
+address before it is fetched. It is not in the Registry until it is installed,
+and once installed it is a Plugin like any other.
+_Avoid_: catalogue, marketplace, store, featured, recommended
+
 **Plugin Name**:
 The name a Plugin is given when it enters the Registry. It identifies the Plugin in every address.
 _Avoid_: id, slug, key

@@ -36,7 +36,7 @@ Run every command from the repository root.
 | `node src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
 | `node src/cli.ts shelf [dir]`        | Say where a fetched Plugin lands, or move it.   |
-| `node src/cli.ts install <dir\|url> [name]` | Fetch a Plugin into the Shelf and register it. |
+| `node src/cli.ts install <dir\|url\|official-name> [name]` | Fetch a Plugin into the Shelf and register it. |
 | `node src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
 | `node src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
 | `scripts/install-service.sh`         | Install and start the systemd user service.     |
@@ -90,6 +90,10 @@ src/         the Host. Every file is one job.
   main.ts          start-up: read the Registry, mint the token, supervise, listen.
   cli.ts           the terminal: start, desktop, shelf, install, bind, unbind,
                    and the Registry: add, remove, list, grant, revoke.
+  commands.ts      what the writing commands change, apart from how they are
+                   typed and printed, so every refusal has one sentence.
+  official-plugins.ts the Official Plugins, as data: name, URL, one line,
+                   and whether each calls other Plugins (ADR-0015).
   config.ts        FIRSTMATE_HOME, FIRSTMATE_PORT, the handshake and the Shelf.
   registry.ts      read and write registry.json, whole, through a rename.
   runtime.ts       write and remove runtime.json: the port and the token.

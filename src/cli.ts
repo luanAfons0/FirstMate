@@ -14,18 +14,30 @@
  *   node src/cli.ts grant <from> <to>
  *   node src/cli.ts revoke <from> <to>
  *   node src/cli.ts shelf [directory]
- *   node src/cli.ts install <directory|git-url> [name]
+ *   node src/cli.ts install <directory|git-url|official-name> [name]
  *   node src/cli.ts bind <keys> <plugin> [path]
  *   node src/cli.ts unbind <keys>
  */
-import { mkdirSync, statSync } from 'node:fs';
-import { basename, isAbsolute } from 'node:path';
+import { statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
+import {
+  bindShortcut,
+  checkKeys,
+  givePermission,
+  installPlugin,
+  moveShelf,
+  notAPluginName,
+  takePermission,
+  withShortcuts,
+} from './commands.ts';
 import { readConfig, type Config } from './config.ts';
+import { OFFICIAL_PLUGINS } from './official-plugins.ts';
 import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
-import { readSettings, writeSettings, type Settings } from './settings.ts';
-import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
-import { checkShelf, defaultShelf, SHELF_VARIABLE, shelfInEnvironment } from './shelf.ts';
-import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
+import { readSettings, writeSettings } from './settings.ts';
+import { shortcutAddress } from './shortcut.ts';
+import { SHELF_VARIABLE } from './shelf.ts';
+
+const OFFICIAL_NAMES = OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ');
 
 const USAGE = `usage:
   firstmate start                    run the Host until it is stopped.
@@ -42,8 +54,10 @@ const USAGE = `usage:
   firstmate unbind <keys>            free that Shortcut's keys.
 
 The Shelf is the directory a fetched Plugin lands in. A source is a directory,
-which is copied, or a git URL, which is cloned; install registers what it put
-there, under the last segment of the source or under the name you give.
+which is copied, a git URL, which is cloned, or the name of an Official Plugin,
+which is cloned from where FirstMate knows it is: ${OFFICIAL_NAMES}. install
+registers what it put there, under the last segment of the source or under the
+name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.
 
@@ -164,9 +178,7 @@ function add(home: string, argv: readonly string[]): number {
     return USAGE_FAULT;
   }
   if (!isPluginName(name)) {
-    console.error(
-      `firstmate: ${name} is not a Plugin Name. Use lower-case letters, digits and hyphens.`,
-    );
+    console.error(`firstmate: ${notAPluginName(name)}`);
     return 1;
   }
   if (!isAbsolute(directory)) {
@@ -239,19 +251,10 @@ function grant(home: string, argv: readonly string[]): number {
     return USAGE_FAULT;
   }
 
-  const rows = readRegistry(home);
-  const pair = findPair(rows, from, to);
-  if (pair === undefined) return 1;
-  const { fromRow, fromIndex } = pair;
-
-  if (fromRow.grants.includes(to)) {
+  if (!givePermission(home, from, to)) {
     console.log(`firstmate: ${from} can already call ${to}'s tools.`);
     return 0;
   }
-
-  const rewritten = rows.slice();
-  rewritten[fromIndex] = { ...fromRow, grants: [...fromRow.grants, to] };
-  writeRegistry(home, rewritten);
   console.log(`firstmate: granted ${from} the right to call ${to}'s tools.`);
   console.log('firstmate: restart the Host to pick it up.');
   return 0;
@@ -264,55 +267,13 @@ function revoke(home: string, argv: readonly string[]): number {
     return USAGE_FAULT;
   }
 
-  const rows = readRegistry(home);
-  const pair = findPair(rows, from, to);
-  if (pair === undefined) return 1;
-  const { fromRow, fromIndex } = pair;
-
-  if (!fromRow.grants.includes(to)) {
+  if (!takePermission(home, from, to)) {
     console.log(`firstmate: ${from} was never granted the right to call ${to}'s tools.`);
     return 0;
   }
-
-  const rewritten = rows.slice();
-  rewritten[fromIndex] = {
-    ...fromRow,
-    grants: fromRow.grants.filter((name) => name !== to),
-  };
-  writeRegistry(home, rewritten);
   console.log(`firstmate: took back ${from}'s right to call ${to}'s tools.`);
   console.log('firstmate: restart the Host to pick it up.');
   return 0;
-}
-
-/**
- * Both Plugin Names of a Grant, checked and resolved against the Registry. A
- * Grant that named a Plugin that does not exist would be a Grant the operator
- * misreads later, so both commands refuse before they write anything.
- */
-function findPair(
-  rows: readonly PluginRow[],
-  from: string,
-  to: string,
-): { readonly fromRow: PluginRow; readonly fromIndex: number } | undefined {
-  for (const name of [from, to]) {
-    if (!isPluginName(name)) {
-      console.error(
-        `firstmate: ${name} is not a Plugin Name. Use lower-case letters, digits and hyphens.`,
-      );
-      return undefined;
-    }
-  }
-  const fromRow = rows.find((row) => row.name === from);
-  if (fromRow === undefined) {
-    console.error(`firstmate: no Plugin named ${from} is registered.`);
-    return undefined;
-  }
-  if (!rows.some((row) => row.name === to)) {
-    console.error(`firstmate: no Plugin named ${to} is registered.`);
-    return undefined;
-  }
-  return { fromRow, fromIndex: rows.indexOf(fromRow) };
 }
 
 /**
@@ -335,25 +296,20 @@ function shelf(config: Config, argv: readonly string[]): number {
     return 0;
   }
 
-  // Checked before it is remembered, and what is remembered is the real path.
-  const chosen = checkShelf(directory, config.home);
-  writeSettings(config.home, { ...readSettings(config.home), shelf: chosen });
-  console.log(`firstmate: the Shelf is now ${chosen}`);
-
-  const forced = shelfInEnvironment();
-  if (forced !== undefined && forced !== chosen) {
-    console.log(`firstmate: ${SHELF_VARIABLE} is set to ${forced}, and wins until it is unset.`);
+  const moved = moveShelf(config.home, directory);
+  console.log(`firstmate: the Shelf is now ${moved.shelf}`);
+  if (moved.forced !== undefined) {
+    console.log(
+      `firstmate: ${SHELF_VARIABLE} is set to ${moved.forced}, and wins until it is unset.`,
+    );
   }
   console.log('firstmate: restart the Host to pick it up.');
   return 0;
 }
 
 /**
- * Fetch a Plugin into the Shelf and register it, in one step.
- *
- * It follows `add` step for step once the files have landed, because a Plugin
- * that was fetched is a Plugin like any other. Nothing the Plugin ships runs
- * here: its executable runs later, when the Host starts it.
+ * Fetch a Plugin into the Shelf and register it, in one step. The source is a
+ * directory, a git URL, or the name of an Official Plugin (ADR-0015).
  */
 async function install(config: Config, argv: readonly string[]): Promise<number> {
   const [source, given] = argv;
@@ -365,80 +321,13 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
     return USAGE_FAULT;
   }
 
-  const name = given ?? nameOf(source);
-  if (!isPluginName(name)) {
-    if (given === undefined) {
-      console.error(
-        `firstmate: ${source} does not name a Plugin. Give the name yourself: ` +
-          `firstmate install ${source} <name>`,
-      );
-      return 1;
-    }
-    console.error(
-      `firstmate: ${name} is not a Plugin Name. Use lower-case letters, digits and hyphens.`,
-    );
-    return 1;
-  }
-  if (!isGitUrl(source)) {
-    if (!isAbsolute(source)) {
-      console.error(`firstmate: ${source} is not an absolute path, and is no URL either.`);
-      return 1;
-    }
-    const found = statSync(source, { throwIfNoEntry: false });
-    if (found === undefined || !found.isDirectory()) {
-      console.error(`firstmate: ${source} is not a directory.`);
-      return 1;
-    }
-  }
-
-  // Refused before anything is fetched, so a refusal costs no copying and a
-  // Plugin that is running is never replaced under it.
-  const rows = readRegistry(config.home);
-  const taken = rows.find((row) => row.name === name);
-  if (taken !== undefined) {
-    console.error(`firstmate: ${name} is already registered, at ${taken.directory}.`);
-    return 1;
-  }
-
-  // The default Shelf is inside the Host's home directory, which the Host
-  // makes for itself, so install works before anything has been chosen. A
-  // Shelf the operator named is theirs to make, so that a typo is refused
-  // rather than created.
-  if (config.shelf === defaultShelf(config.home)) {
-    mkdirSync(config.shelf, { recursive: true, mode: 0o700 });
-  }
-  // Checked on every run. The remembered Shelf is never trusted as already
-  // checked, because a path that was a directory yesterday can be a symlink
-  // today.
-  const shelf = checkShelf(config.shelf, config.home);
-  const directory = await fetchPlugin(source, shelf, name);
-
-  // Read again, because a clone can take minutes, and a row another command
-  // wrote in the meantime must not be lost to the rows read before it.
-  const now = readRegistry(config.home);
-  const late = now.find((row) => row.name === name);
-  if (late !== undefined) {
-    console.error(
-      `firstmate: ${name} was registered at ${late.directory} while it was fetched. ` +
-        `The files are at ${directory}; take them away, or add them under another name.`,
-    );
-    return 1;
-  }
-  writeRegistry(config.home, [...now, { name, directory, grants: [] }]);
-  console.log(`firstmate: installed ${name} at ${directory}`);
+  const row = await installPlugin(config, source, given);
+  console.log(`firstmate: installed ${row.name} at ${row.directory}`);
   console.log('firstmate: restart the Host to pick it up.');
   return 0;
 }
 
-/**
- * Bind keys to one address of one Plugin, for the Tray to hold in all of
- * Windows.
- *
- * Binding is a write, and like moving the Shelf it is done from a terminal and
- * from nowhere else: every Plugin Page shares the Index Page's origin, so an
- * address that bound a Shortcut would let any Plugin take a key in all of
- * Windows (ADR-0013).
- */
+/** Bind keys to one address of one Plugin, for the Tray to hold in all of Windows. */
 function bind(home: string, argv: readonly string[]): number {
   const [typed, plugin, path = ''] = argv;
   if (typed === undefined || plugin === undefined || argv.length > 3) {
@@ -446,38 +335,8 @@ function bind(home: string, argv: readonly string[]): number {
     return USAGE_FAULT;
   }
 
-  const read = readKeys(typed);
-  if (read.kind === 'wrong') {
-    console.error(`firstmate: ${read.reason}`);
-    return 1;
-  }
-  const keys = read.chord.keys;
-  if (!readRegistry(home).some((row) => row.name === plugin)) {
-    console.error(`firstmate: no Plugin named ${plugin} is registered.`);
-    return 1;
-  }
-  if (!isPluginPath(path, plugin)) {
-    console.error(
-      `firstmate: ${path} is not a path inside ${plugin}'s address. Give it relative, ` +
-        'with no leading slash and no "..".',
-    );
-    return 1;
-  }
-
-  const settings = readSettings(home);
-  const shortcuts = settings.shortcuts ?? [];
-  const held = shortcuts.find((shortcut) => shortcut.keys === keys);
-  if (held !== undefined) {
-    console.error(
-      `firstmate: ${keys} is already bound to ${held.plugin}, to open ` +
-        `${shortcutAddress(held)}. Unbind it first: firstmate unbind ${keys}`,
-    );
-    return 1;
-  }
-
-  const shortcut: Shortcut = { keys, plugin, path };
-  writeSettings(home, withShortcuts(settings, [...shortcuts, shortcut]));
-  console.log(`firstmate: bound ${keys} to open ${shortcutAddress(shortcut)}`);
+  const shortcut = bindShortcut(home, typed, plugin, path);
+  console.log(`firstmate: bound ${shortcut.keys} to open ${shortcutAddress(shortcut)}`);
   return 0;
 }
 
@@ -489,12 +348,7 @@ function unbind(home: string, argv: readonly string[]): number {
     return USAGE_FAULT;
   }
 
-  const read = readKeys(typed);
-  if (read.kind === 'wrong') {
-    console.error(`firstmate: ${read.reason}`);
-    return 1;
-  }
-  const keys = read.chord.keys;
+  const keys = checkKeys(typed);
   const settings = readSettings(home);
   const shortcuts = settings.shortcuts ?? [];
   const held = shortcuts.find((shortcut) => shortcut.keys === keys);
@@ -512,26 +366,6 @@ function unbind(home: string, argv: readonly string[]): number {
   );
   console.log(`firstmate: unbound ${keys}, which opened ${shortcutAddress(held)}`);
   return 0;
-}
-
-/**
- * The settings with these Shortcuts in them. No Shortcut at all leaves no
- * array behind, because JSON writes no undefined field, so a file that never
- * held one reads as it did before.
- */
-function withShortcuts(settings: Settings, shortcuts: readonly Shortcut[]): Settings {
-  return { ...settings, shortcuts: shortcuts.length === 0 ? undefined : shortcuts };
-}
-
-/**
- * The Plugin Name a source suggests: its last segment, with no git suffix. In
- * the short form of a git URL, `git@host:plugin.git`, a colon ends a segment
- * too.
- */
-function nameOf(source: string): string {
-  const trimmed = source.replace(/[/\\]+$/, '');
-  if (!isGitUrl(trimmed)) return basename(trimmed);
-  return (trimmed.split(/[/\\:]/).pop() ?? '').replace(/\.git$/, '');
 }
 
 function list(home: string, argv: readonly string[]): number {

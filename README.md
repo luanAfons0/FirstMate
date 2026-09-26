@@ -103,6 +103,7 @@ contract: what the Host enforces, and what it only advises.
 node src/cli.ts add <name> /absolute/path/to/the/directory
 node src/cli.ts install /absolute/path/to/the/directory [name]
 node src/cli.ts install https://example.com/someone/a-plugin.git [name]
+node src/cli.ts install worklog [name]
 node src/cli.ts remove <name>
 node src/cli.ts list
 node src/cli.ts grant <from> <to>
@@ -124,6 +125,23 @@ so a Plugin stays in its own repository wherever it already lives. `grant` lets
 `<from>`. `revoke` takes that Grant back. Both refuse a Plugin Name that is not
 registered. The Host enforces a Grant on every Tool Bus call. The Registry is
 read when the Host starts, so restart the Host to pick up a change.
+
+### Official Plugins
+
+The FirstMate project writes a few Plugins of its own, and FirstMate knows
+where they are, so `install` takes their Plugin Name in place of a source
+(ADR-0015):
+
+| Official Plugin | What it does                                                 |
+| --------------- | ------------------------------------------------------------ |
+| `worklog`       | Keeps what you work on from one Meeting to the next.          |
+| `scheduler`     | Calls one tool of another Plugin at a time you choose.        |
+| `nexus`         | Manages the skills and global instructions of Claude and Codex. |
+
+`install` reads a source as a git URL, then as an absolute directory, then as
+the name of an Official Plugin. An Official Plugin is cloned from
+`https://github.com/luanAfons0/<name>` and is then a Plugin like any other.
+`scheduler` calls other Plugins, so it needs a Grant for each one it calls.
 
 A Tool Bus call may carry a `timeoutMs` saying how long it is allowed to take.
 Without one it gets thirty seconds, and `FIRSTMATE_MAX_CALL_MS` is the ceiling:
