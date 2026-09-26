@@ -50,6 +50,12 @@ same code the plain commands use, so every step is also a command of its own.
 It asks where the Shelf is, and Enter keeps the one in force. A path it refuses
 is refused in the words `firstmate shelf` uses, and the question comes again.
 
+Then it lists the [Official Plugins](#official-plugins), each with one line
+about it, and fetches the ones you choose by number: `1 3` or `1, 3`, and Enter
+for none. One already in the Registry, under that Plugin Name, is marked
+installed and is not offered. A clone that fails names the Plugin and says why,
+and the others are still fetched.
+
 Each answer is written when it is given, so Ctrl-C keeps the steps that
 finished. `setup` never removes anything, so it is safe to run again. A script
 can pipe the answers in, one per line; when the input ends before every
