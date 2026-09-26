@@ -8,7 +8,7 @@
  * It adds and never removes: `remove`, `revoke` and `unbind` stay the only
  * ways to take something away.
  */
-import { installPlugin, moveShelf } from './commands.ts';
+import { givePermission, installPlugin, moveShelf } from './commands.ts';
 import { readConfig } from './config.ts';
 import { OFFICIAL_PLUGINS } from './official-plugins.ts';
 import { openPrompt, type Prompt } from './prompt.ts';
@@ -37,6 +37,7 @@ export async function setup(): Promise<number> {
   try {
     await askShelf(prompt, changes);
     await askPlugins(prompt, changes);
+    await askGrants(prompt, changes);
   } finally {
     prompt.close();
     summarise(changes);
@@ -106,6 +107,45 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
     } catch (fault) {
       console.error(`firstmate: could not install ${plugin.name}: ${sentence(fault)}`);
       changes.failed = true;
+    }
+  }
+}
+
+/**
+ * Which Plugins each installed Official Plugin that calls others may call.
+ * Every Plugin in the Registry but the caller is on the list, official or
+ * not. A Grant already given is shown and not offered, and no Grant is ever
+ * taken back here: running `setup` again cannot break a Plugin that works.
+ */
+async function askGrants(prompt: Prompt, changes: Changes): Promise<void> {
+  const { home } = readConfig();
+  for (const caller of OFFICIAL_PLUGINS.filter((plugin) => plugin.callsOthers)) {
+    const rows = readRegistry(home);
+    const row = rows.find((candidate) => candidate.name === caller.name);
+    if (row === undefined) continue;
+    const others = rows.filter((candidate) => candidate !== row).map((other) => other.name);
+    if (others.length === 0) continue;
+    const offered = others.filter((name) => !row.grants.includes(name));
+
+    console.log(`The Plugins ${row.name} may call:`);
+    for (const name of others) {
+      const at = offered.indexOf(name);
+      console.log(at < 0 ? `      ${name} (granted)` : `  ${String(at + 1).padStart(2)}. ${name}`);
+    }
+    if (offered.length === 0) continue;
+
+    const chosen = await prompt.choose(
+      `Which may ${row.name} call? Type their numbers, or press Enter for none:`,
+      offered.length,
+      true,
+    );
+    for (const at of chosen) {
+      const to = offered[at];
+      if (to === undefined) continue;
+      givePermission(home, row.name, to);
+      console.log(`firstmate: granted ${row.name} the right to call ${to}'s tools.`);
+      changes.done.push(`${row.name} may call ${to}`);
+      changes.registry = true;
     }
   }
 }
