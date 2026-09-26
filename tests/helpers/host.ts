@@ -220,19 +220,23 @@ export type CommandResult = {
  *
  * The environment is the whole of what a test may change about that process,
  * which is how a command is run on a machine the test has arranged: with no
- * display, or with the webview library made unloadable.
+ * display, or with the webview library made unloadable. The input, when there
+ * is one, is written to the command and then closed, as a script pipes its
+ * answers in; with none, the command reads nothing at all.
  */
 export function firstmate(
   home: string,
   argv: readonly string[],
   env: NodeJS.ProcessEnv = {},
+  input?: string,
 ): Promise<CommandResult> {
   return new Promise((done, fail) => {
     const child = spawn(process.execPath, [join(REPOSITORY, 'src', 'cli.ts'), ...argv], {
       cwd: REPOSITORY,
       env: { ...process.env, FIRSTMATE_HOME: home, ...env },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
+    if (input !== undefined) child.stdin?.end(input);
     let stdout = '';
     let stderr = '';
     collectText(child.stdout, (chunk) => (stdout += chunk));

@@ -31,6 +31,7 @@ Run every command from the repository root.
 | `npm run build`                      | Compile into `dist/`. Packing does this; you do not. |
 | `node src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node src/cli.ts start`              | The same Host, from the command line.           |
+| `node src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node src/cli.ts desktop`            | The FirstMate window. Windows only.             |
 | `node src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
@@ -92,6 +93,9 @@ src/         the Host. Every file is one job.
                    and the Registry: add, remove, list, grant, revoke.
   commands.ts      what the writing commands change, apart from how they are
                    typed and printed, so every refusal has one sentence.
+  setup.ts         firstmate setup: the conversation, and nothing else. Each
+                   step calls commands.ts.
+  prompt.ts        ask for text, yes or no, or numbers, over node:readline.
   official-plugins.ts the Official Plugins, as data: name, URL, one line,
                    and whether each calls other Plugins (ADR-0015).
   config.ts        FIRSTMATE_HOME, FIRSTMATE_PORT, the handshake and the Shelf.

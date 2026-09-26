@@ -39,6 +39,24 @@ node src/main.ts
 Node 24 or newer, and nothing else. FirstMate has no runtime dependencies, and
 a clone needs no build step.
 
+## Set it up
+
+```sh
+firstmate setup
+```
+
+`setup` asks a few questions in the terminal and does what you answer, with the
+same code the plain commands use, so every step is also a command of its own.
+It asks where the Shelf is, and Enter keeps the one in force. A path it refuses
+is refused in the words `firstmate shelf` uses, and the question comes again.
+
+Each answer is written when it is given, so Ctrl-C keeps the steps that
+finished. `setup` never removes anything, so it is safe to run again. A script
+can pipe the answers in, one per line; when the input ends before every
+question is answered, `setup` stops with "setup ended before it had every
+answer" and exits non-zero. At the end it says what it changed, and nothing
+when nothing changed.
+
 ## Where it runs
 
 Evidence, not a promise. "Proved" means someone has run it.
