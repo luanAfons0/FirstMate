@@ -36,8 +36,9 @@ cd FirstMate
 node src/main.ts
 ```
 
-Node 24 or newer, and nothing else. FirstMate has no runtime dependencies, and
-a clone needs no build step.
+Node 24 or newer, and nothing else. The Host imports nothing outside Node, and
+a clone needs no build step. The one runtime dependency draws the FirstMate
+window, and only `firstmate desktop` loads it (ADR-0011).
 
 ## Set it up
 
@@ -237,7 +238,8 @@ Shelf in force and names the command that moves it, and that is all it does:
 the Shelf is moved from a terminal and from nowhere else, because no address on
 the Host changes it
 ([ADR-0012](docs/adr/0012-the-host-keeps-one-setting.md)). Nothing scans the
-Shelf — a directory sitting there is not a Plugin until `add` registers it.
+Shelf — a directory sitting there is not a Plugin until `add` or `install`
+registers it.
 
 ## Shortcuts
 
@@ -464,12 +466,16 @@ node --test
 Every test boots a real Host against a temporary home directory and drives it
 over HTTP. No test imports a module of the Host.
 
-## Check the types
+## Check it
 
 ```sh
 npm install
-npx tsc --noEmit
+npm run check
 ```
+
+`npm run check` checks the types, lints with Biome, checks the layout with
+Prettier, looks for dead code with knip, and runs every test. CI runs the same
+command. `npx tsc --noEmit` checks the types alone.
 
 Node 24 runs TypeScript without a build step, so a clone never holds built
 output and nothing here compiles. `typescript` checks the types, and compiles

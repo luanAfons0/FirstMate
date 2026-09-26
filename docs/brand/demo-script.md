@@ -17,22 +17,24 @@ them, and has to be changed with them.
 Five things, in this order, and nothing else:
 
 1. **A Plugin is a directory.** One command names it. Nothing is copied.
-2. **The Host picks it up** on a restart.
-3. **The Tray opens it from Windows**, in one click.
-4. **The Index Page** lists the Plugin and says `Running`.
+2. **A Shortcut is bound from a terminal**, with one more command.
+3. **The Host picks both up** on a restart.
+4. **The Tray opens the FirstMate window** in one click, on the Index Page,
+   which lists the Plugin and says `Running`.
 5. **A Plugin Page is a whole page**, and it calls its own tools.
 
 ## Before you record
 
 `docs/brand/demo.sh check` proves every line of this section in one go.
 
-Get a real `firstmate` command. Until the package is on npm, install the
-tarball, which behaves exactly as the published one will:
+Get a real `firstmate` command. Install the tarball of this repository, which
+behaves exactly as the published package does, so the take shows the code you
+have:
 
 ```sh
 cd ~/.first-mate
 npm pack --pack-destination /tmp
-npm install -g /tmp/luan-afonso-firstmate-1.0.0.tgz
+npm install -g /tmp/luan-afonso-firstmate-<version>.tgz
 firstmate --help          # proves it is on PATH
 ```
 
@@ -40,7 +42,9 @@ Then:
 
 - A terminal at about 90 columns, nothing else on screen.
 - Nothing else on the Windows desktop, and the Tray running in the
-  notification area.
+  notification area: `firstmate desktop`, from Windows, with its window
+  closed. It picks the Shortcut up within a few seconds of `bind`.
+- `Ctrl+Alt+D` free: no Shortcut of FirstMate's and no other program holds it.
 - The demo Plugin at `~/firstmate-demo/notes`. It ships a `web/` directory and
   an executable `mcp`, so it reaches `Running` and answers one tool.
 - The Host running as its service, against the real `~/.firstmate`. The Tray
@@ -53,11 +57,12 @@ Then:
 | ------- | ----------------- |
 | 0–2   | `firstmate list` — one Plugin, `nexus`. A Registry already exists. |
 | 2–5   | `firstmate add notes ~/firstmate-demo/notes` — it answers `added notes` and `restart the Host to pick it up`. |
-| 5–8   | `systemctl --user restart firstmate` — silent, as a service should be. |
-| 8–11  | Click the Tray icon in the Windows notification area. |
-| 11–14 | The Index Page opens. `notes` is there, `Running`, beside `nexus`. |
-| 14–17 | Click `notes`. Its Plugin Page fills the window: its own page, no chrome around it. |
-| 17–20 | Click **Ask my own tools**. The answer appears. End. |
+| 5–8   | `firstmate bind Ctrl+Alt+D notes` — it answers `bound Ctrl+Alt+D to open /p/notes/`. |
+| 8–11  | `systemctl --user restart firstmate` — silent, as a service should be. |
+| 11–14 | Click the FirstMate icon in the Windows notification area. |
+| 14–17 | The FirstMate window opens on the Index Page. `notes` is there, `Running`, beside `nexus`. |
+| 17–20 | Click `notes`. Its Plugin Page fills the window under the narrow strip: its own page, never framed. |
+| 20–23 | Click **Ask my own tools**. The answer appears. End. |
 
 ## The token
 
@@ -74,8 +79,8 @@ systemctl --user restart firstmate
 
 ## Afterwards
 
-Take the demo Plugin back out. It was a prop. `docs/brand/demo.sh reset` runs
-both of these:
+Take the demo Plugin back out. It was a prop. `remove` takes its Shortcut with
+it. `docs/brand/demo.sh reset` runs both of these:
 
 ```sh
 firstmate remove notes

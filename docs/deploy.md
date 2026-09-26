@@ -196,8 +196,9 @@ whether the distribution is running before any path into it is touched. Looking
 at FirstMate does not wake WSL.
 
 Start at logon is one file, `FirstMate.vbs` in the Startup folder. The menu
-writes it, and turning the toggle off deletes exactly that file. Nothing goes
-in the registry and nothing is scheduled.
+writes it, and turning the toggle off deletes exactly that file. Nothing is
+scheduled, and the toggle writes nothing to the registry. The one key the Tray
+writes is the one its pop-ups need, in step 4 above.
 
 On Windows 11 a new notification-area icon starts hidden: click the chevron
 (`^`) beside the clock and drag the FirstMate icon out to keep it on the

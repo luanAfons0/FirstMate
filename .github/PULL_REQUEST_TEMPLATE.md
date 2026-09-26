@@ -10,8 +10,7 @@ words, with no prefix, no scope and no ticket number.
 
 ## Before you ask for a review
 
-- [ ] `npm test` is green. The suite is the whole of `node --test`.
-- [ ] `npm run typecheck` is green.
+- [ ] `npm run check` is green: types, lint, format, knip and every test.
 - [ ] `README.md` is updated, because a command, an address or an environment
       variable moved. Strike this line if none did.
 - [ ] No ADR is contradicted in silence. If this change goes against one in
