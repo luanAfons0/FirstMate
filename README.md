@@ -340,9 +340,9 @@ halves, with the exact commands to install and to remove them, are in
 [`docs/deploy.md`](docs/deploy.md).
 
 ```sh
-scripts/install-service.sh          # install and start it
+firstmate service on                # install and start it
 journalctl --user -u firstmate -f   # read it
-scripts/uninstall-service.sh        # remove it
+firstmate service off               # remove it
 ```
 
 ## Open it from Windows

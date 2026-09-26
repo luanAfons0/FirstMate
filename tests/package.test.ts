@@ -61,6 +61,9 @@ test('the package holds the desktop program and the icons it draws with', async 
   assert.ok(files.includes('dist/desktop-state.js'), 'the part that decides');
   assert.ok(files.includes('dist/strip.js'), 'the chrome strip');
   assert.ok(files.includes('dist/logon.js'), 'whether it starts at logon');
+  // The unit is written from a template inside the program, so the service
+  // needs nothing from scripts/ or systemd/, which are not packed.
+  assert.ok(files.includes('dist/service.js'), 'the systemd user service');
   // The Tray cannot draw without them, and tsc copies nothing that is not
   // TypeScript, so they are packed from where they live rather than built.
   assert.ok(files.includes('icons/firstmate-running.ico'));
@@ -75,6 +78,7 @@ test('the package holds nothing a stranger has no use for', async () => {
     'a fixture': /fixtures\//,
     'the PowerShell': /\.ps1$|^windows\//,
     'the systemd unit': /^systemd\/|\.service$/,
+    'a shell script': /^scripts\/|\.sh$/,
     'the documentation': /^docs\//,
     'an agent worktree': /^\.claude\//,
     'the source': /^src\//,

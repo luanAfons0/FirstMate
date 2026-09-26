@@ -40,7 +40,7 @@ Run every command from the repository root.
 | `node src/cli.ts install <dir\|url\|official-name> [name]` | Fetch a Plugin into the Shelf and register it. |
 | `node src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
 | `node src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
-| `scripts/install-service.sh`         | Install and start the systemd user service.     |
+| `node src/cli.ts service on\|off`    | Install or remove the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
 Six environment variables move the Host: `FIRSTMATE_HOME` (default
@@ -90,7 +90,7 @@ knip and every test.
 src/         the Host. Every file is one job.
   main.ts          start-up: read the Registry, mint the token, supervise, listen.
   cli.ts           the terminal: start, desktop, shelf, install, bind, unbind,
-                   and the Registry: add, remove, list, grant, revoke.
+                   service, and the Registry: add, remove, list, grant, revoke.
   commands.ts      what the writing commands change, apart from how they are
                    typed and printed, so every refusal has one sentence.
   setup.ts         firstmate setup: the conversation, and nothing else. Each
@@ -124,6 +124,8 @@ src/         the Host. Every file is one job.
   strip.ts         the chrome strip above the content view, one file with no
                    assets of its own. The Host never serves it.
   logon.ts         whether FirstMate starts at logon: one file in Startup.
+  service.ts       the Host as a systemd user service: write the unit from a
+                   template of its own, and ask systemctl and loginctl.
   taskbar.ts       the name Windows groups the taskbar button by, so that the
                    button wears FirstMate's mark and not node.exe's.
   hotkeys.ts       the PowerShell helper that holds the Shortcuts in Windows:
@@ -136,8 +138,6 @@ icons/       the mark, running and stopped. The window wears it; the Tray
 docs/adr/    the decisions that are expensive to reverse.
 docs/agents/ how an agent works in this repo. See "Agent skills" below.
 docs/brand/  the anchor, at the sizes GitHub asks for.
-scripts/     install and uninstall the systemd user service.
-systemd/     the unit file.
 windows/     install and remove the Windows side, and the logon task that
              holds the distribution up. PowerShell, and nothing else.
 ```
