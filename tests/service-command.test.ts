@@ -9,67 +9,17 @@
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import test, { type TestContext } from 'node:test';
+import test from 'node:test';
 import { firstmate, makeHome, type CommandResult } from './helpers/host.ts';
+import { machine, type Machine } from './helpers/systemd.ts';
 
 const REPOSITORY = dirname(dirname(fileURLToPath(import.meta.url)));
 const NO_SYSTEMD =
   'No systemd here, so the Host does not run as a service. Start it with `firstmate start`.';
-
-/** How one fake answers a call whose arguments start with `when`. */
-type Answer = { readonly when: string; readonly code: number; readonly says?: string };
-
-type Machine = {
-  readonly home: string;
-  readonly config: string;
-  readonly unit: string;
-  readonly env: NodeJS.ProcessEnv;
-  /** Every call the fakes took, one line each, in order. */
-  calls(): Promise<readonly string[]>;
-};
-
-/**
- * A machine with a fake `systemctl` and `loginctl` and nothing else on `PATH`.
- * Every call succeeds unless an answer says otherwise.
- */
-async function machine(
-  t: TestContext,
-  answers: { readonly systemctl?: readonly Answer[]; readonly loginctl?: readonly Answer[] } = {},
-): Promise<Machine> {
-  const home = await makeHome(t);
-  const bin = join(home, 'bin');
-  const config = join(home, 'config');
-  const log = join(home, 'calls.log');
-  await mkdir(bin);
-  for (const tool of ['systemctl', 'loginctl'] as const) {
-    await fake(join(bin, tool), tool, log, answers[tool] ?? []);
-  }
-  return {
-    home,
-    config,
-    unit: join(config, 'systemd', 'user', 'firstmate.service'),
-    env: { PATH: bin, XDG_CONFIG_HOME: config, USER: 'mate', WSL_DISTRO_NAME: '' },
-    calls: async () => {
-      const text = await readFile(log, 'utf8').catch(() => '');
-      return text.split('\n').filter((line) => line !== '');
-    },
-  };
-}
-
-async function fake(path: string, tool: string, log: string, answers: readonly Answer[]) {
-  const cases = answers
-    .map((answer) => `  '${answer.when}'*) echo '${answer.says ?? ''}' >&2; exit ${answer.code};;`)
-    .join('\n');
-  await writeFile(
-    path,
-    `#!/bin/sh\necho "${tool} $*" >> '${log}'\ncase "$*" in\n${cases}\nesac\nexit 0\n`,
-  );
-  await chmod(path, 0o755);
-}
 
 function service(m: Machine, what: string, env: NodeJS.ProcessEnv = {}): Promise<CommandResult> {
   return firstmate(m.home, ['service', what], { ...m.env, ...env });

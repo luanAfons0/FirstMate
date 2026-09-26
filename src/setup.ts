@@ -21,6 +21,7 @@ import { readConfig } from './config.ts';
 import { OFFICIAL_PLUGINS } from './official-plugins.ts';
 import { openPrompt, type Prompt } from './prompt.ts';
 import { readRegistry } from './registry.ts';
+import { NO_SYSTEMD, RESTART_COMMAND, restartService, serviceOn, serviceState } from './service.ts';
 import { readSettings } from './settings.ts';
 import { SHELF_VARIABLE } from './shelf.ts';
 import { shortcutAddress } from './shortcut.ts';
@@ -49,6 +50,8 @@ export async function setup(): Promise<number> {
     await askPlugins(prompt, changes);
     await askGrants(prompt, changes);
     await askShortcuts(prompt, changes);
+    await askService(prompt, changes);
+    await askRestart(prompt, changes);
   } finally {
     prompt.close();
     summarise(changes);
@@ -225,6 +228,53 @@ async function askPath(prompt: Prompt, plugin: string): Promise<string> {
     } catch (fault) {
       console.error(`firstmate: ${sentence(fault)}`);
     }
+  }
+}
+
+/**
+ * Whether the Host should run as a systemd user service. A service that runs
+ * already is not asked about, and a machine with no systemd is told so in the
+ * words `service on` uses, and `setup` goes on.
+ */
+async function askService(prompt: Prompt, changes: Changes): Promise<void> {
+  const state = serviceState();
+  if (state === 'active') return;
+  if (state === 'no-systemd') {
+    console.log(`firstmate: ${NO_SYSTEMD}`);
+    return;
+  }
+  if (!(await prompt.confirm('Run the Host as a systemd user service?', true))) return;
+  try {
+    serviceOn();
+    changes.done.push('the Host runs as a systemd user service');
+    // A service that was not running starts now, and reads the Registry as
+    // it is, so there is nothing left to restart.
+    changes.registry = false;
+  } catch (fault) {
+    console.error(`firstmate: ${sentence(fault)}`);
+    changes.failed = true;
+  }
+}
+
+/**
+ * Whether to restart the Host now. It is asked only when the service runs and
+ * this run changed the Registry, because the Host reads the Registry only
+ * when it starts; a Shortcut or a Shelf needs no restart.
+ */
+async function askRestart(prompt: Prompt, changes: Changes): Promise<void> {
+  if (!changes.registry || serviceState() !== 'active') return;
+  if (!(await prompt.confirm('Restart the Host now, so that it picks the changes up?', true))) {
+    console.log(`firstmate: restart it when you are ready: ${RESTART_COMMAND}`);
+    changes.registry = false;
+    return;
+  }
+  try {
+    restartService();
+    changes.done.push('restarted the Host');
+    changes.registry = false;
+  } catch (fault) {
+    console.error(`firstmate: ${sentence(fault)}`);
+    changes.failed = true;
   }
 }
 

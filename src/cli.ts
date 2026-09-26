@@ -67,9 +67,10 @@ name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.
 
-setup asks where the Shelf is, and each answer is written as it is given, by the
-same code the plain commands use. It never removes anything. Answers can be
-piped in, one per line.
+setup asks for the Shelf, the Official Plugins to install, the Grants for those
+that call others, Shortcuts, and whether to run the Host as a service. Each
+answer is written as it is given, by the same code the plain commands use. It
+never removes anything. Answers can be piped in, one per line.
 
 The window works out which distribution holds the Host and where the Host keeps
 its home directory. Say them yourself with --distribution <name> and
