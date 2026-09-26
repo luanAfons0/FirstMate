@@ -61,6 +61,11 @@ For each installed Official Plugin that calls other Plugins, such as
 Plugin in the Registry but the caller is on the list; a Grant already given is
 shown and not offered. `setup` gives Grants and never takes one back.
 
+Then it shows the Shortcuts bound now and asks for new ones, one after
+another: the keys, the Plugin by number, and the path, where `/` is the Plugin
+Page. Keys and paths are checked as `bind` checks them. Enter at the keys ends
+the step. The Tray picks the new Shortcuts up with no restart.
+
 Each answer is written when it is given, so Ctrl-C keeps the steps that
 finished. `setup` never removes anything, so it is safe to run again. A script
 can pipe the answers in, one per line; when the input ends before every

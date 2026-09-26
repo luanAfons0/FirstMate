@@ -8,12 +8,22 @@
  * It adds and never removes: `remove`, `revoke` and `unbind` stay the only
  * ways to take something away.
  */
-import { givePermission, installPlugin, moveShelf } from './commands.ts';
+import {
+  bindShortcut,
+  checkKeys,
+  checkKeysFree,
+  checkShortcutPath,
+  givePermission,
+  installPlugin,
+  moveShelf,
+} from './commands.ts';
 import { readConfig } from './config.ts';
 import { OFFICIAL_PLUGINS } from './official-plugins.ts';
 import { openPrompt, type Prompt } from './prompt.ts';
 import { readRegistry } from './registry.ts';
+import { readSettings } from './settings.ts';
 import { SHELF_VARIABLE } from './shelf.ts';
+import { shortcutAddress } from './shortcut.ts';
 
 /** What one run of `setup` changed so far. */
 type Changes = {
@@ -38,6 +48,7 @@ export async function setup(): Promise<number> {
     await askShelf(prompt, changes);
     await askPlugins(prompt, changes);
     await askGrants(prompt, changes);
+    await askShortcuts(prompt, changes);
   } finally {
     prompt.close();
     summarise(changes);
@@ -146,6 +157,73 @@ async function askGrants(prompt: Prompt, changes: Changes): Promise<void> {
       console.log(`firstmate: granted ${row.name} the right to call ${to}'s tools.`);
       changes.done.push(`${row.name} may call ${to}`);
       changes.registry = true;
+    }
+  }
+}
+
+/**
+ * Shortcuts to bind, one after another, until Enter at the keys. The keys,
+ * the Plugin and the path are each checked as `bind` checks them, and a
+ * refusal asks for that one answer again. The Tray picks a Shortcut up with
+ * no restart, so a Shortcut is no reason to restart the Host (ADR-0013).
+ */
+async function askShortcuts(prompt: Prompt, changes: Changes): Promise<void> {
+  const { home } = readConfig();
+  const plugins = readRegistry(home).map((row) => row.name);
+  if (plugins.length === 0) return;
+
+  const bound = readSettings(home).shortcuts ?? [];
+  if (bound.length > 0) {
+    console.log('The Shortcuts bound now:');
+    for (const shortcut of bound) {
+      console.log(`  ${shortcut.keys}  opens ${shortcutAddress(shortcut)}`);
+    }
+  }
+
+  for (;;) {
+    const typed = await prompt.text(
+      'Keys for a new Shortcut, as in Ctrl+Alt+N, or press Enter to finish:',
+      '',
+    );
+    if (typed === '') return;
+    let keys: string;
+    try {
+      keys = checkKeys(typed);
+      checkKeysFree(home, keys);
+    } catch (fault) {
+      console.error(`firstmate: ${sentence(fault)}`);
+      continue;
+    }
+
+    console.log(`The Plugins ${keys} can open:`);
+    for (const [at, name] of plugins.entries()) {
+      console.log(`  ${String(at + 1).padStart(2)}. ${name}`);
+    }
+    const [at] = await prompt.choose(
+      `Which should ${keys} open? Type its number, or press Enter for none:`,
+      plugins.length,
+      false,
+    );
+    const plugin = at === undefined ? undefined : plugins[at];
+    if (plugin === undefined) continue;
+
+    const path = await askPath(prompt, plugin);
+    const shortcut = bindShortcut(home, keys, plugin, path);
+    console.log(`firstmate: bound ${shortcut.keys} to open ${shortcutAddress(shortcut)}`);
+    changes.done.push(`bound ${shortcut.keys} to open ${shortcutAddress(shortcut)}`);
+  }
+}
+
+/** The path under a Plugin's address a Shortcut opens. `/` is the Plugin Page. */
+async function askPath(prompt: Prompt, plugin: string): Promise<string> {
+  for (;;) {
+    const typed = await prompt.text(`Which path inside ${plugin} should it open?`, '/');
+    const path = typed === '/' ? '' : typed;
+    try {
+      checkShortcutPath(path, plugin);
+      return path;
+    } catch (fault) {
+      console.error(`firstmate: ${sentence(fault)}`);
     }
   }
 }

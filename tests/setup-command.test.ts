@@ -153,7 +153,7 @@ test('a Plugin registered from elsewhere under an official name shows as install
   const elsewhere = await directory(home, 'nexus-clone');
   await firstmate(home, ['add', 'nexus', elsewhere]);
 
-  const run = await firstmate(home, ['setup'], {}, answers('', ''));
+  const run = await firstmate(home, ['setup'], {}, answers('', '', ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, /nexus +manages .* \(installed\)/);
@@ -237,4 +237,74 @@ test('setup never takes a Grant back, and asks nothing of a Plugin that calls no
   assert.deepEqual((await registry(home)).find((row) => row.name === 'scheduler')?.grants, [
     'worklog',
   ]);
+});
+
+test('Shortcuts are bound one after another, until Enter at the keys', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'alpha', await directory(home, 'alpha')]);
+  await firstmate(home, ['add', 'beta', await directory(home, 'beta')]);
+  await firstmate(home, ['bind', 'Ctrl+Alt+A', 'alpha']);
+
+  const run = await firstmate(
+    home,
+    ['setup'],
+    {},
+    answers('', '', 'alt+ctrl+b', '2', 'notes/today', 'Ctrl+Shift+Z', '1', '', ''),
+  );
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stdout, /The Shortcuts bound now:\n {2}Ctrl\+Alt\+A {2}opens \/p\/alpha\/\n/);
+  assert.match(run.stdout, /bound Ctrl\+Alt\+B to open \/p\/beta\/notes\/today/);
+  assert.match(
+    run.stdout,
+    /setup changed:\n {2}bound Ctrl\+Alt\+B to open \/p\/beta\/notes\/today\n/,
+  );
+  assert.doesNotMatch(run.stdout, /restart the Host/, 'the Tray picks a Shortcut up by itself');
+  assert.deepEqual((await settings(home)).shortcuts, [
+    { keys: 'Ctrl+Alt+A', plugin: 'alpha', path: '' },
+    { keys: 'Ctrl+Alt+B', plugin: 'beta', path: 'notes/today' },
+    { keys: 'Ctrl+Shift+Z', plugin: 'alpha', path: '' },
+  ]);
+});
+
+test('keys and paths that bind refuses are refused in its words, and asked again', async (t) => {
+  const home = await makeHome(t);
+  await firstmate(home, ['add', 'alpha', await directory(home, 'alpha')]);
+  await firstmate(home, ['bind', 'Ctrl+Alt+A', 'alpha']);
+
+  const noModifier = await firstmate(home, ['bind', 'N', 'alpha']);
+  const held = await firstmate(home, ['bind', 'ctrl+alt+a', 'alpha']);
+  const climbs = await firstmate(home, ['bind', 'Ctrl+Alt+B', 'alpha', '../other']);
+
+  const run = await firstmate(
+    home,
+    ['setup'],
+    {},
+    answers('', '', 'N', 'ctrl+alt+a', 'Ctrl+Alt+B', '1', '../other', '', ''),
+  );
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.equal(
+    run.stderr,
+    noModifier.stderr + held.stderr + climbs.stderr,
+    'one rule, one sentence',
+  );
+  assert.deepEqual((await settings(home)).shortcuts, [
+    { keys: 'Ctrl+Alt+A', plugin: 'alpha', path: '' },
+    { keys: 'Ctrl+Alt+B', plugin: 'alpha', path: '' },
+  ]);
+});
+
+test('Enter at the keys binds nothing, and an empty Registry asks nothing', async (t) => {
+  const home = await makeHome(t);
+
+  const empty = await firstmate(home, ['setup'], {}, answers('', ''));
+  assert.equal(empty.code, 0, empty.stderr);
+  assert.doesNotMatch(empty.stdout, /Keys for a new Shortcut/);
+
+  await firstmate(home, ['add', 'alpha', await directory(home, 'alpha')]);
+  const none = await firstmate(home, ['setup'], {}, answers('', '', ''));
+  assert.equal(none.code, 0, none.stderr);
+  assert.match(none.stdout, /Keys for a new Shortcut/);
+  assert.equal((await settings(home)).shortcuts, undefined);
 });

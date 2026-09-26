@@ -195,7 +195,7 @@ export function checkKeys(typed: string): string {
 }
 
 /** Refuse keys that a Shortcut already holds, and say which one. */
-function checkKeysFree(home: string, keys: string): void {
+export function checkKeysFree(home: string, keys: string): void {
   const held = (readSettings(home).shortcuts ?? []).find((shortcut) => shortcut.keys === keys);
   if (held !== undefined) {
     throw new Error(
@@ -206,7 +206,7 @@ function checkKeysFree(home: string, keys: string): void {
 }
 
 /** Refuse a path that leaves its Plugin's address. */
-function checkShortcutPath(path: string, plugin: string): void {
+export function checkShortcutPath(path: string, plugin: string): void {
   if (!isPluginPath(path, plugin)) {
     throw new Error(
       `${path} is not a path inside ${plugin}'s address. Give it relative, ` +
