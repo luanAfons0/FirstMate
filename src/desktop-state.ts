@@ -481,6 +481,28 @@ export function popupAddress(runtime: Runtime, path: string): string {
   return url.href;
 }
 
+/**
+ * The address the system browser is given when the strip asks to open what
+ * the window shows: that same address, with the token on it once, so the Host
+ * admits the browser and sends it on without the parameter, as it does the
+ * window. Anything that is not on the Host, or that cannot be read, gives the
+ * Index Page instead, because the window shows the Host and nothing else.
+ *
+ * The address is the one the content view reports it shows. Nothing is read
+ * out of the page to find it (ADR-0008).
+ */
+export function browserAddress(runtime: Runtime, shown: string | null): string {
+  let url: URL;
+  try {
+    url = new URL(shown ?? '');
+  } catch {
+    return indexAddress(runtime);
+  }
+  if (url.origin !== `http://127.0.0.1:${runtime.port}`) return indexAddress(runtime);
+  url.searchParams.set(TOKEN_PARAMETER, runtime.token);
+  return url.href;
+}
+
 /** The address a click on a Notice opens in the window, carrying the token
  *  the same way the Popup's does. */
 export function noticeAddress(runtime: Runtime, notice: NoticeSeen): string {

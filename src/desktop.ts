@@ -37,6 +37,7 @@ import type {
 import {
   askForShortcuts,
   askTheHost,
+  browserAddress,
   ESCAPE,
   findTheHost,
   hasDesktop,
@@ -73,7 +74,7 @@ import {
 import { STATE_WORDS } from './index-page.ts';
 import { readLogon, setLogon } from './logon.ts';
 import { nameTheWindow } from './taskbar.ts';
-import { SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
+import { OPEN_IN_BROWSER, SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
 
 /** The window's title. The chrome strip names what is open inside it. */
 const TITLE = 'FirstMate';
@@ -208,8 +209,9 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
 
   const size = window.getInnerSize(true);
 
-  // The strip is the program's own page. It asks for one thing, by trying to
-  // go to one address, and this is where that address is refused and answered.
+  // The strip is the program's own page. It asks for two things, each by
+  // trying to go to one address, and this is where they are refused and
+  // answered.
   const strip = window.createWebview({
     html: stripPage(THE_PLUGIN_LIST),
     x: 0,
@@ -220,10 +222,28 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     navigationHandler: (address) => {
       if (!address.startsWith(SCHEME)) return true;
       // A guard has to answer at once, so the work happens after it has.
-      setTimeout(() => content.loadUrl(indexAddress(run)), 0);
+      setTimeout(() => (address === OPEN_IN_BROWSER ? toTheBrowser() : toTheList()), 0);
       return false;
     },
   });
+
+  /** Show the Index Page in the content view. */
+  const toTheList = (): void => {
+    content.loadUrl(indexAddress(run));
+  };
+
+  /**
+   * Give what the content view shows now to the system browser, admitted. The
+   * address is the one the view reports, not one read out of the page
+   * (ADR-0008). It carries the token, so neither it nor Windows's answer is
+   * said: a failed command line names its arguments, and one of them is the
+   * token.
+   */
+  const toTheBrowser = (): void => {
+    void openInBrowser(browserAddress(run, content.url())).then((said) => {
+      if (said !== undefined) complain('The system browser would not open this page.');
+    });
+  };
 
   // The content view is made with nothing in it, so that what it is showing is
   // known from its first navigation onwards. Nothing is ever injected into it,
