@@ -384,8 +384,12 @@ them.
 
 `firstmate desktop` opens a window of FirstMate's own and shows the Index Page
 in it. A Plugin Page is then a page of FirstMate's own rather than a tab among
-thirty others. A narrow strip above the page holds one control, *see the plugin
-list*, and the name of what is open. One Plugin Page is open at a time, so
+thirty others. A narrow strip above the page holds two controls, *see the plugin
+list* and *open in browser*, and the name of what is open. *Open in browser*
+gives the address the window shows, Plugin Page or Index Page, to your system
+browser with this run's token on it, so the page loads with no token to paste.
+That address may stay in the browser's history; the token in it works only on
+`127.0.0.1` and only until the Host restarts. One Plugin Page is open at a time, so
 leaving one and coming back loads it again. It works out which distribution
 holds the Host and where the Host keeps its home directory, so there is no
 address to type and no token to paste; say them yourself when it cannot:

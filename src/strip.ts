@@ -1,7 +1,8 @@
 /**
  * The chrome strip: the program's own, above the content view.
  *
- * It holds one control — see the plugin list — and the name of what is open.
+ * It holds two controls — see the plugin list, and open in browser — and the
+ * name of what is open.
  * It is one file with no assets of its own, as the Index Page is.
  *
  * The Host does not serve this page, and must never serve it. Every Plugin
@@ -18,8 +19,13 @@
 /** The scheme the strip asks with. The program answers every address in it. */
 export const SCHEME = 'firstmate:';
 
-/** The address the control asks for. The program refuses it and acts instead. */
+/** The address the first control asks for. The program refuses it and shows
+ *  the Index Page instead. */
 const PLUGIN_LIST = `${SCHEME}plugin-list`;
+
+/** The address the second control asks for. The program refuses it and gives
+ *  what the window shows to the system browser instead. */
+export const OPEN_IN_BROWSER = `${SCHEME}open-in-browser`;
 
 /** What the strip says is open when the content view is on the Index Page. */
 export const THE_PLUGIN_LIST = 'the Plugin list';
@@ -54,6 +60,7 @@ export function stripPage(open: string, fault?: string): string {
   span.fault { color: #e8a0a0; }
 </style>
 <a href="${PLUGIN_LIST}"${onTheList ? " aria-disabled='true'" : ''}>see the plugin list</a>
+<a href="${OPEN_IN_BROWSER}" title="Open what is shown here in the system browser">open in browser</a>
 ${fault === undefined ? name(open, onTheList) : `<span class="fault">${escaped(fault)}</span>`}
 </html>`;
 }
