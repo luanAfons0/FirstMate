@@ -22,6 +22,10 @@ _Avoid_: manifest, catalogue, config, lockfile
 The order every list of Plugins shows them in, chosen by the operator. A Plugin it does not name follows, in the order it was added.
 _Avoid_: sort, ranking, priority
 
+**Settings View**:
+The window's own page for FirstMate's settings, opened from the gear in the strip. The Host never serves it, so no Plugin Page can reach it.
+_Avoid_: preferences, options, config page, settings page
+
 **Shelf**:
 The directory a fetched Plugin lands in. The operator chooses it, the Host
 remembers it in its settings file, and nothing ever scans it.

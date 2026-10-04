@@ -13,11 +13,14 @@
  */
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { posix } from 'node:path';
 import { HOME_VARIABLE } from './config.ts';
+import { isPluginName, readRegistry } from './registry.ts';
 import { RUNTIME_FILE, type Runtime } from './runtime.ts';
+import { readSettings } from './settings.ts';
 import type { PluginState } from './supervisor.ts';
 import { TOKEN_PARAMETER } from './security.ts';
-import { readKeys, type KeyChord } from './shortcut.ts';
+import { readKeys, type KeyChord, type Shortcut } from './shortcut.ts';
 
 /** The command Windows reaches a distribution through. */
 const WSL = 'wsl.exe';
@@ -98,13 +101,18 @@ export function hasDesktop(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): b
 }
 
 /**
- * The Windows path of the Host's runtime file.
+ * The Windows path of the Host's home directory.
  * `/home/luanh/.firstmate` in Debian becomes
- * `\\wsl.localhost\Debian\home\luanh\.firstmate\runtime.json`.
+ * `\\wsl.localhost\Debian\home\luanh\.firstmate`.
  */
-function runtimePathIn(where: Where): string {
+function homePathIn(where: Where): string {
   const inside = where.home.replaceAll('/', '\\').replace(/\\+$/, '');
-  return `${DISTRIBUTION_PREFIX}${where.distribution}${inside}\\${RUNTIME_FILE}`;
+  return `${DISTRIBUTION_PREFIX}${where.distribution}${inside}`;
+}
+
+/** The Windows path of the Host's runtime file, inside its home directory. */
+function runtimePathIn(where: Where): string {
+  return `${homePathIn(where)}\\${RUNTIME_FILE}`;
 }
 
 /**
@@ -238,7 +246,7 @@ export type Pulse = {
  * cannot read a page. It is one loopback GET, the same trip the poll already
  * makes: no wsl.exe call and no file read.
  */
-async function askForPlugins(runtime: Runtime): Promise<Plugins> {
+export async function askForPlugins(runtime: Runtime): Promise<Plugins> {
   let said: unknown;
   try {
     const answer = await fetch(pluginsAddress(runtime), {
@@ -713,6 +721,253 @@ export async function restartTheHost(where: Where): Promise<string | undefined> 
     RESTART_TIMEOUT_MS,
   );
   return said.kind === 'silent' ? said.why : undefined;
+}
+
+/**
+ * The scheme the window's own pages ask with: the chrome strip and the
+ * Settings View. The program refuses to go to any address in it, and does
+ * what the address asks instead (ADR-0011).
+ */
+export const SCHEME = 'firstmate:';
+
+/** What one of the window's own pages asked for, read from the address it
+ *  tried to go to. */
+export type Asked =
+  /** Show the Index Page. */
+  | { readonly kind: 'plugin-list' }
+  /** Give what the content view shows to the system browser. */
+  | { readonly kind: 'open-in-browser' }
+  /** Open the switcher, or close it when it is open. */
+  | { readonly kind: 'switcher' }
+  /** Close the switcher. */
+  | { readonly kind: 'switcher-close' }
+  /** Show one Plugin Page. */
+  | { readonly kind: 'open'; readonly name: string }
+  /** Open the Settings View, or close it when it is open. */
+  | { readonly kind: 'settings' }
+  /** Turn Start at logon on, or off. */
+  | { readonly kind: 'logon' }
+  /** Start the Host, or start it again. */
+  | { readonly kind: 'restart' }
+  /** Move one Plugin to a place in the Plugin Order, counted from 1. */
+  | { readonly kind: 'order'; readonly name: string; readonly position: number }
+  /** Nothing the program knows. It is refused and nothing happens. */
+  | { readonly kind: 'nothing' };
+
+/** The address that asks for each thing that carries nothing with it. */
+export const ASK = {
+  pluginList: `${SCHEME}plugin-list`,
+  openInBrowser: `${SCHEME}open-in-browser`,
+  switcher: `${SCHEME}switcher`,
+  switcherClose: `${SCHEME}switcher-close`,
+  settings: `${SCHEME}settings`,
+  logon: `${SCHEME}logon`,
+  restart: `${SCHEME}restart`,
+} as const;
+
+/** What each of those addresses asks for. */
+const PLAIN: ReadonlyMap<string, Asked> = new Map<string, Asked>([
+  [ASK.pluginList, { kind: 'plugin-list' }],
+  [ASK.openInBrowser, { kind: 'open-in-browser' }],
+  [ASK.switcher, { kind: 'switcher' }],
+  [ASK.switcherClose, { kind: 'switcher-close' }],
+  [ASK.settings, { kind: 'settings' }],
+  [ASK.logon, { kind: 'logon' }],
+  [ASK.restart, { kind: 'restart' }],
+]);
+
+const NOTHING: Asked = { kind: 'nothing' };
+
+/** The address that asks to show one Plugin Page. */
+export function openAsk(name: string): string {
+  return `${SCHEME}open/${encodeURIComponent(name)}`;
+}
+
+/** The address that asks to move one Plugin to a place in the Plugin Order. */
+export function orderAsk(name: string, position: number): string {
+  return `${SCHEME}order/${encodeURIComponent(name)}/${position}`;
+}
+
+/**
+ * What an address asks for. It never throws: an address it cannot read asks
+ * for nothing, because a guard that throws is a handler that ends the program
+ * (#44). A Plugin Name is only ever handed on when it is a Plugin Name, and the
+ * caller still checks it against the Plugins the Host last named.
+ */
+export function readAsked(address: string): Asked {
+  const plain = PLAIN.get(address.replace(/\/+$/, ''));
+  if (plain !== undefined) return plain;
+  if (!address.startsWith(SCHEME)) return NOTHING;
+  const [what, name, place, ...more] = address.slice(SCHEME.length).split('/');
+  const plugin = decoded(name);
+  if (plugin === undefined || !isPluginName(plugin) || more.length > 0) return NOTHING;
+  if (what === 'open' && place === undefined) return { kind: 'open', name: plugin };
+  if (what === 'order' && place !== undefined && /^[1-9]\d{0,5}$/.test(place)) {
+    return { kind: 'order', name: plugin, position: Number(place) };
+  }
+  return NOTHING;
+}
+
+function decoded(part: string | undefined): string | undefined {
+  if (part === undefined) return undefined;
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Node and the command line inside the distribution, as the service runs the
+ * Host. The window writes a setting by running the command line, never by
+ * calling the Host (ADR-0012, ADR-0016).
+ */
+export type CommandLine = {
+  /** The absolute path of the Node the service starts the Host with. */
+  readonly node: string;
+  /** The absolute path of the command line beside the Host's start-up file. */
+  readonly cli: string;
+};
+
+/**
+ * Node and the command line, read from the service unit's `ExecStart`, or
+ * nothing when it names neither.
+ *
+ * The unit is where they are written down whole. A shell started by wsl.exe is
+ * not a login shell, so the Node on its PATH is the system's and not the one
+ * the Host runs on, and that Node cannot run the command line's TypeScript.
+ */
+function readCommandLine(unit: string): CommandLine | undefined {
+  const line = unit
+    .split(/\r?\n/)
+    .map((text) => text.trim())
+    .filter((text) => text.startsWith('ExecStart='))
+    .at(-1);
+  if (line === undefined) return undefined;
+  const [node, main] = execWords(line.slice('ExecStart='.length));
+  if (node === undefined || main === undefined) return undefined;
+  if (!posix.isAbsolute(node) || !posix.isAbsolute(main)) return undefined;
+  // main.ts beside cli.ts in a clone, main.js beside cli.js in the package.
+  const extension = posix.extname(main);
+  if (posix.basename(main, extension) !== 'main') return undefined;
+  return { node, cli: posix.join(posix.dirname(main), `cli${extension}`) };
+}
+
+/**
+ * The words of an `ExecStart` line, unquoted as systemd unquotes them: a word
+ * in double quotes is one word, a backslash keeps the next character, and `$$`
+ * and `%%` are one `$` and one `%`. The first word may carry systemd's own
+ * prefixes, which are not part of the path.
+ */
+function execWords(text: string): string[] {
+  const words = [...text.matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)].map((match) =>
+    (match[1] === undefined ? (match[2] ?? '') : match[1].replace(/\\(.)/g, '$1'))
+      .replaceAll('$$', () => '$')
+      .replaceAll('%%', () => '%'),
+  );
+  const [first, ...rest] = words;
+  return first === undefined ? [] : [first.replace(/^[-@+!:]+/, ''), ...rest];
+}
+
+/**
+ * Node and the command line the service runs the Host with, or the sentence
+ * that says why the window cannot run it.
+ */
+export async function askForTheCommandLine(where: Where): Promise<CommandLine | string> {
+  const said = await ask([
+    '-d',
+    where.distribution,
+    '--',
+    'systemctl',
+    '--user',
+    'cat',
+    'firstmate',
+  ]);
+  if (said.kind === 'silent') {
+    return (
+      `The FirstMate service is not installed in ${where.distribution}, so the window ` +
+      'cannot run the command line there. Install it there with: firstmate service on'
+    );
+  }
+  return (
+    readCommandLine(said.output) ??
+    `The FirstMate service in ${where.distribution} names no Node and no Host. ` +
+      'Write it again there with: firstmate service on'
+  );
+}
+
+/**
+ * Move one Plugin in the Plugin Order, by running `firstmate order` inside the
+ * distribution against the Host's own home directory.
+ *
+ * Returns nothing when it worked, and the command's own sentence when it did
+ * not. No shell reads any of it: every part is its own argument (#45).
+ */
+export async function moveInPluginOrder(
+  where: Where,
+  line: CommandLine,
+  name: string,
+  position: number,
+): Promise<string | undefined> {
+  const said = await ask([
+    '-d',
+    where.distribution,
+    '--exec',
+    '/usr/bin/env',
+    `${HOME_VARIABLE}=${where.home}`,
+    line.node,
+    line.cli,
+    'order',
+    name,
+    String(position),
+  ]);
+  return said.kind === 'silent' ? said.why.replace(/^firstmate: /, '') : undefined;
+}
+
+/** One Grant, as the Settings View shows it. */
+export type GrantSeen = {
+  /** The Plugin that may call. */
+  readonly from: string;
+  /** The Plugin whose tools it may call. */
+  readonly to: string;
+};
+
+/** The settings the Settings View shows and does not change, or the sentence
+ *  that says why they could not be read. */
+export type Saved =
+  | {
+      readonly kind: 'read';
+      /** The Shelf the settings file names, or the default one. */
+      readonly shelf: string;
+      readonly shortcuts: readonly Shortcut[];
+      readonly grants: readonly GrantSeen[];
+    }
+  | { readonly kind: 'unread'; readonly why: string };
+
+/**
+ * The Shelf, the Shortcuts and the Grants, read from the Host's own files with
+ * the Host's own readers, as the runtime file is read (ADR-0007).
+ *
+ * The distribution is asked whether it is running first, because reading a
+ * path into it is enough to start it, and looking must never wake WSL.
+ */
+export async function readSaved(where: Where): Promise<Saved> {
+  const listed = await ask(['--list', '--running', '--quiet']);
+  if (listed.kind === 'silent' || !names(listed.output).includes(where.distribution)) {
+    return { kind: 'unread', why: `The ${where.distribution} distribution is not running.` };
+  }
+  try {
+    const home = homePathIn(where);
+    const settings = readSettings(home);
+    return {
+      kind: 'read',
+      shelf: settings.shelf ?? posix.join(where.home, 'shelf'),
+      shortcuts: settings.shortcuts ?? [],
+      grants: readRegistry(home).flatMap((row) => row.grants.map((to) => ({ from: row.name, to }))),
+    };
+  } catch (fault: unknown) {
+    return { kind: 'unread', why: fault instanceof Error ? fault.message : String(fault) };
+  }
 }
 
 /**

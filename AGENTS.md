@@ -8,7 +8,7 @@ client.
 
 Read [`CONTEXT.md`](CONTEXT.md) first. It defines every word this repo uses —
 Host, Plugin, Plugin Page, Plugin Server, Registry, Plugin Order, Index Page,
-Tray, Grant, Tool Bus, Stopped — and the synonyms to avoid. Use its words in code, in
+Tray, Settings View, Grant, Tool Bus, Stopped — and the synonyms to avoid. Use its words in code, in
 comments, in tests, in issues and in commit messages.
 
 Read the ADR that covers the area you are about to change:
@@ -124,8 +124,12 @@ src/         the Host. Every file is one job.
   desktop-state.ts the part that decides: where the Host is, and whether it is
                    there. Imports nothing native, owns no window.
   desktop.ts       the part that shows: the window, and the one dependency.
-  strip.ts         the chrome strip above the content view, one file with no
-                   assets of its own. The Host never serves it.
+  strip.ts         the chrome strip above the content view: the breadcrumb and
+                   the switcher, one file with no assets of its own. The Host
+                   never serves it.
+  settings-view.ts the Settings View, the window's own page for FirstMate's
+                   settings, one file with no assets of its own. The Host never
+                   serves it either.
   logon.ts         whether FirstMate starts at logon: one file in Startup.
   service.ts       the Host as a systemd user service: write the unit from a
                    template of its own, and ask systemctl and loginctl.
