@@ -1,6 +1,7 @@
 /**
  * What the writing commands change, apart from how they are typed and
- * printed: move the Shelf, install a Plugin, give a Grant, bind a Shortcut.
+ * printed: move the Shelf, install a Plugin, give a Grant, bind a Shortcut,
+ * move a Plugin in the Plugin Order.
  *
  * The terminal (`cli.ts`) and `setup` both call these, so a refusal has the
  * same words in both places. Each one either does its whole change or throws
@@ -12,7 +13,7 @@ import type { Config } from './config.ts';
 import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
-import { readSettings, writeSettings, type Settings } from './settings.ts';
+import { inPluginOrder, readSettings, writeSettings, type Settings } from './settings.ts';
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 
@@ -245,4 +246,44 @@ export function bindShortcut(home: string, typed: string, plugin: string, path: 
  */
 export function withShortcuts(settings: Settings, shortcuts: readonly Shortcut[]): Settings {
   return { ...settings, shortcuts: shortcuts.length === 0 ? undefined : shortcuts };
+}
+
+/** Every Plugin Name in the Registry, in the Plugin Order. */
+export function pluginOrder(home: string): string[] {
+  const rows = readRegistry(home);
+  return inPluginOrder(rows, readSettings(home).order ?? []).map((row) => row.name);
+}
+
+/**
+ * Move one Plugin to a position in the Plugin Order, counted from 1 at the
+ * top, and give back the whole order written. The other Plugins keep their
+ * order. The whole order is written, so that what the operator reads back is
+ * what every list shows.
+ *
+ * Like every other setting it is written from a terminal and from nowhere
+ * else: a Plugin Page shares the Index Page's origin, and an address that
+ * moved a Plugin would let any Plugin reorder the operator's (ADR-0016).
+ */
+export function movePlugin(home: string, name: string, typed: string): string[] {
+  if (!isPluginName(name)) throw new Error(notAPluginName(name));
+  const order = pluginOrder(home);
+  if (!order.includes(name)) throw new Error(`no Plugin named ${name} is registered.`);
+  const position = Number(typed);
+  if (!/^\d+$/.test(typed) || position < 1 || position > order.length) {
+    throw new Error(`${typed} is not a position. Give a whole number from 1 to ${order.length}.`);
+  }
+  const others = order.filter((other) => other !== name);
+  const moved = [...others.slice(0, position - 1), name, ...others.slice(position - 1)];
+  writeSettings(home, { ...readSettings(home), order: moved });
+  return moved;
+}
+
+/**
+ * The settings with this Plugin taken out of the Plugin Order. An order left
+ * empty leaves no array behind, so a file that never held one reads as it did
+ * before.
+ */
+export function withoutInOrder(settings: Settings, name: string): Settings {
+  const order = (settings.order ?? []).filter((other) => other !== name);
+  return { ...settings, order: order.length === 0 ? undefined : order };
 }

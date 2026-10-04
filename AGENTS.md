@@ -7,8 +7,8 @@ supervisor, an HTTP server on loopback, a static file server, and a JSON-RPC
 client.
 
 Read [`CONTEXT.md`](CONTEXT.md) first. It defines every word this repo uses —
-Host, Plugin, Plugin Page, Plugin Server, Registry, Index Page, Tray, Grant,
-Tool Bus, Stopped — and the synonyms to avoid. Use its words in code, in
+Host, Plugin, Plugin Page, Plugin Server, Registry, Plugin Order, Index Page,
+Tray, Grant, Tool Bus, Stopped — and the synonyms to avoid. Use its words in code, in
 comments, in tests, in issues and in commit messages.
 
 Read the ADR that covers the area you are about to change:
@@ -42,6 +42,7 @@ Run every command from the repository root.
 | `node src/cli.ts install <dir\|url\|official-name> [name]` | Fetch a Plugin into the Shelf and register it. |
 | `node src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
 | `node src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
+| `node src/cli.ts order [<name> <position>]` | Say the Plugin Order, or move one Plugin in it. |
 | `node src/cli.ts service on\|off`    | Install or remove the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 

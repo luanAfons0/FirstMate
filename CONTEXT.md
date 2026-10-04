@@ -18,6 +18,10 @@ _Avoid_: dashboard, home, shell
 The Host's record of which Plugins exist, where their directories are, and what Grants they hold.
 _Avoid_: manifest, catalogue, config, lockfile
 
+**Plugin Order**:
+The order every list of Plugins shows them in, chosen by the operator. A Plugin it does not name follows, in the order it was added.
+_Avoid_: sort, ranking, priority
+
 **Shelf**:
 The directory a fetched Plugin lands in. The operator chooses it, the Host
 remembers it in its settings file, and nothing ever scans it.

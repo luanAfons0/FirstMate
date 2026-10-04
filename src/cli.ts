@@ -18,6 +18,7 @@
  *   node src/cli.ts install <directory|git-url|official-name> [name]
  *   node src/cli.ts bind <keys> <plugin> [path]
  *   node src/cli.ts unbind <keys>
+ *   node src/cli.ts order [<name> <position>]
  *   node src/cli.ts service on|off
  */
 import { statSync } from 'node:fs';
@@ -27,9 +28,12 @@ import {
   checkKeys,
   givePermission,
   installPlugin,
+  movePlugin,
   moveShelf,
   notAPluginName,
+  pluginOrder,
   takePermission,
+  withoutInOrder,
   withShortcuts,
 } from './commands.ts';
 import { readConfig, type Config } from './config.ts';
@@ -57,6 +61,8 @@ const USAGE = `usage:
   firstmate bind <keys> <plugin> [path]
                                      open a Plugin's address from a Shortcut in Windows.
   firstmate unbind <keys>            free that Shortcut's keys.
+  firstmate order [<name> <position>]
+                                     say the Plugin Order, or move one Plugin in it.
   firstmate service on|off           run the Host as a systemd user service, or stop.
 
 The Shelf is the directory a fetched Plugin lands in. A source is a directory,
@@ -83,6 +89,11 @@ granting <from> the right to call <to> does not let <to> call <from>.
 A Shortcut is one or more of Ctrl, Alt, Shift and Win and one key, joined by
 +, as in Ctrl+Alt+N. The path is relative to the Plugin's address; leave it out
 to open the Plugin Page. The Tray picks up a Shortcut with no restart.
+
+The Plugin Order is the order every list of Plugins shows them in. A position
+counts from 1 at the top, and the other Plugins keep their order. A Plugin
+that was never moved follows the ones that were, in the order it was added.
+The Host picks up a new order with no restart.
 
 The Registry is read when the Host starts, so restart the Host to pick up a
 change: systemctl --user restart firstmate`;
@@ -126,6 +137,8 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
       return bind(home(), rest);
     case 'unbind':
       return unbind(home(), rest);
+    case 'order':
+      return order(home(), rest);
     case 'service':
       return service(rest);
     case undefined:
@@ -237,18 +250,23 @@ function remove(home: string, argv: readonly string[]): number {
     return 1;
   }
 
-  // The Shortcuts go first: a Shortcut that outlived its Plugin would open an
-  // address that answers nothing, and a failure after this leaves the Plugin
-  // registered and the command safe to run again.
+  // The settings go first: a Shortcut that outlived its Plugin would open an
+  // address that answers nothing, a place in the Plugin Order would be kept
+  // for a later Plugin of the same name, and a failure after this leaves the
+  // Plugin registered and the command safe to run again.
   const settings = readSettings(home);
   const shortcuts = settings.shortcuts ?? [];
   const dropped = shortcuts.filter((shortcut) => shortcut.plugin === name);
-  if (dropped.length > 0) {
+  const placed = (settings.order ?? []).includes(name);
+  if (dropped.length > 0 || placed) {
     writeSettings(
       home,
-      withShortcuts(
-        settings,
-        shortcuts.filter((s) => s.plugin !== name),
+      withoutInOrder(
+        withShortcuts(
+          settings,
+          shortcuts.filter((s) => s.plugin !== name),
+        ),
+        name,
       ),
     );
   }
@@ -384,6 +402,25 @@ function unbind(home: string, argv: readonly string[]): number {
     ),
   );
   console.log(`firstmate: unbound ${keys}, which opened ${shortcutAddress(held)}`);
+  return 0;
+}
+
+/**
+ * Say the Plugin Order, or move one Plugin in it. The Host reads the order on
+ * every request, so a move needs no restart (ADR-0016).
+ */
+function order(home: string, argv: readonly string[]): number {
+  if (argv.length === 0) {
+    for (const [at, name] of pluginOrder(home).entries()) console.log(`${at + 1}\t${name}`);
+    return 0;
+  }
+  const [name, position] = argv;
+  if (name === undefined || position === undefined || argv.length > 2) {
+    console.error(`firstmate: order takes nothing, or a Plugin Name and a position.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+  const moved = movePlugin(home, name, position);
+  console.log(`firstmate: moved ${name} to position ${moved.indexOf(name) + 1}`);
   return 0;
 }
 

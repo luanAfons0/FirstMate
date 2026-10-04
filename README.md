@@ -150,6 +150,7 @@ node src/cli.ts remove <name>
 node src/cli.ts list
 node src/cli.ts grant <from> <to>
 node src/cli.ts revoke <from> <to>
+node src/cli.ts order [<name> <position>]
 ```
 
 `install` is `add` for a Plugin you do not have yet. A directory is copied and
@@ -270,14 +271,34 @@ nowhere else: a Plugin Page cannot set one, because any Plugin could then take
 a key in all of Windows
 ([ADR-0013](docs/adr/0013-shortcuts-are-bound-from-a-terminal-and-held-by-the-tray.md)).
 
+## The Plugin Order
+
+Every list of Plugins shows them in the Plugin Order: the Index Page,
+`/plugins.json` and the Tray menu. You choose it.
+
+```sh
+node src/cli.ts order            # every Plugin, with its position
+node src/cli.ts order worklog 1  # move worklog to the top
+```
+
+A position counts from 1 at the top, and the other Plugins keep their order. A
+Plugin you never moved follows the ones you did, in the order it was added, so
+a Plugin you add goes to the bottom. `order` refuses a Plugin that is not in the
+Registry and a position outside the list. The order is kept in `settings.json`
+under `order`, and the Host reads it on every request, so a new order shows
+within a few seconds with no restart. `remove` takes the Plugin out of it, and
+`list` keeps Registry order. No address on the Host changes the order
+([ADR-0016](docs/adr/0016-the-operator-chooses-the-plugin-order.md)).
+
 ## The home directory
 
 - `registry.json` — the Registry: one row per Plugin, holding its Plugin Name,
   the absolute path of its directory, and its Grants.
 - `runtime.json` — the port the Host listened on and the token it minted. It is
   rewritten at every start and removed when the Host stops.
-- `settings.json` — the two settings the Host remembers: the Shelf and the
-  Shortcuts. It is absent until you choose a Shelf or bind a Shortcut.
+- `settings.json` — the three settings the Host remembers: the Shelf, the
+  Shortcuts and the Plugin Order. It is absent until you choose a Shelf, bind
+  a Shortcut or move a Plugin.
 
 ## Addresses
 

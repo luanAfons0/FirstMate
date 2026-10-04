@@ -11,6 +11,7 @@ import { BIND_ADDRESS } from './config.ts';
 import { indexPage, type PluginView } from './index-page.ts';
 import type { NoticesAfter } from './notices.ts';
 import type { PluginRow } from './registry.ts';
+import { inPluginOrder } from './settings.ts';
 import { checkRequest, startedByOwnPage } from './security.ts';
 import { shortcutAddress, type Shortcut } from './shortcut.ts';
 import { serveStatic, webRoot } from './static-files.ts';
@@ -43,6 +44,12 @@ export type HostOptions = {
    * restart of the Host or the Tray (ADR-0013).
    */
   readonly shortcuts: () => readonly Shortcut[];
+  /**
+   * The Plugin Order as the settings file holds it now. It is read on every
+   * request for the same reason, so that `order` takes effect with no restart
+   * of a Plugin Server (ADR-0016).
+   */
+  readonly order: () => readonly string[];
   /** The Notices after a sequence number that have not expired (ADR-0014). */
   readonly notices: (after: number) => NoticesAfter;
 };
@@ -126,29 +133,22 @@ async function handle(
 
   if (path === '/') {
     if (!readOnly(response, method)) return;
-    sendHtml(
-      response,
-      indexPage(pluginViews(plugins, options), options.registryPath, options.shelf),
-      method === 'HEAD',
-    );
+    const views = pluginViews(response, plugins, options);
+    if (views === null) return;
+    sendHtml(response, indexPage(views, options.registryPath, options.shelf), method === 'HEAD');
     return;
   }
   if (path === PLUGINS_PATH) {
     if (!readOnly(response, method)) return;
-    sendJson(response, { plugins: pluginViews(plugins, options) }, method === 'HEAD');
+    const views = pluginViews(response, plugins, options);
+    if (views === null) return;
+    sendJson(response, { plugins: views }, method === 'HEAD');
     return;
   }
   if (path === SHORTCUTS_PATH) {
     if (!readOnly(response, method)) return;
-    let shortcuts: readonly Shortcut[];
-    try {
-      shortcuts = options.shortcuts();
-    } catch (fault: unknown) {
-      // A settings file damaged under a running Host is the operator's to fix,
-      // so the sentence that says how goes back whole.
-      sendText(response, 500, fault instanceof Error ? fault.message : String(fault));
-      return;
-    }
+    const shortcuts = fromSettings(response, options.shortcuts);
+    if (shortcuts === null) return;
     sendJson(response, { shortcuts: shortcuts.map(shortcutView) }, method === 'HEAD');
     return;
   }
@@ -207,13 +207,37 @@ function readOnly(response: ServerResponse, method: string): boolean {
   return false;
 }
 
-/** Every Plugin the Host knows, as the Index Page and the Tray both see it. */
-function pluginViews(plugins: Map<string, PluginRow>, options: HostOptions): PluginView[] {
-  return [...plugins.values()].map((plugin) => ({
+/**
+ * Every Plugin the Host knows, in the Plugin Order, as the Index Page and the
+ * Tray both see it. Null when the settings file cannot be read, and then the
+ * answer has already been sent.
+ */
+function pluginViews(
+  response: ServerResponse,
+  plugins: Map<string, PluginRow>,
+  options: HostOptions,
+): PluginView[] | null {
+  const order = fromSettings(response, options.order);
+  if (order === null) return null;
+  return inPluginOrder([...plugins.values()], order).map((plugin) => ({
     name: plugin.name,
     hasPage: existsSync(webRoot(plugin.directory)),
     state: options.stateOf(plugin.name),
   }));
+}
+
+/**
+ * One setting, read now. Null when the settings file cannot be read: a
+ * settings file damaged under a running Host is the operator's to fix, so the
+ * sentence that says how goes back whole, and nothing is served in its place.
+ */
+function fromSettings<T>(response: ServerResponse, read: () => T): T | null {
+  try {
+    return read();
+  } catch (fault: unknown) {
+    sendText(response, 500, fault instanceof Error ? fault.message : String(fault));
+    return null;
+  }
 }
 
 /** One Shortcut, as the Tray needs it: the keys, and the address they open. */

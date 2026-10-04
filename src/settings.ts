@@ -1,11 +1,13 @@
 /**
- * The settings file: the two settings the Host remembers.
+ * The settings file: the three settings the Host remembers.
  *
  * The Host stores a Registry and nothing else, and it keeps no run history, no
- * logs and no settings store of its own. Two settings are the exception: the
+ * logs and no settings store of its own. Three settings are the exception: the
  * Shelf, because nothing can fetch a Plugin without somewhere to put it
- * (ADR-0012), and the Shortcuts, because the Tray has to learn them from
- * somewhere that survives a restart (ADR-0013). Both are written from a
+ * (ADR-0012), the Shortcuts, because the Tray has to learn them from
+ * somewhere that survives a restart (ADR-0013), and the Plugin Order, because
+ * the Registry is read only when the Host starts and a new order should not
+ * restart every Plugin Server (ADR-0016). All three are written from a
  * terminal and from nowhere else.
  *
  * It is written the way the runtime file is written: whole, through a rename,
@@ -27,6 +29,8 @@ export type Settings = {
   readonly shelf?: string;
   /** The Shortcuts the operator bound, absent until one is bound. */
   readonly shortcuts?: readonly Shortcut[];
+  /** The Plugin Order the operator chose, absent until one is chosen. */
+  readonly order?: readonly string[];
 };
 
 function settingsPath(home: string): string {
@@ -79,10 +83,48 @@ function parseSettings(text: string, path: string): Settings {
     throw new Error(`The settings at ${path} need "shelf" to be a path.`);
   }
   const shortcuts = record['shortcuts'];
+  const order = record['order'];
   return {
     ...(shelf === undefined ? {} : { shelf }),
     ...(shortcuts === undefined ? {} : { shortcuts: parseShortcuts(shortcuts, path) }),
+    ...(order === undefined ? {} : { order: parseOrder(order, path) }),
   };
+}
+
+/**
+ * The Plugin Order, checked. A name the Registry does not hold is kept here
+ * and ignored where the order is used, so that a file edited by hand does not
+ * stop the Host. A name held twice is damage, and fails every command.
+ */
+function parseOrder(value: unknown, path: string): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((name) => typeof name !== 'string' || !isPluginName(name))
+  ) {
+    throw new Error(`The settings at ${path} need "order" to be an array of Plugin Names.`);
+  }
+  const seen = new Set<string>();
+  for (const name of value as string[]) {
+    if (seen.has(name)) {
+      throw new Error(`The settings at ${path} name ${name} twice in "order".`);
+    }
+    seen.add(name);
+  }
+  return value as string[];
+}
+
+/**
+ * Every Plugin in the Plugin Order. The Plugins the order names come first,
+ * in that order; every other Plugin follows, in Registry order; and a name
+ * the Registry does not hold is passed over. With no order chosen, this is
+ * the Registry order.
+ */
+export function inPluginOrder<T extends { readonly name: string }>(
+  plugins: readonly T[],
+  order: readonly string[],
+): T[] {
+  const named = order.flatMap((name) => plugins.filter((plugin) => plugin.name === name));
+  return [...named, ...plugins.filter((plugin) => !order.includes(plugin.name))];
 }
 
 /**
