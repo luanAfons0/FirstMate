@@ -20,3 +20,12 @@ Drag handles on the Index Page, with the order kept in the browser's own storage
 
 A settings file damaged under a running Host is said and not served, on the Index Page and on `/plugins.json` as on `/shortcuts.json`. The Tray then shows that the Host would not say, which is true.
 
+## The window writes it by running the command line
+
+The window's Settings View lets the operator drag the Plugins into order. It does not call the Host to do it. It runs `firstmate order` inside the distribution through `wsl.exe`, which is the path the last paragraph of ADR-0012 names for a graphical interface that changes a setting: a chrome the Host does not serve, which writes by running the command line. This is the first time that path is taken.
+
+The window finds the command line in the service unit. `ExecStart` names the Node the Host runs on and the Host's start-up file, and the command line sits beside that file. A shell that `wsl.exe` starts is not a login shell, so the Node on its PATH is the system's, and that one cannot run the command line's TypeScript. Every part of the command is its own argument and no shell reads it (#45), and the Host's home directory is handed to it, so the order lands where the Host reads it. Without the service there is no `ExecStart` to read, and the Settings View says so and moves nothing.
+
+What the Settings View shows after a drop is the order the Host gives back in `/plugins.json`, never the order the drop made on the page. A move the command refused is said in the strip, and the rows go back to where they were kept.
+
+The Settings View also shows the Shelf, the Shortcuts and the Grants. It reads them from the Host's own files over the distribution's path, with the Host's own readers, as the window already reads the runtime file (ADR-0007), and it changes none of them.

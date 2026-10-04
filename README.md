@@ -274,7 +274,7 @@ a key in all of Windows
 ## The Plugin Order
 
 Every list of Plugins shows them in the Plugin Order: the Index Page,
-`/plugins.json` and the Tray menu. You choose it.
+`/plugins.json`, the window's switcher and the Tray menu. You choose it.
 
 ```sh
 node src/cli.ts order            # every Plugin, with its position
@@ -287,7 +287,9 @@ a Plugin you add goes to the bottom. `order` refuses a Plugin that is not in the
 Registry and a position outside the list. The order is kept in `settings.json`
 under `order`, and the Host reads it on every request, so a new order shows
 within a few seconds with no restart. `remove` takes the Plugin out of it, and
-`list` keeps Registry order. No address on the Host changes the order
+`list` keeps Registry order. The window's Settings View moves a Plugin by
+dragging it, and it does that by running this same command; no address on the
+Host changes the order
 ([ADR-0016](docs/adr/0016-the-operator-chooses-the-plugin-order.md)).
 
 ## The home directory
@@ -405,8 +407,12 @@ them.
 
 `firstmate desktop` opens a window of FirstMate's own and shows the Index Page
 in it. A Plugin Page is then a page of FirstMate's own rather than a tab among
-thirty others. A narrow strip above the page holds two controls, *see the plugin
-list* and *open in browser*, and the name of what is open. *Open in browser*
+thirty others. A narrow strip above the page says where you are, as a
+breadcrumb: *FirstMate › worklog*. *FirstMate* goes back to the Plugin list.
+The last part opens the switcher, which lists every Plugin in the Plugin Order
+with its state; click one, or move with the arrow keys and press Enter, to open
+it. Esc, or a click anywhere else, closes the switcher. A Plugin with no Plugin
+Page is listed and not offered, as in the Tray menu. *Open in browser*
 gives the address the window shows, Plugin Page or Index Page, to your system
 browser with this run's token on it, so the page loads with no token to paste.
 That address may stay in the browser's history; the token in it works only on
@@ -419,6 +425,17 @@ address to type and no token to paste; say them yourself when it cannot:
 firstmate desktop
 firstmate desktop --distribution Debian --home /home/<user>/.firstmate
 ```
+
+The gear at the right of the strip opens the Settings View in place of the page,
+and the gear again, or Esc, puts it away with the page as you left it. It lists
+the Plugins in the Plugin Order: drag one, or use its arrows, to move it. The
+window moves it by running `firstmate order` inside the distribution, with the
+Node and the program the service runs the Host with, so it needs the service
+installed (`firstmate service on`). It also turns start at logon on and off and
+restarts the Host, as the Tray menu does, and it shows the Shelf, the Shortcuts
+and the Grants with the command that changes each. Those three are changed from
+a terminal alone. The Host does not serve the strip or the Settings View, and no
+Plugin Page can reach either.
 
 While it runs, FirstMate is in the notification area. The icon shows whether the
 Host is running, and its tooltip names the state and the port. Clicking it opens

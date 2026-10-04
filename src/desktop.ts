@@ -1,7 +1,7 @@
 /**
  * The FirstMate window and the notification-area icon above it.
  *
- * This is the part that shows. It owns the window, the icon and the two views,
+ * This is the part that shows. It owns the window, the icon and the three views,
  * and it is the only file in FirstMate that imports the webview library. It
  * imports it when the subcommand runs rather than when the module loads, so
  * that every other command keeps working on a machine where the native binary
@@ -35,7 +35,9 @@ import type {
   Webview,
 } from '@webviewjs/webview';
 import {
+  askForPlugins,
   askForShortcuts,
+  askForTheCommandLine,
   askTheHost,
   browserAddress,
   ESCAPE,
@@ -44,22 +46,29 @@ import {
   indexAddress,
   leavesPopup,
   leavesTheHost,
+  moveInPluginOrder,
   NO_DESKTOP,
   noticeAddress,
   openInBrowser,
   pluginAddress,
   pluginOpenAt,
   popupAddress,
+  readAsked,
   readHotkeyEvent,
+  readSaved,
   reconcile,
   registerCommand,
   releaseCommand,
   restartTheHost,
+  SCHEME,
   watchTheHost,
+  type Asked,
+  type CommandLine,
   type NoticeSeen,
   type PluginSeen,
   type Plugins,
   type Pulse,
+  type Saved,
   type ShortcutSeen,
   type Shortcuts,
   type Where,
@@ -74,7 +83,8 @@ import {
 import { STATE_WORDS } from './index-page.ts';
 import { readLogon, setLogon } from './logon.ts';
 import { nameTheWindow } from './taskbar.ts';
-import { OPEN_IN_BROWSER, SCHEME, stripPage, THE_PLUGIN_LIST } from './strip.ts';
+import { settingsPage, type Mover } from './settings-view.ts';
+import { stripPage, type Here, type StripView } from './strip.ts';
 
 /** The window's title. The chrome strip names what is open inside it. */
 const TITLE = 'FirstMate';
@@ -144,6 +154,7 @@ let shown:
       readonly window: BrowserWindow;
       readonly strip: Webview;
       readonly content: Webview;
+      readonly settings: Webview;
       readonly context: WebContext;
       readonly tray: TrayIcon;
       readonly popup: BrowserWindow;
@@ -204,46 +215,65 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   let run = found.runtime;
   /** The Plugin whose Plugin Page is open, if it is not the Index Page. */
   let open: string | undefined;
-  /** What the strip says is open. */
-  let named = THE_PLUGIN_LIST;
+  /** Every Plugin the Host last named, in the Plugin Order. */
+  let plugins: Plugins = { kind: 'untold' };
+  /** Whether the Host answered the last time it was asked. */
+  let running = true;
+  /** Whether the switcher is open. While it is, the strip fills the window. */
+  let switching = false;
+  /** Whether the Settings View is shown in place of the content view. */
+  let setting = false;
+  /** What went wrong with the last thing the person asked for, until they do
+   *  something else. The strip is where the program says it. */
+  let fault: string | undefined;
+  /** Whether the Settings View can move a Plugin, and how. */
+  let mover: Mover = { kind: 'asking' };
+  let commandLine: CommandLine | undefined;
+  /** The Shelf, the Shortcuts and the Grants, as last read for the Settings View. */
+  let saved: Saved | { readonly kind: 'reading' } = { kind: 'reading' };
+
+  /** Where the window is, as the breadcrumb says it. */
+  const here = (): Here => {
+    if (setting) return { kind: 'settings' };
+    return open === undefined ? { kind: 'list' } : { kind: 'plugin', name: open };
+  };
+  const stripView = (): StripView => ({
+    here: here(),
+    switcher: switching,
+    plugins,
+    ...(fault === undefined ? {} : { fault }),
+  });
+
+  /** What the strip and the Settings View last said. A page that says the same
+   *  thing again is not loaded again: loading it would lose the focus in it. */
+  let stripSaid = stripPage(stripView());
+  let settingsSaid = '';
 
   const size = window.getInnerSize(true);
 
-  // The strip is the program's own page. It asks for two things, each by
-  // trying to go to one address, and this is where they are refused and
-  // answered.
+  /**
+   * Answer what one of the window's own pages asked for. Both refuse every
+   * address in the scheme and hand it here; a guard has to answer at once, so
+   * the work happens after it has.
+   */
+  const asking = (address: string): boolean => {
+    if (!address.startsWith(SCHEME)) return true;
+    const asked = readAsked(address);
+    setTimeout(() => act(asked), 0);
+    return false;
+  };
+
+  // The strip is the program's own page, and so is the Settings View. Neither
+  // is served by the Host, and both ask by trying to go to an address.
   const strip = window.createWebview({
-    html: stripPage(THE_PLUGIN_LIST),
+    html: stripSaid,
     x: 0,
     y: 0,
     width: size.width,
     height: STRIP,
     webContext: context,
-    navigationHandler: (address) => {
-      if (!address.startsWith(SCHEME)) return true;
-      // A guard has to answer at once, so the work happens after it has.
-      setTimeout(() => (address === OPEN_IN_BROWSER ? toTheBrowser() : toTheList()), 0);
-      return false;
-    },
+    navigationHandler: asking,
   });
-
-  /** Show the Index Page in the content view. */
-  const toTheList = (): void => {
-    content.loadUrl(indexAddress(run));
-  };
-
-  /**
-   * Give what the content view shows now to the system browser, admitted. The
-   * address is the one the view reports, not one read out of the page
-   * (ADR-0008). It carries the token, so neither it nor Windows's answer is
-   * said: a failed command line names its arguments, and one of them is the
-   * token.
-   */
-  const toTheBrowser = (): void => {
-    void openInBrowser(browserAddress(run, content.url())).then((said) => {
-      if (said !== undefined) complain('The system browser would not open this page.');
-    });
-  };
 
   // The content view is made with nothing in it, so that what it is showing is
   // known from its first navigation onwards. Nothing is ever injected into it,
@@ -264,14 +294,59 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     },
   });
 
-  /** What went wrong with the last thing the person asked for, until they do
-   *  something else. The strip is where the program says it. */
-  let fault: string | undefined;
+  // The Settings View sits where the content view does, and only one of the two
+  // is shown at a time. The content view stays loaded underneath, so closing
+  // the Settings View shows the same page again with no reload.
+  const settings = window.createWebview({
+    html: '',
+    x: 0,
+    y: STRIP,
+    width: size.width,
+    height: size.height - STRIP,
+    webContext: context,
+    navigationHandler: asking,
+  });
+  settings.setWebviewVisibility(false);
 
-  /** Say the strip again. It is a small page the program owns every byte of,
-   *  so it is written rather than reached into. */
+  /**
+   * Put every view where it belongs. The library holds bounds rather than a
+   * layout, so this runs whenever the window or what it shows changes.
+   *
+   * No view is ever drawn over another. While the switcher is open the strip
+   * takes the whole window and the views below it are hidden, still loaded.
+   */
+  const layout = (): void => {
+    const now = window.getInnerSize(true);
+    const below = { x: 0, y: STRIP, width: now.width, height: Math.max(now.height - STRIP, 0) };
+    strip.setBounds({ x: 0, y: 0, width: now.width, height: switching ? now.height : STRIP });
+    content.setBounds(below);
+    settings.setBounds(below);
+    content.setWebviewVisibility(!switching && !setting);
+    settings.setWebviewVisibility(!switching && setting);
+  };
+
+  /** Say the strip and the Settings View again. Each is a small page the
+   *  program owns every byte of, so it is written rather than reached into. */
   const redraw = (): void => {
-    strip.loadHtml(stripPage(named, fault));
+    const said = stripPage(stripView());
+    if (said !== stripSaid) {
+      stripSaid = said;
+      strip.loadHtml(said);
+    }
+    if (setting) {
+      const page = settingsPage({
+        plugins,
+        mover,
+        logon: readLogon(process.env).on,
+        running,
+        saved,
+      });
+      if (page !== settingsSaid) {
+        settingsSaid = page;
+        settings.loadHtml(page);
+      }
+    }
+    layout();
   };
 
   const complain = (said: string): void => {
@@ -282,28 +357,142 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     window.setVisible(true);
   };
 
+  /** Show one address of the Host in the content view, with the switcher and
+   *  the Settings View put away. */
+  const show = (address: string): void => {
+    switching = false;
+    setting = false;
+    content.loadUrl(address);
+    redraw();
+  };
+
+  /**
+   * Give what the content view shows now to the system browser, admitted. The
+   * address is the one the view reports, not one read out of the page
+   * (ADR-0008). It carries the token, so neither it nor Windows's answer is
+   * said: a failed command line names its arguments, and one of them is the
+   * token.
+   */
+  const toTheBrowser = (): void => {
+    void openInBrowser(browserAddress(run, content.url())).then((said) => {
+      if (said !== undefined) complain('The system browser would not open this page.');
+    });
+  };
+
+  /** The Plugin of this name, as the Host last named it. A name it did not name
+   *  is never opened or moved, whatever asked for it. */
+  const known = (name: string): PluginSeen | undefined =>
+    plugins.kind === 'told' ? plugins.plugins.find((plugin) => plugin.name === name) : undefined;
+
+  const restart = (): void => {
+    restartTheHost(found.where)
+      .then((why) => {
+        if (why !== undefined) complain(`FirstMate could not start the Host: ${why}`);
+      })
+      .catch(unheard('a restart of the Host'));
+  };
+
+  const toggleLogon = (): void => {
+    const on = !readLogon(process.env).on;
+    const why = setLogon(process.env, on, logonCommand(found.where));
+    if (why !== undefined) complain(why);
+    // The menu says the new state at the next beat.
+    listed = '';
+    redraw();
+  };
+
+  /**
+   * Read what the Settings View shows, again, each time it opens: a change made
+   * from a terminal shows the next time, with nothing to refresh by hand.
+   */
+  const openSettings = (): void => {
+    saved = { kind: 'reading' };
+    readSaved(found.where)
+      .then((read) => {
+        saved = read;
+        redraw();
+      })
+      .catch(unheard('a look at the settings'));
+    if (commandLine !== undefined) return;
+    mover = { kind: 'asking' };
+    askForTheCommandLine(found.where)
+      .then((line) => {
+        if (typeof line === 'string') {
+          mover = { kind: 'cannot', why: line };
+        } else {
+          commandLine = line;
+          mover = { kind: 'ready' };
+        }
+        redraw();
+      })
+      .catch(unheard('a look for the command line'));
+  };
+
+  /**
+   * Move one Plugin in the Plugin Order by running the command line, then show
+   * the order the Host gives back, never the one the drop made on the page.
+   */
+  const move = (name: string, position: number): void => {
+    const line = commandLine;
+    if (line === undefined || mover.kind !== 'ready' || known(name) === undefined) return;
+    mover = { kind: 'busy' };
+    moveInPluginOrder(found.where, line, name, position)
+      .then(async (why) => {
+        if (why !== undefined) fault = why;
+        plugins = await askForPlugins(run);
+      })
+      .catch(unheard('a move in the Plugin Order'))
+      .finally(() => {
+        mover = { kind: 'ready' };
+        // Written again even when it says the same, so a drop that was refused
+        // does not stay on screen as if it had been kept.
+        settingsSaid = '';
+        redraw();
+      });
+  };
+
+  /** Do what one of the window's own pages asked for. */
+  const act = (asked: Asked): void => {
+    if (asked.kind === 'plugin-list') {
+      show(indexAddress(run));
+    } else if (asked.kind === 'open-in-browser') {
+      toTheBrowser();
+    } else if (asked.kind === 'switcher' || asked.kind === 'switcher-close') {
+      switching = asked.kind === 'switcher' && !switching;
+      redraw();
+      // The keys of the open switcher work at once, without a click into it.
+      if (switching) strip.focus();
+    } else if (asked.kind === 'open') {
+      if (known(asked.name)?.hasPage === true) {
+        show(pluginAddress(run, asked.name));
+      } else {
+        switching = false;
+        redraw();
+      }
+    } else if (asked.kind === 'settings') {
+      setting = !setting;
+      switching = false;
+      if (setting) openSettings();
+      redraw();
+      if (setting) settings.focus();
+    } else if (asked.kind === 'logon') {
+      toggleLogon();
+    } else if (asked.kind === 'restart') {
+      restart();
+    } else if (asked.kind === 'order') {
+      move(asked.name, asked.position);
+      redraw();
+    }
+  };
+
   content.on('navigation', (event) => {
     open = event.url === undefined ? undefined : pluginOpenAt(event.url);
-    const now = open ?? THE_PLUGIN_LIST;
-    const clearing = fault !== undefined;
-    if (now === named && !clearing) return;
-    named = now;
     fault = undefined;
+    switching = false;
     redraw();
   });
 
-  // The library holds bounds rather than a layout, so they are put back every
-  // time the window changes size.
-  window.on('resize', () => {
-    const now = window.getInnerSize(true);
-    strip.setBounds({ x: 0, y: 0, width: now.width, height: STRIP });
-    content.setBounds({
-      x: 0,
-      y: STRIP,
-      width: now.width,
-      height: Math.max(now.height - STRIP, 0),
-    });
-  });
+  window.on('resize', layout);
 
   const tray = app.createTrayIcon({
     id: 'firstmate',
@@ -546,7 +735,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
       );
       return;
     }
-    content.loadUrl(noticeAddress(run, notice));
+    show(noticeAddress(run, notice));
     window.setVisible(true);
     window.focus();
   };
@@ -610,18 +799,11 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
       } else if (asked === QUIT) {
         quit();
       } else if (asked === RESTART) {
-        restartTheHost(found.where)
-          .then((why) => {
-            if (why !== undefined) complain(`FirstMate could not start the Host: ${why}`);
-          })
-          .catch(unheard('a restart of the Host'));
+        restart();
       } else if (asked === LOGON) {
-        const on = !readLogon(process.env).on;
-        const why = setLogon(process.env, on, logonCommand(found.where));
-        if (why !== undefined) complain(why);
-        else listed = '';
+        toggleLogon();
       } else if (asked?.startsWith(PLUGIN) === true) {
-        content.loadUrl(pluginAddress(run, asked.slice(PLUGIN.length)));
+        show(pluginAddress(run, asked.slice(PLUGIN.length)));
         window.setVisible(true);
       }
     } catch (fault: unknown) {
@@ -652,6 +834,10 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
       tray.setMenu(menu(view));
     }
 
+    plugins = pulse.plugins;
+    running = pulse.state === 'running';
+    redraw();
+
     holdShortcuts(pulse.shortcuts);
     for (const notice of pulse.notices) showNotice(notice);
 
@@ -664,7 +850,18 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     content.loadUrl(open === undefined ? indexAddress(run) : pluginAddress(run, open));
   });
 
-  shown = { window, strip, content, context, tray, popup, popupView, hotkeys, noticeHelper };
+  shown = {
+    window,
+    strip,
+    content,
+    settings,
+    context,
+    tray,
+    popup,
+    popupView,
+    hotkeys,
+    noticeHelper,
+  };
   content.loadUrl(indexAddress(run));
   // The first beat is a few seconds away, and a Shortcut should work sooner.
   askForShortcuts(run).then(holdShortcuts).catch(unheard('the first look at the Shortcuts'));
@@ -676,6 +873,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     console.error(`firstmate: the taskbar button keeps the icon of whatever ran it: ${unnamed}`);
   }
   window.setVisible(true);
+  layout();
 
   await ending;
 
