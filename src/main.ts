@@ -42,6 +42,7 @@ async function main(): Promise<void> {
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),
     shortcuts: () => readSettings(config.home).shortcuts ?? [],
+    order: () => readSettings(config.home).order ?? [],
     notices: (after) => notices.after(after),
   }).catch((fault: unknown) => {
     supervisor.stopAll();
