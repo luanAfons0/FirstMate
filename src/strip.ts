@@ -17,9 +17,11 @@
  * all. A link the program refuses to follow carries the same one message, needs
  * nothing injected, and cannot take the program down.
  *
- * While the switcher is open, the strip fills the window and the content view
- * is hidden, still loaded. Nothing is drawn over a Plugin Page, so nothing
- * depends on which of two views the library puts on top.
+ * The switcher is a page of its own, in a small view of its own that the
+ * program shows below the breadcrumb, over the Plugin Page. It is the view the
+ * program makes last, and the library draws the view made last on top. The
+ * Plugin Page under it is not touched: it is neither moved nor reloaded, and
+ * nothing is put into it (ADR-0008).
  */
 import { ASK, openAsk, type Plugins } from './desktop-state.ts';
 import { STATE_WORDS } from './index-page.ts';
@@ -35,26 +37,49 @@ export type StripView = {
   readonly here: Here;
   /** Whether the switcher is open. */
   readonly switcher: boolean;
-  /** Every Plugin the Host last named, in the Plugin Order. */
-  readonly plugins: Plugins;
   /** What went wrong with the last thing asked for, until the next one. */
   readonly fault?: string;
 };
+
+/** Everything the switcher says. */
+export type SwitcherView = {
+  /** The Plugin whose Plugin Page is open, if one is. */
+  readonly open: string | undefined;
+  /** Every Plugin the Host last named, in the Plugin Order. */
+  readonly plugins: Plugins;
+};
+
+/** How wide the switcher is, in logical pixels. */
+export const SWITCHER_WIDTH = 360;
+
+/** How far the switcher sits from the window's left edge, under the breadcrumb. */
+export const SWITCHER_LEFT = 8;
+
+/** How tall one row of the switcher is, and the space around the rows. */
+const ROW = 34;
+const AROUND = 10;
+
+/**
+ * How tall the switcher needs to be to show every row. The caller holds it to
+ * the window, and the rows scroll inside it past that.
+ */
+export function switcherHeight(plugins: Plugins): number {
+  const rows = plugins.kind === 'told' ? Math.max(plugins.plugins.length, 1) : 1;
+  return rows * ROW + AROUND;
+}
 
 /**
  * The strip, as one HTML document.
  *
  * It is rewritten rather than scripted when what it says changes: the page is
- * small, and re-reading it costs less than reaching into it would. The one
- * script it carries works the open switcher's keys, and asks for things the
- * same way a link does.
+ * small, and re-reading it costs less than reaching into it would.
  */
 export function stripPage(view: StripView): string {
   const atTheList = view.here.kind === 'list';
   const crumbs = `<a class="crumb"${atTheList ? " aria-disabled='true'" : ''} \
 href="${ASK.pluginList}" title="See the Plugin list"><span aria-hidden="true">⌂</span> FirstMate</a>
 <span class="sep" aria-hidden="true">›</span>
-<a class="crumb last" href="${ASK.switcher}" aria-expanded="${view.switcher}" \
+<a class="crumb last" href="${view.switcher ? ASK.switcherClose : ASK.switcher}" aria-expanded="${view.switcher}" \
 title="Switch Plugin">${hereWords(view.here)} <span aria-hidden="true">▾</span></a>`;
   return `<!doctype html>
 <html lang="en">
@@ -71,7 +96,6 @@ ${view.fault === undefined ? '' : `<span class="fault">${escaped(view.fault)}</s
 <a class="button gear" href="${ASK.settings}" title="Settings" aria-label="Settings" \
 aria-pressed="${view.here.kind === 'settings'}">⚙</a>
 </nav>
-${view.switcher ? switcher(view) : ''}
 </html>`;
 }
 
@@ -82,12 +106,15 @@ function hereWords(here: Here): string {
 }
 
 /**
- * The open switcher: every Plugin, or the one sentence that stands in for the
- * list. "The Host would not say" and "no Plugin is registered" are different
- * states, as they are in the Tray menu (#44).
+ * The switcher, as one HTML document: every Plugin, or the one sentence that
+ * stands in for the list. "The Host would not say" and "no Plugin is
+ * registered" are different states, as they are in the Tray menu (#44).
+ *
+ * Its one script works its keys and closes it when it loses the focus, and it
+ * asks for things the same way a link does.
  */
-function switcher(view: StripView): string {
-  const open = view.here.kind === 'plugin' ? view.here.name : undefined;
+export function switcherPage(view: SwitcherView): string {
+  const open = view.open;
   const rows =
     view.plugins.kind === 'untold'
       ? '<p class="none">The Host would not say which Plugins there are.</p>'
@@ -109,7 +136,13 @@ function switcher(view: StripView): string {
 ${words}<span class="tick" aria-hidden="true">${here ? '✓' : ''}</span></a>`;
             })
             .join('\n');
-  return `<div class="backdrop"></div>
+  return `<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Plugins</title>
+<style>
+${switcherStyles()}
+</style>
 <div class="panel" role="menu" aria-label="Plugins">
 ${rows}
 </div>
@@ -119,7 +152,6 @@ ${rows}
   const rows = Array.from(document.querySelectorAll('.panel a.row'));
   const start = document.querySelector('.panel a[aria-current]') || rows[0];
   if (start) start.focus();
-  document.querySelector('.backdrop').addEventListener('click', close);
   addEventListener('keydown', (event) => {
     if (event.key === 'Escape') { event.preventDefault(); close(); return; }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -129,10 +161,11 @@ ${rows}
     const next = at < 0 ? 0 : Math.min(Math.max(at + by, 0), rows.length - 1);
     if (rows[next]) rows[next].focus();
   });
-  // A click anywhere else in the window takes the focus away from the strip.
+  // A click anywhere else in the window takes the focus away from the switcher.
   addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) close(); }, 120));
 })();
-</script>`;
+</script>
+</html>`;
 }
 
 function styles(): string {
@@ -168,12 +201,18 @@ function styles(): string {
   }
   .button:hover { background: #24262a; border-color: #4a4d54; }
   .gear { font-size: 15px; line-height: 13px; padding: 6px 8px; }
-  .gear[aria-pressed='true'] { background: #2b2e33; border-color: #4a4d54; }
-  .backdrop { position: fixed; inset: 44px 0 0 0; background: #111214; }
+  .gear[aria-pressed='true'] { background: #2b2e33; border-color: #4a4d54; }`;
+}
+
+function switcherStyles(): string {
+  return `:root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100vh; overflow: hidden; background: #1d1f23; }
+  body { color: #d6d8dc; font: 13px/1 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+  a { color: inherit; text-decoration: none; }
   .panel {
-    position: relative; margin: 2px 0 0 8px; width: min(360px, calc(100vw - 16px));
-    max-height: calc(100vh - 58px); overflow-y: auto; padding: 4px;
-    background: #1d1f23; border: 1px solid #34363b; border-radius: 8px;
+    height: 100vh; overflow-y: auto; padding: 4px;
+    background: #1d1f23; border: 1px solid #34363b;
   }
   .row {
     display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 6px;
