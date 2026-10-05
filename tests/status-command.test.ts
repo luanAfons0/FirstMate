@@ -128,3 +128,14 @@ test('--json on a command that changes something is typed wrong', async (t) => {
     assert.equal(refused.stdout, '', 'and prints no JSON');
   }
 });
+
+test('a port another Host holds now, under another token, reads as no Host', async (t) => {
+  const other = await bootHost(t);
+  const home = await makeHome(t);
+  await writeFile(join(home, 'runtime.json'), JSON.stringify({ port: other.port, token: 'old' }));
+
+  const said = await firstmate(home, ['status']);
+
+  assert.equal(said.code, 6, said.stderr);
+  assert.equal(said.stdout, 'firstmate: no Host runs.\n');
+});

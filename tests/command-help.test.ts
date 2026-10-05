@@ -18,6 +18,7 @@ const COMMANDS: readonly [string, string][] = [
   ['remove', ' <name>'],
   ['list', ''],
   ['status', ''],
+  ['restart', ' <name>'],
   ['grant', ' <from> <to>'],
   ['revoke', ' <from> <to>'],
   ['shelf', ' [directory]'],

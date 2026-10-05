@@ -37,6 +37,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `--help` alone also lists the exit codes. |
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
+| `node apps/cli/src/cli.ts restart <name>`     | Start one Plugin's Plugin Server again.         |
 | `node apps/cli/src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node apps/cli/src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
 | `node apps/cli/src/cli.ts grant <from> <to>`  | Let `<from>` call `<to>`'s tools: a Grant.      |
@@ -121,7 +122,7 @@ packages/core/src/  what the command line and the Host share. Imports nothing
 packages/host/src/  the Host. Every file is one job.
   main.ts          start-up: read the Registry, mint the token, supervise, listen.
   host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
-                   /notices.json, POST /reload,
+                   /notices.json, POST /reload, POST /restart/<name>,
                    /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
@@ -280,8 +281,9 @@ and drives it over HTTP, exactly as a browser does.
 
 - Bind anything but `127.0.0.1` (ADR-0007), or weaken a check in
   `packages/host/src/security.ts` to make a test pass.
-- Restart a Stopped Plugin. A broken Plugin stays visible instead of spinning
-  in a restart loop.
+- Restart a Stopped Plugin on the Host's own account. A broken Plugin stays
+  visible instead of spinning in a restart loop, until the operator runs
+  `firstmate restart <name>`.
 - Read or write a Plugin's data, or keep run history, logs or settings for it
   (ADR-0005).
 - Let a Plugin Page reach another Plugin. The Tool Bus is on the pipe, under

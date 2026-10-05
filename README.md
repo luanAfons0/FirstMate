@@ -200,6 +200,7 @@ Plugin Page's own call is not a Tool Bus call and keeps its thirty seconds.
 ```sh
 node apps/cli/src/cli.ts status
 node apps/cli/src/cli.ts status --json
+node apps/cli/src/cli.ts restart <name>
 ```
 
 `status` says whether the Host runs, and the state of each Plugin in the Plugin
@@ -208,6 +209,13 @@ over loopback, with the port and the token from `runtime.json`, as the Tray
 does. With no Host it says `no Host runs.` and ends with exit code `6`. A
 `runtime.json` that a crashed Host left behind names a port nothing answers on,
 and that reads as no Host too.
+
+`restart` stops one Plugin's Plugin Server, Stopped or not, and starts it
+again, after you fix it. The Host never does this by itself: a broken Plugin
+stays Stopped until you say so. It says `restarted <name>. It is Running.`, or
+that the Plugin is Stopped and why, which ends with exit code `1`. An unknown
+Plugin Name is refused with exit code `4`, and with no Host it says `no Host
+runs.` and ends with exit code `6`.
 
 `status`, `list`, `order` and `shelf` say what they read as one JSON value with
 `--json`, and print nothing else, so a script can read them. A command that
@@ -359,13 +367,15 @@ Host changes the order
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
 | `POST /reload`       | Read the Registry and the settings again. A terminal only. |
+| `POST /restart/<name>` | Start that Plugin's Plugin Server again. A terminal only. |
 
 A Plugin Page is a whole page: the Host links to it and the browser goes there,
 rather than framing it under chrome of its own
 ([ADR-0008](docs/adr/0008-a-plugin-page-is-a-whole-page.md)).
 
-`POST /reload` is the Host's own address, for the command line. Every Plugin
-Page shares the Host's origin and holds its cookie, so the Host answers it only
+`POST /reload` and `POST /restart/<name>` are the Host's own addresses, for the
+command line. Every Plugin Page shares the Host's origin and holds its cookie,
+so the Host answers them only
 when the request carries no `Origin` and no `Sec-Fetch-Site`: what a browser
 always sends and a terminal never does
 ([ADR-0018](docs/adr/0018-a-terminal-asks-the-host-to-reload.md)).

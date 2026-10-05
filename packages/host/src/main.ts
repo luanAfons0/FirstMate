@@ -58,6 +58,7 @@ async function main(): Promise<void> {
     order: () => readSettings(config.home).order ?? [],
     notices: (after) => notices.after(after),
     reload,
+    restart: (name) => supervisor.restart(name),
   }).catch((fault: unknown) => {
     supervisor.stopAll();
     throw fault;
@@ -85,6 +86,14 @@ async function main(): Promise<void> {
       });
     });
   }
+
+  // A command that ran while the Host started found no runtime file, so it
+  // asked nobody to reload. Whatever it wrote is read now, once.
+  if (JSON.stringify(safely(() => readRegistry(config.home))) !== JSON.stringify(plugins)) {
+    await reload().catch((fault: unknown) => {
+      console.error(`FirstMate: ${fault instanceof Error ? fault.message : String(fault)}`);
+    });
+  }
 }
 
 /**
@@ -102,6 +111,15 @@ function announce(port: number, token: string, home: string): void {
   }
   console.log(`FirstMate: http://127.0.0.1:${port}/`);
   console.log(`FirstMate: the token to open it with is in ${runtimePath(home)}`);
+}
+
+/** What this reads, or nothing when it cannot be read. */
+function safely<T>(read: () => T): T | undefined {
+  try {
+    return read();
+  } catch {
+    return undefined;
+  }
 }
 
 async function stop(host: Host, supervisor: Supervisor, home: string): Promise<void> {
