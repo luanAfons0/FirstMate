@@ -11,14 +11,15 @@
  *   node apps/cli/src/cli.ts desktop
  *   node apps/cli/src/cli.ts add <name> <directory>
  *   node apps/cli/src/cli.ts remove <name>
- *   node apps/cli/src/cli.ts list
+ *   node apps/cli/src/cli.ts list [--json]
+ *   node apps/cli/src/cli.ts status [--json]
  *   node apps/cli/src/cli.ts grant <from> <to>
  *   node apps/cli/src/cli.ts revoke <from> <to>
- *   node apps/cli/src/cli.ts shelf [directory]
+ *   node apps/cli/src/cli.ts shelf [directory] [--json]
  *   node apps/cli/src/cli.ts install <directory|git-url|official-name> [name]
  *   node apps/cli/src/cli.ts bind <keys> <plugin> [path]
  *   node apps/cli/src/cli.ts unbind <keys>
- *   node apps/cli/src/cli.ts order [<name> <position>]
+ *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
  *   node apps/cli/src/cli.ts service on|off
  */
 import { statSync } from 'node:fs';
@@ -46,6 +47,8 @@ import {
   type PluginRow,
 } from '@firstmate/core/registry';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
+import { STATE_WORDS } from '@firstmate/host/index-page';
+import { readHostStatus } from './running-host.ts';
 import { setup } from './setup.ts';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
@@ -61,12 +64,17 @@ type Command = {
   readonly takes: string;
   /** What it does, in one line. */
   readonly does: string;
+  /** Whether it can say what it reads as one JSON value, with --json. */
+  readonly json?: true;
   /**
-   * Run it with the words typed after its name. It gives back the exit code,
-   * or nothing when the command hands the process to something that sets its
-   * own.
+   * Run it with the words typed after its name, less --json, and whether
+   * --json was typed. It gives back the exit code, or nothing when the
+   * command hands the process to something that sets its own.
    */
-  readonly run: (argv: readonly string[]) => Promise<number | undefined> | number | undefined;
+  readonly run: (
+    argv: readonly string[],
+    json: boolean,
+  ) => Promise<number | undefined> | number | undefined;
 };
 
 /**
@@ -98,7 +106,15 @@ const COMMANDS: readonly Command[] = [
     name: 'list',
     takes: '',
     does: 'every Plugin in the Registry.',
-    run: (argv) => list(home(), argv),
+    json: true,
+    run: (argv, json) => list(home(), argv, json),
+  },
+  {
+    name: 'status',
+    takes: '',
+    does: 'say whether the Host runs, and the state of each Plugin.',
+    json: true,
+    run: (argv, json) => status(home(), argv, json),
   },
   {
     name: 'grant',
@@ -116,7 +132,8 @@ const COMMANDS: readonly Command[] = [
     name: 'shelf',
     takes: '[directory]',
     does: 'say where a fetched Plugin lands, or move it.',
-    run: (argv) => shelf(readConfig(), argv),
+    json: true,
+    run: (argv, json) => shelf(readConfig(), argv, json),
   },
   {
     name: 'install',
@@ -140,7 +157,8 @@ const COMMANDS: readonly Command[] = [
     name: 'order',
     takes: '[<name> <position>]',
     does: 'say the Plugin Order, or move one Plugin in it.',
-    run: (argv) => order(home(), argv),
+    json: true,
+    run: (argv, json) => order(home(), argv, json),
   },
   {
     name: 'service',
@@ -215,6 +233,12 @@ that was never moved follows the ones that were, in the order it was added.
 The Host picks up a new order with no restart.`,
   },
   {
+    about: ['status', 'list', 'order', 'shelf'],
+    text: `status, list, order and shelf say what they read as one JSON value with
+--json, and print nothing else. A command that changes something prints no JSON.
+status reads the running Host, and ends with exit code 6 when none answers.`,
+  },
+  {
     about: ['add', 'remove', 'grant', 'revoke', 'install'],
     text: `The Registry is read when the Host starts, so restart the Host to pick up a
 change: systemctl --user restart firstmate`,
@@ -222,7 +246,7 @@ change: systemctl --user restart firstmate`,
 ];
 
 /** Every way a command can end. A refusal says which kind of refusal it is. */
-type Ending = 'done' | 'failed' | 'typed-wrong' | Refusal;
+type Ending = 'done' | 'failed' | 'typed-wrong' | Refusal | 'no-host';
 
 /**
  * The exit code of each way a command can end, and what it means, so that a
@@ -236,6 +260,7 @@ const EXIT_CODES: Readonly<Record<Ending, { readonly code: number; readonly mean
   invalid: { code: 3, means: 'it refused a value that is not what it must be.' },
   missing: { code: 4, means: 'it refused a Plugin or a Shortcut that is not there.' },
   taken: { code: 5, means: 'it refused a name, keys or a directory that is taken already.' },
+  'no-host': { code: 6, means: 'it needs a running Host, and none answers.' },
 };
 
 /** The exit code a command ends with. */
@@ -271,6 +296,14 @@ function typedWrong(name: string, sentence: string): number {
   return exit('typed-wrong');
 }
 
+/** The word that asks a reading command for one JSON value, wherever it is typed. */
+const JSON_WORD = '--json';
+
+/** Say one value as JSON, and nothing else, for a script to read. */
+function printJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2));
+}
+
 /** The words that ask for a command's help, wherever they are typed after it. */
 const HELP_WORDS: ReadonlySet<string> = new Set(['-h', '--help']);
 
@@ -294,7 +327,12 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
     console.log(helpOf(command));
     return exit('done');
   }
-  return command.run(rest);
+  const json = rest.includes(JSON_WORD);
+  if (json && command.json !== true) return typedWrong(name, `${name} prints no JSON.`);
+  return command.run(
+    rest.filter((word) => word !== JSON_WORD),
+    json,
+  );
 }
 
 /**
@@ -471,15 +509,17 @@ function revoke(home: string, argv: readonly string[]): number {
  * could therefore send a request the Host cannot tell from the Index Page's
  * own (ADR-0012).
  */
-function shelf(config: Config, argv: readonly string[]): number {
+function shelf(config: Config, argv: readonly string[], json: boolean): number {
   const [directory] = argv;
   if (argv.length > 1) {
     return typedWrong('shelf', 'shelf takes one directory, or nothing.');
   }
   if (directory === undefined) {
-    console.log(`firstmate: the Shelf is ${config.shelf}`);
+    if (json) printJson({ shelf: config.shelf });
+    else console.log(`firstmate: the Shelf is ${config.shelf}`);
     return 0;
   }
+  if (json) return typedWrong('shelf', 'shelf prints JSON only when it moves nothing.');
 
   const moved = moveShelf(config.home, directory);
   console.log(`firstmate: the Shelf is now ${moved.shelf}`);
@@ -554,15 +594,18 @@ function unbind(home: string, argv: readonly string[]): number {
  * Say the Plugin Order, or move one Plugin in it. The Host reads the order on
  * every request, so a move needs no restart (ADR-0016).
  */
-function order(home: string, argv: readonly string[]): number {
+function order(home: string, argv: readonly string[], json: boolean): number {
   if (argv.length === 0) {
-    for (const [at, name] of pluginOrder(home).entries()) console.log(`${at + 1}\t${name}`);
+    const names = pluginOrder(home);
+    if (json) printJson({ order: names });
+    else for (const [at, name] of names.entries()) console.log(`${at + 1}\t${name}`);
     return 0;
   }
   const [name, position] = argv;
   if (name === undefined || position === undefined || argv.length > 2) {
     return typedWrong('order', 'order takes nothing, or a Plugin Name and a position.');
   }
+  if (json) return typedWrong('order', 'order prints JSON only when it moves nothing.');
   const moved = movePlugin(home, name, position);
   console.log(`firstmate: moved ${name} to position ${moved.indexOf(name) + 1}`);
   return 0;
@@ -579,15 +622,51 @@ function service(argv: readonly string[]): number {
   return 0;
 }
 
-function list(home: string, argv: readonly string[]): number {
+function list(home: string, argv: readonly string[], json: boolean): number {
   if (argv.length > 0) {
     return typedWrong('list', 'list takes nothing.');
   }
+  const rows = readRegistry(home);
+  const shortcuts = readSettings(home).shortcuts ?? [];
+  if (json) {
+    printJson({
+      plugins: rows,
+      shortcuts: shortcuts.map((shortcut) => ({
+        ...shortcut,
+        address: shortcutAddress(shortcut),
+      })),
+    });
+    return 0;
+  }
   // An empty Registry says nothing, as an empty directory listing says nothing.
-  for (const row of readRegistry(home)) console.log(describe(row));
-  for (const shortcut of readSettings(home).shortcuts ?? []) {
+  for (const row of rows) console.log(describe(row));
+  for (const shortcut of shortcuts) {
     console.log(`${shortcut.keys}\topens ${shortcutAddress(shortcut)}`);
   }
+  return 0;
+}
+
+/**
+ * Say whether the Host runs and the state of each Plugin, in the Plugin
+ * Order, as the running Host itself tells it. With no Host, there is no state
+ * to tell: a Plugin Server runs only under a Host.
+ */
+async function status(home: string, argv: readonly string[], json: boolean): Promise<number> {
+  if (argv.length > 0) {
+    return typedWrong('status', 'status takes nothing.');
+  }
+  const seen = await readHostStatus(home);
+  if (seen === undefined) {
+    if (json) printJson({ running: false });
+    else console.log('firstmate: no Host runs.');
+    return exit('no-host');
+  }
+  if (json) {
+    printJson({ running: true, address: seen.address, plugins: seen.plugins });
+    return 0;
+  }
+  console.log(`firstmate: the Host runs at ${seen.address}`);
+  for (const plugin of seen.plugins) console.log(`${plugin.name}\t${STATE_WORDS[plugin.state]}`);
   return 0;
 }
 
