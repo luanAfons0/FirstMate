@@ -13,6 +13,7 @@
  *   node apps/cli/src/cli.ts remove <name>
  *   node apps/cli/src/cli.ts list [--json]
  *   node apps/cli/src/cli.ts status [--json]
+ *   node apps/cli/src/cli.ts restart <name>
  *   node apps/cli/src/cli.ts grant <from> <to>
  *   node apps/cli/src/cli.ts revoke <from> <to>
  *   node apps/cli/src/cli.ts shelf [directory] [--json]
@@ -38,7 +39,7 @@ import {
   withShortcuts,
 } from '@firstmate/core/commands';
 import { readConfig, type Config } from '@firstmate/core/config';
-import { refusalOf, type Refusal } from '@firstmate/core/refusal';
+import { refusalOf, refuse, type Refusal } from '@firstmate/core/refusal';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import {
   isPluginName,
@@ -48,7 +49,7 @@ import {
 } from '@firstmate/core/registry';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
 import { STATE_WORDS } from '@firstmate/host/index-page';
-import { readHostStatus, reloadHost } from './running-host.ts';
+import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
 import { setup } from './setup.ts';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
@@ -115,6 +116,12 @@ const COMMANDS: readonly Command[] = [
     does: 'say whether the Host runs, and the state of each Plugin.',
     json: true,
     run: (argv, json) => status(home(), argv, json),
+  },
+  {
+    name: 'restart',
+    takes: '<name>',
+    does: "start one Plugin's Plugin Server again, after you fix it.",
+    run: (argv) => restart(home(), argv),
   },
   {
     name: 'grant',
@@ -237,6 +244,13 @@ The Host picks up a new order with no restart.`,
     text: `status, list, order and shelf say what they read as one JSON value with
 --json, and print nothing else. A command that changes something prints no JSON.
 status reads the running Host, and ends with exit code 6 when none answers.`,
+  },
+  {
+    about: ['restart'],
+    text: `restart stops one Plugin's Plugin Server, Stopped or not, and starts it again.
+The Host never does this by itself: a broken Plugin stays Stopped until you
+fix it and say so. restart needs a running Host, and ends with exit code 6
+when none answers.`,
   },
   {
     about: ['add', 'remove', 'grant', 'revoke', 'shelf', 'install', 'bind', 'unbind', 'order'],
@@ -613,6 +627,38 @@ async function order(home: string, argv: readonly string[], json: boolean): Prom
   const moved = movePlugin(home, name, position);
   console.log(`firstmate: moved ${name} to position ${moved.indexOf(name) + 1}`);
   await reloadHost(home);
+  return 0;
+}
+
+/**
+ * Start one Plugin's Plugin Server again, Stopped or not. The name is checked
+ * against the Registry first, so an unknown one is refused in the same words
+ * whether a Host runs or not.
+ */
+async function restart(home: string, argv: readonly string[]): Promise<number> {
+  const [name] = argv;
+  if (name === undefined || argv.length > 1) {
+    return typedWrong('restart', 'restart takes one Plugin Name.');
+  }
+  if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
+  if (!readRegistry(home).some((row) => row.name === name)) {
+    throw refuse('missing', `no Plugin named ${name} is registered.`);
+  }
+
+  const restarted = await restartPlugin(home, name);
+  if (restarted === undefined) {
+    console.error('firstmate: no Host runs.');
+    return exit('no-host');
+  }
+  if (restarted.state === 'no-plugin-server') {
+    console.log(`firstmate: ${name} ships no Plugin Server to restart.`);
+    return 0;
+  }
+  if (restarted.state === 'stopped') {
+    console.error(`firstmate: ${name} is Stopped: ${restarted.why ?? 'it did not start.'}`);
+    return exit('failed');
+  }
+  console.log(`firstmate: restarted ${name}. It is ${STATE_WORDS[restarted.state]}.`);
   return 0;
 }
 

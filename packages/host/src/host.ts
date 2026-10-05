@@ -16,7 +16,7 @@ import { inPluginOrder } from '@firstmate/core/settings';
 import { checkRequest, startedByOwnPage, startedByTerminal } from './security.ts';
 import { shortcutAddress, type Shortcut } from '@firstmate/core/shortcut';
 import { serveStatic, webRoot } from './static-files.ts';
-import type { PluginState } from './supervisor.ts';
+import type { PluginState, Restarted } from './supervisor.ts';
 import type { PluginServer } from './mcp.ts';
 import { callTools } from './tool-call.ts';
 
@@ -58,6 +58,8 @@ export type HostOptions = {
    * fails with the sentence that says why, and then nothing has changed.
    */
   readonly reload: () => Promise<void>;
+  /** Start one Plugin's Plugin Server again, or nothing when there is no such Plugin. */
+  readonly restart: (name: string) => Promise<Restarted | undefined>;
 };
 
 /** Where a Plugin Page calls its own Plugin's tools. */
@@ -91,6 +93,12 @@ const NOTICES_PATH = '/notices.json';
  * this origin, and a reload is the operator's (ADR-0018).
  */
 const RELOAD_PATH = '/reload';
+
+/**
+ * Where a terminal asks the Host to start one Plugin's Plugin Server again:
+ * the operator's restart, which a page may never ask for either (ADR-0018).
+ */
+const RESTART_PATH = /^\/restart\/([^/]+)$/;
 
 /** A Host that is listening, and the way to stop it. */
 export type Host = {
@@ -184,6 +192,18 @@ async function handle(
       return;
     }
     sendJson(response, options.notices(after), method === 'HEAD');
+    return;
+  }
+  const restarting = RESTART_PATH.exec(path);
+  if (restarting !== null) {
+    if (!askedByTerminal(request, response, method, 'restart')) return;
+    const name = decodeName(restarting[1] ?? '');
+    const restarted = name === null ? undefined : await options.restart(name);
+    if (name === null || restarted === undefined) {
+      sendText(response, 404, `No Plugin is named ${restarting[1]}.`);
+      return;
+    }
+    sendJson(response, { name, ...restarted }, false);
     return;
   }
   const address = PLUGIN_PATH.exec(path);

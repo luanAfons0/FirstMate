@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that will not end when it is asked to.
+//
+// It answers the handshake, then ignores SIGTERM and the end of its stdin, so
+// that a test can prove the Host does not wait for it for ever: a Plugin
+// Server that will not end in time is killed.
+import { createInterface } from 'node:readline';
+
+process.on('SIGTERM', () => process.stderr.write('stubborn: SIGTERM, and staying\n'));
+// Something to keep the process up after its stdin has closed.
+setInterval(() => {}, 60_000);
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+
+createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.trim() === '') return;
+  const request = JSON.parse(line);
+  if (request.method !== 'initialize') return;
+  reply({
+    jsonrpc: '2.0',
+    id: request.id,
+    result: {
+      protocolVersion: request.params.protocolVersion,
+      capabilities: {},
+      serverInfo: { name: 'stubborn', version: '1.0.0' },
+    },
+  });
+});

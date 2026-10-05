@@ -8,8 +8,17 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
-import { bootHost, firstmate, fixture, makeHome, until, type Booted } from './helpers/host.ts';
+import {
+  bootHost,
+  bootHostIn,
+  firstmate,
+  fixture,
+  makeHome,
+  until,
+  type Booted,
+} from './helpers/host.ts';
 
 type View = { readonly name: string; readonly state: string };
 
@@ -179,4 +188,33 @@ test('a runtime file a crashed Host left behind is no Host: the command writes, 
   assert.equal(added.code, 0, added.stderr);
   assert.equal(added.stdout, `firstmate: added both at ${fixture('both')}\n`);
   assert.equal(added.stderr, '');
+});
+
+test('a removed Plugin Server that will not end is killed before the command ends', async (t) => {
+  const host = await bootHost(t, [{ name: 'stubborn', directory: 'stubborn' }]);
+
+  const removed = await firstmate(host.home, ['remove', 'stubborn']);
+
+  assert.equal(removed.code, 0, removed.stderr);
+  assert.match(host.output(), /stubborn: SIGTERM, and staying/);
+  assert.match(host.output(), /the Plugin named stubborn is Stopped: SIGKILL/);
+});
+
+test('a command run while the Host starts is picked up once it has started', async (t) => {
+  const home = await makeHome(t);
+  await writeFile(
+    join(home, 'registry.json'),
+    JSON.stringify({ plugins: [{ name: 'silent', directory: fixture('silent'), grants: [] }] }),
+  );
+  // The silent fixture holds the start up until its handshake runs out, and
+  // the command runs in that time: after the Host read the Registry, and
+  // before there is a runtime file to read.
+  const booting = bootHostIn(t, home, { FIRSTMATE_HANDSHAKE_MS: '4000' });
+  await delay(1000);
+  const added = await firstmate(home, ['add', 'both', fixture('both')]);
+  assert.equal(added.stdout, `firstmate: added both at ${fixture('both')}\n`, 'no Host yet');
+  const host = await booting;
+
+  await until(host, /reloaded 2 Plugin\(s\)/);
+  assert.deepEqual(await states(host), { silent: 'stopped', both: 'running' });
 });

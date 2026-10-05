@@ -11,10 +11,11 @@
  * It does not go quietly all the same: the Host puts a Notice on the queue, so
  * that the operator learns of it without opening the Index Page (ADR-0014).
  */
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { speak, type Answering, type PluginServer } from './mcp.ts';
 import { SEND_NOTICE, type Notices } from './notices.ts';
 import type { PluginRow } from '@firstmate/core/registry';
@@ -22,6 +23,13 @@ import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */
 const SERVER_FILE = 'mcp';
+
+/**
+ * How long a Plugin Server the operator restarts has to end before the Host
+ * kills it. The new one is not started beside the old: two of one Plugin would
+ * share its files.
+ */
+const STOP_GRACE_MS = 5_000;
 
 /** The MCP version the Host asks for when it starts a Plugin Server. */
 const PROTOCOL_VERSION = '2025-06-18';
@@ -48,7 +56,20 @@ export type Supervisor = {
    * resolves once each added Plugin Server has answered or failed.
    */
   hold(plugins: readonly PluginRow[]): Promise<void>;
+  /**
+   * Stop one Plugin's Plugin Server, whatever its state, and start it again.
+   * This is the operator's restart, and the only way a Stopped Plugin runs
+   * again. Nothing when the Host holds no Plugin of that name.
+   */
+  restart(name: string): Promise<Restarted | undefined>;
   stopAll(): void;
+};
+
+/** What became of a Plugin the operator restarted. */
+export type Restarted = {
+  readonly state: PluginState;
+  /** Why it is Stopped, when it is. */
+  readonly why?: string;
 };
 
 /**
@@ -70,6 +91,12 @@ type Run = {
   server: PluginServer | null;
   /** The Plugin ships no Plugin Server at all, which is no failure. */
   shipsNone: boolean;
+  /** The process, once one was spawned. */
+  child: ChildProcess | null;
+  /** Settles once the process has ended, and at once when none was spawned. */
+  ended: Promise<void>;
+  /** Why the Plugin is Stopped, once it is. */
+  why: string | null;
   /**
    * The Host stops this one on purpose, so its end is no news: there is no
    * Notice for the Plugin the operator removed, or for any Plugin when the
@@ -110,15 +137,29 @@ export async function superviseAll(
       method === SEND_NOTICE
         ? Promise.resolve(notices.send(plugin.name, params))
         : toolBus(method, params);
-    return startOne(plugin, waits.handshakeMs, answering, notices);
+    return startOne(plugin, waits.handshakeMs, answering, notices, spawned);
   };
 
-  const retire = (name: string): void => {
+  // Every process the Host has spawned and not yet seen end, including one
+  // still in its handshake, which is in no map yet. Stopping the Host stops
+  // them all, and a process spawned after that is stopped as it starts, so no
+  // Plugin Server outlives the Host that started it.
+  const live = new Set<Run>();
+  let stopping = false;
+  const spawned = (run: Run): void => {
+    live.add(run);
+    void run.ended.then(() => live.delete(run));
+    if (stopping) quit(run);
+  };
+
+  // A Plugin that leaves is stopped, and ended, before anything new starts:
+  // the same Plugin added back must never run beside its old self.
+  const retire = async (name: string): Promise<void> => {
     const run = runs.get(name);
     if (run === undefined) return;
     runs.delete(name);
     run.quiet = true;
-    run.server?.stop();
+    await end(run);
   };
 
   // One change at a time. Two reloads that crossed would each start what the
@@ -142,13 +183,32 @@ export async function superviseAll(
       // that nothing new reaches a Plugin Server on its way out.
       held = held.filter((row) => !leaving.includes(row));
       bus.hold(held);
-      for (const row of leaving) retire(row.name);
+      await Promise.all(leaving.map((row) => retire(row.name)));
 
       const started = await Promise.all(next.filter((row) => !same(row)).map(start));
       for (const run of started) runs.set(run.row.name, run);
       held = next;
       bus.hold(held);
     });
+
+  const restart = async (name: string): Promise<Restarted | undefined> => {
+    let restarted: Restarted | undefined;
+    await inTurn(async () => {
+      const row = held.find((plugin) => plugin.name === name);
+      const old = runs.get(name);
+      if (row === undefined || old === undefined) return;
+      old.quiet = true;
+      await end(old);
+      const run = await start(row);
+      runs.set(name, run);
+      // A Plugin Server that failed is still on its way out, and says why as
+      // it goes. The operator asked, so the operator hears it.
+      if (run.server === null && !run.shipsNone) await ended(run);
+      restarted =
+        run.why === null ? { state: stateOf(name) } : { state: stateOf(name), why: run.why };
+    });
+    return restarted;
+  };
 
   await hold(plugins);
 
@@ -157,13 +217,34 @@ export async function superviseAll(
     stateOf,
     serverOf,
     hold,
+    restart,
     stopAll() {
-      for (const run of runs.values()) {
-        run.quiet = true;
-        run.server?.stop();
-      }
+      stopping = true;
+      for (const run of live) quit(run);
     },
   };
+}
+
+/** Ask a run's process to end, as the Host stops: its end is no news. */
+function quit(run: Run): void {
+  run.quiet = true;
+  run.server?.stop();
+  run.child?.kill('SIGTERM');
+}
+
+/** Ask a run's process to end, and kill it if it will not in time. */
+async function end(run: Run): Promise<void> {
+  run.server?.stop();
+  run.child?.kill('SIGTERM');
+  if (!(await ended(run))) {
+    run.child?.kill('SIGKILL');
+    await run.ended;
+  }
+}
+
+/** Whether a run's process ends within the grace the Host gives it. */
+function ended(run: Run): Promise<boolean> {
+  return Promise.race([run.ended.then(() => true), delay(STOP_GRACE_MS, false, { ref: false })]);
 }
 
 async function startOne(
@@ -171,10 +252,20 @@ async function startOne(
   handshakeMs: number,
   answering: Answering,
   notices: Notices,
+  spawned: (run: Run) => void,
 ): Promise<Run> {
-  const run: Run = { row: plugin, server: null, shipsNone: false, quiet: false };
+  const run: Run = {
+    row: plugin,
+    server: null,
+    shipsNone: false,
+    child: null,
+    ended: Promise.resolve(),
+    why: null,
+    quiet: false,
+  };
   const path = join(plugin.directory, SERVER_FILE);
   const say = onceOnly(plugin.name, (why) => {
+    run.why = why;
     if (!run.quiet) notices.fromHost(`${plugin.name} is Stopped`, why);
   });
 
@@ -207,6 +298,13 @@ async function startOne(
   const server = speak(child, plugin.name, answering);
   child.once('error', (cause) => say(cause.message));
   child.once('exit', (code, signal) => say(signal ?? `exit ${code ?? 0}`));
+  run.child = child;
+  // Heard after the two above, so a run that has ended has said why.
+  run.ended = new Promise((done) => {
+    child.once('exit', () => done());
+    child.once('error', () => done());
+  });
+  spawned(run);
 
   try {
     await handshake(server, handshakeMs);
