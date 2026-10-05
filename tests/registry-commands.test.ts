@@ -82,7 +82,7 @@ test('a duplicate Plugin Name is refused', async (t) => {
 
   const again = await firstmate(home, ['add', 'both', fixture('page-only')]);
 
-  assert.equal(again.code, 1);
+  assert.equal(again.code, 5);
   assert.match(again.stderr, /already registered/);
   assert.deepEqual((await registry(home)).plugins.length, 1, 'the first row is untouched');
 });
@@ -91,15 +91,15 @@ test('a path that is not a directory is refused', async (t) => {
   const home = await makeHome(t);
 
   const file = await firstmate(home, ['add', 'thing', join(fixture('both'), 'mcp')]);
-  assert.equal(file.code, 1);
+  assert.equal(file.code, 3);
   assert.match(file.stderr, /is not a directory/);
 
   const missing = await firstmate(home, ['add', 'thing', '/no/such/place']);
-  assert.equal(missing.code, 1);
+  assert.equal(missing.code, 3);
   assert.match(missing.stderr, /is not a directory/);
 
   const relative = await firstmate(home, ['add', 'thing', 'tests/fixtures/both']);
-  assert.equal(relative.code, 1);
+  assert.equal(relative.code, 3);
   assert.match(relative.stderr, /is not an absolute path/);
 });
 
@@ -117,7 +117,7 @@ test('removing a Plugin that is not registered is refused', async (t) => {
 
   const answer = await firstmate(home, ['remove', 'nobody']);
 
-  assert.equal(answer.code, 1);
+  assert.equal(answer.code, 4);
   assert.match(answer.stderr, /no Plugin named nobody/);
 });
 
@@ -183,15 +183,15 @@ test('a Grant refuses a Plugin Name that is not registered', async (t) => {
   await firstmate(home, ['add', 'both', fixture('both')]);
 
   const grantMissingTo = await firstmate(home, ['grant', 'both', 'nobody']);
-  assert.equal(grantMissingTo.code, 1);
+  assert.equal(grantMissingTo.code, 4);
   assert.match(grantMissingTo.stderr, /no Plugin named nobody/);
 
   const grantMissingFrom = await firstmate(home, ['grant', 'nobody', 'both']);
-  assert.equal(grantMissingFrom.code, 1);
+  assert.equal(grantMissingFrom.code, 4);
   assert.match(grantMissingFrom.stderr, /no Plugin named nobody/);
 
   const revokeMissing = await firstmate(home, ['revoke', 'both', 'nobody']);
-  assert.equal(revokeMissing.code, 1);
+  assert.equal(revokeMissing.code, 4);
   assert.match(revokeMissing.stderr, /no Plugin named nobody/);
 
   assert.deepEqual((await registry(home)).plugins[0]?.grants, [], 'nothing was written');
@@ -202,11 +202,11 @@ test('a Grant refuses a malformed Plugin Name', async (t) => {
   await firstmate(home, ['add', 'both', fixture('both')]);
 
   const granted = await firstmate(home, ['grant', 'both', 'With Space']);
-  assert.equal(granted.code, 1);
+  assert.equal(granted.code, 3);
   assert.match(granted.stderr, /is not a Plugin Name/);
 
   const revoked = await firstmate(home, ['revoke', 'With Space', 'both']);
-  assert.equal(revoked.code, 1);
+  assert.equal(revoked.code, 3);
   assert.match(revoked.stderr, /is not a Plugin Name/);
 });
 

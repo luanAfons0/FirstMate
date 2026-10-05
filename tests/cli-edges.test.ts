@@ -28,7 +28,7 @@ test('a symlink in the Shelf that points nowhere still blocks the name', async (
 
   const refused = await firstmate(home, ['install', fixture('both')]);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 5);
   assert.match(refused.stderr, /already exists/);
   assert.equal(await readlink(join(shelf, 'both')), join(home, 'nothing-here'), 'it is untouched');
 });
@@ -63,7 +63,7 @@ test('the short form of a git URL names its Plugin after the colon', async (t) =
   // the name that was read from the URL.
   const refused = await firstmate(home, ['install', 'git@example.invalid:tidy.git']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 5);
   assert.match(refused.stderr, /tidy is already registered/);
 });
 

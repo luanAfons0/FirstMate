@@ -92,18 +92,20 @@ test('a move changes only the Plugin it names', async (t) => {
 test('order refuses a name or a position it cannot use, and writes nothing', async (t) => {
   const home = await homeWithThree(t);
 
-  const refusals: [readonly string[], RegExp][] = [
-    [['Both', '1'], /Both is not a Plugin Name/],
-    [['nobody', '1'], /no Plugin named nobody is registered/],
-    [['both', '0'], /0 is not a position\. Give a whole number from 1 to 3\./],
-    [['both', '4'], /4 is not a position\. Give a whole number from 1 to 3\./],
-    [['both', '1.5'], /1\.5 is not a position/],
-    [['both', '-1'], /-1 is not a position/],
-    [['both', 'top'], /top is not a position/],
+  // Each refusal ends with the exit code of its kind: 3 for a value that is
+  // not what it must be, 4 for a Plugin that is not there.
+  const refusals: [readonly string[], RegExp, number][] = [
+    [['Both', '1'], /Both is not a Plugin Name/, 3],
+    [['nobody', '1'], /no Plugin named nobody is registered/, 4],
+    [['both', '0'], /0 is not a position\. Give a whole number from 1 to 3\./, 3],
+    [['both', '4'], /4 is not a position\. Give a whole number from 1 to 3\./, 3],
+    [['both', '1.5'], /1\.5 is not a position/, 3],
+    [['both', '-1'], /-1 is not a position/, 3],
+    [['both', 'top'], /top is not a position/, 3],
   ];
-  for (const [argv, said] of refusals) {
+  for (const [argv, said, code] of refusals) {
     const refused = await firstmate(home, ['order', ...argv]);
-    assert.equal(refused.code, 1, argv.join(' '));
+    assert.equal(refused.code, code, argv.join(' '));
     assert.match(refused.stderr, said);
   }
   await assert.rejects(readFile(join(home, 'settings.json')), 'nothing was written');

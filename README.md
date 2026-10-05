@@ -191,6 +191,29 @@ Without one it gets thirty seconds, and `FIRSTMATE_MAX_CALL_MS` is the ceiling:
 a call that asks for more is quietly given the ceiling rather than refused. A
 Plugin Page's own call is not a Tool Bus call and keeps its thirty seconds.
 
+## Help and exit codes
+
+```sh
+node apps/cli/src/cli.ts --help
+node apps/cli/src/cli.ts <command> --help
+```
+
+`--help` or `-h` after any command says how that command is typed and what
+its words mean, and does nothing else. A command typed wrong says what is
+wrong, then shows that same help.
+
+Every command ends with one of these exit codes, so a script can tell one
+refusal from another without reading the sentence:
+
+| Code | What it means                                                         |
+| ---- | --------------------------------------------------------------------- |
+| `0`  | It did what it was asked.                                             |
+| `1`  | It failed: a damaged file, a fetch that went wrong, or a fault.       |
+| `2`  | It was typed wrong: no such command, or the wrong words for it.       |
+| `3`  | It refused a value that is not what it must be: a Plugin Name, a path, keys, a position. |
+| `4`  | It refused a Plugin or a Shortcut that is not there.                  |
+| `5`  | It refused a name, keys or a directory that is taken already.         |
+
 ## Run the Host
 
 ```sh

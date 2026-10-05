@@ -34,6 +34,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts start`              | The same Host, from the command line.           |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node apps/cli/src/cli.ts desktop`            | The FirstMate window. Windows only.             |
+| `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `--help` alone also lists the exit codes. |
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node apps/cli/src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
@@ -103,6 +104,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                     from host.
   commands.ts      what the writing commands change, apart from how they are
                    typed and printed, so every refusal has one sentence.
+  refusal.ts       the kind of each refusal, which the terminal reads as its
+                   exit code.
   official-plugins.ts the Official Plugins, as data: name, URL, one line,
                    and whether each calls other Plugins (ADR-0015).
   config.ts        FIRSTMATE_HOME, FIRSTMATE_PORT, the handshake and the Shelf.
