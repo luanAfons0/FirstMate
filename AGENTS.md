@@ -121,12 +121,13 @@ packages/core/src/  what the command line and the Host share. Imports nothing
 packages/host/src/  the Host. Every file is one job.
   main.ts          start-up: read the Registry, mint the token, supervise, listen.
   host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
-                   /notices.json,
+                   /notices.json, POST /reload,
                    /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
   index-page.ts    the Index Page, one file with no assets of its own.
-  supervisor.ts    start every Plugin Server, and hold the truth about each.
+  supervisor.ts    start every Plugin Server, hold the truth about each, and
+                   start or stop only what a reload added or removed.
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.

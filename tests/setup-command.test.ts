@@ -8,7 +8,7 @@ import { mkdir, readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { hasGit, officialSources } from './helpers/git.ts';
-import { firstmate, makeHome, type CommandResult } from './helpers/host.ts';
+import { bootHostIn, firstmate, makeHome, until, type CommandResult } from './helpers/host.ts';
 import { binWith, machine } from './helpers/systemd.ts';
 
 /**
@@ -144,7 +144,7 @@ test('the Official Plugins chosen are fetched into the Shelf and registered', as
   assert.match(run.stdout, /fetching worklog from https:\/\/github\.com\/luanAfons0\/worklog/);
   assert.ok(run.stdout.includes(`installed nexus at ${join(shelf, 'nexus')}`), run.stdout);
   assert.match(run.stdout, /setup changed:\n.*\n {2}installed worklog\n {2}installed nexus\n/);
-  assert.match(run.stdout, /restart the Host to pick it up/);
+  assert.doesNotMatch(run.stdout, /restart the Host/, 'with no Host running, nothing more');
   assert.deepEqual(
     (await registry(home)).map((row) => [row.name, row.directory]),
     [
@@ -370,33 +370,23 @@ test('no to the service installs nothing', async (t) => {
   assert.ok(!(await m.calls()).some((call) => call.includes('enable')));
 });
 
-test('a running service is not asked about, and a changed Registry asks to restart', async (t) => {
+test('a run that changes the Registry reloads the running Host, and asks nothing', async (t) => {
   const m = await machine(t);
   const home = await makeHome(t);
   await schedulerAndWorklog(home);
+  const host = await bootHostIn(t, home);
 
-  const yes = await setupIn(t, home, answers('', '', '1', '', 'y'), m.env);
+  const run = await setupIn(t, home, answers('', '', '1', ''), m.env);
 
-  assert.equal(yes.code, 0, yes.stderr);
-  assert.doesNotMatch(yes.stdout, /Run the Host as a systemd user service\?/);
-  assert.match(yes.stdout, /Restart the Host now, so that it picks the changes up\? \[Y\/n\]/);
-  assert.ok((await m.calls()).includes('systemctl --user restart firstmate'));
-  assert.match(yes.stdout, / {2}restarted the Host\n/);
+  assert.equal(run.code, 0, run.stderr);
+  assert.doesNotMatch(run.stdout, /Run the Host as a systemd user service\?/);
+  assert.doesNotMatch(run.stdout, /Restart the Host/);
+  assert.match(run.stdout, / {2}scheduler may call worklog\n/);
+  assert.ok(!(await m.calls()).some((call) => call.includes('restart')), 'no restart');
+  await until(host, /reloaded 2 Plugin\(s\)/);
 });
 
-test('no to the restart prints the command to run later', async (t) => {
-  const m = await machine(t);
-  const home = await makeHome(t);
-  await schedulerAndWorklog(home);
-
-  const no = await setupIn(t, home, answers('', '', '1', '', 'n'), m.env);
-
-  assert.equal(no.code, 0, no.stderr);
-  assert.match(no.stdout, /restart it when you are ready: systemctl --user restart firstmate/);
-  assert.ok(!(await m.calls()).some((call) => call.includes('restart')));
-});
-
-test('a run that changes no Plugin and no Grant does not ask to restart', async (t) => {
+test('setup never asks to restart the Host', async (t) => {
   const m = await machine(t);
   const home = await makeHome(t);
   await firstmate(home, ['add', 'alpha', await directory(home, 'alpha')]);

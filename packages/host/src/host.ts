@@ -1,6 +1,7 @@
 /**
  * The Host's HTTP surface: the Index Page, the same list as JSON, the
- * Shortcuts and the Notices as JSON, every Plugin Page, and nothing else yet.
+ * Shortcuts and the Notices as JSON, every Plugin Page, and the one address a
+ * terminal asks the Host to reload at.
  *
  * It binds the loopback address alone, so nothing else on the network reaches
  * it, and it is the one seam this project is tested through.
@@ -12,7 +13,7 @@ import { indexPage, type PluginView } from './index-page.ts';
 import type { NoticesAfter } from './notices.ts';
 import type { PluginRow } from '@firstmate/core/registry';
 import { inPluginOrder } from '@firstmate/core/settings';
-import { checkRequest, startedByOwnPage } from './security.ts';
+import { checkRequest, startedByOwnPage, startedByTerminal } from './security.ts';
 import { shortcutAddress, type Shortcut } from '@firstmate/core/shortcut';
 import { serveStatic, webRoot } from './static-files.ts';
 import type { PluginState } from './supervisor.ts';
@@ -26,12 +27,12 @@ const PLUGIN_PATH = /^\/p\/([^/]+)(\/.*)?$/;
 export type HostOptions = {
   /** The port to listen on. Zero asks the system for a free one. */
   readonly port: number;
-  /** The Registry, read once when the Host started. */
-  readonly plugins: readonly PluginRow[];
+  /** The Registry, as the Host last read it: at start, and at each reload. */
+  readonly plugins: () => readonly PluginRow[];
   /** Where the Registry lives, so that an empty Index Page can say so. */
   readonly registryPath: string;
   /** The Shelf in force, which the Index Page shows and never sets. */
-  readonly shelf: string;
+  readonly shelf: () => string;
   /** The token minted at startup. Every request carries it or is refused. */
   readonly token: string;
   /** What the Supervisor knows about a Plugin Server right now. */
@@ -52,6 +53,11 @@ export type HostOptions = {
   readonly order: () => readonly string[];
   /** The Notices after a sequence number that have not expired (ADR-0014). */
   readonly notices: (after: number) => NoticesAfter;
+  /**
+   * Read the Registry and the settings again, and hold what they say now. It
+   * fails with the sentence that says why, and then nothing has changed.
+   */
+  readonly reload: () => Promise<void>;
 };
 
 /** Where a Plugin Page calls its own Plugin's tools. */
@@ -79,6 +85,13 @@ const SHORTCUTS_PATH = '/shortcuts.json';
  */
 const NOTICES_PATH = '/notices.json';
 
+/**
+ * Where a terminal asks the Host to read the Registry and the settings again,
+ * after a command changed them. A page may never ask: every Plugin Page shares
+ * this origin, and a reload is the operator's (ADR-0018).
+ */
+const RELOAD_PATH = '/reload';
+
 /** A Host that is listening, and the way to stop it. */
 export type Host = {
   /** The port the Host actually listened on. */
@@ -88,12 +101,11 @@ export type Host = {
 
 /** Listen on loopback and answer every request that passes the security check. */
 export async function startHost(options: HostOptions): Promise<Host> {
-  const plugins = new Map(options.plugins.map((plugin) => [plugin.name, plugin]));
   // The security check names this Host by the port it answers on, which is
   // known only once it is listening.
   let listening = 0;
   const server = createServer((request, response) => {
-    handle(request, response, plugins, options, listening).catch((fault: unknown) => {
+    handle(request, response, options, listening).catch((fault: unknown) => {
       fail(response, fault);
     });
   });
@@ -112,7 +124,6 @@ export async function startHost(options: HostOptions): Promise<Host> {
 async function handle(
   request: IncomingMessage,
   response: ServerResponse,
-  plugins: Map<string, PluginRow>,
   options: HostOptions,
   port: number,
 ): Promise<void> {
@@ -133,16 +144,29 @@ async function handle(
 
   if (path === '/') {
     if (!readOnly(response, method)) return;
-    const views = pluginViews(response, plugins, options);
+    const views = pluginViews(response, options);
     if (views === null) return;
-    sendHtml(response, indexPage(views, options.registryPath, options.shelf), method === 'HEAD');
+    sendHtml(response, indexPage(views, options.registryPath, options.shelf()), method === 'HEAD');
     return;
   }
   if (path === PLUGINS_PATH) {
     if (!readOnly(response, method)) return;
-    const views = pluginViews(response, plugins, options);
+    const views = pluginViews(response, options);
     if (views === null) return;
     sendJson(response, { plugins: views }, method === 'HEAD');
+    return;
+  }
+  if (path === RELOAD_PATH) {
+    if (!askedByTerminal(request, response, method, 'reload')) return;
+    try {
+      await options.reload();
+    } catch (fault: unknown) {
+      sendText(response, 500, fault instanceof Error ? fault.message : String(fault));
+      return;
+    }
+    const views = pluginViews(response, options);
+    if (views === null) return;
+    sendJson(response, { plugins: views }, false);
     return;
   }
   if (path === SHORTCUTS_PATH) {
@@ -169,7 +193,7 @@ async function handle(
   }
 
   const name = decodeName(address[1] ?? '');
-  const plugin = name === null ? undefined : plugins.get(name);
+  const plugin = name === null ? undefined : options.plugins().find((row) => row.name === name);
   if (plugin === undefined) {
     sendText(response, 404, `No Plugin is named ${address[1]}.`);
     return;
@@ -200,6 +224,28 @@ async function handle(
   await sendPluginPage(response, plugin, rest, method === 'HEAD');
 }
 
+/**
+ * Whether a request asking the Host itself to act is a POST from a terminal.
+ * Otherwise the refusal has already been sent.
+ */
+function askedByTerminal(
+  request: IncomingMessage,
+  response: ServerResponse,
+  method: string,
+  what: string,
+): boolean {
+  if (method !== 'POST') {
+    response.setHeader('allow', 'POST');
+    sendText(response, 405, `A ${what} is a POST, not a ${method}.`);
+    return false;
+  }
+  if (!startedByTerminal(request)) {
+    sendText(response, 403, `Only a terminal may ask the Host for a ${what}, never a page.`);
+    return false;
+  }
+  return true;
+}
+
 function readOnly(response: ServerResponse, method: string): boolean {
   if (method === 'GET' || method === 'HEAD') return true;
   response.setHeader('allow', 'GET, HEAD');
@@ -212,14 +258,10 @@ function readOnly(response: ServerResponse, method: string): boolean {
  * Tray both see it. Null when the settings file cannot be read, and then the
  * answer has already been sent.
  */
-function pluginViews(
-  response: ServerResponse,
-  plugins: Map<string, PluginRow>,
-  options: HostOptions,
-): PluginView[] | null {
+function pluginViews(response: ServerResponse, options: HostOptions): PluginView[] | null {
   const order = fromSettings(response, options.order);
   if (order === null) return null;
-  return inPluginOrder([...plugins.values()], order).map((plugin) => ({
+  return inPluginOrder(options.plugins(), order).map((plugin) => ({
     name: plugin.name,
     hasPage: existsSync(webRoot(plugin.directory)),
     state: options.stateOf(plugin.name),

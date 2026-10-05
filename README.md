@@ -69,9 +69,8 @@ the step. The Tray picks the new Shortcuts up with no restart.
 
 Last, when the Host does not run as a service yet, it asks whether it should,
 and on yes does what `firstmate service on` does. Where there is no systemd it
-says so and goes on. When the service runs and this run added a Plugin or a
-Grant, it asks once whether to restart the Host, because the Host reads the
-Registry only when it starts; no prints `systemctl --user restart firstmate`.
+says so and goes on. When a Host runs and this run changed something, `setup`
+asks it to reload, as every plain command does, and asks you nothing.
 
 Each answer is written when it is given, so Ctrl-C keeps the steps that
 finished. `setup` never removes anything, so it is safe to run again. A script
@@ -166,8 +165,13 @@ Adding neither copies nor symlinks the directory: the Registry holds the path,
 so a Plugin stays in its own repository wherever it already lives. `grant` lets
 `<from>` call `<to>`'s tools; a Grant is one way, so it does not let `<to>` call
 `<from>`. `revoke` takes that Grant back. Both refuse a Plugin Name that is not
-registered. The Host enforces a Grant on every Tool Bus call. The Registry is
-read when the Host starts, so restart the Host to pick up a change.
+registered. The Host enforces a Grant on every Tool Bus call.
+
+Every command that changes the Registry or the settings asks the running Host
+to reload, so you never restart FirstMate by hand. A reload starts the Plugins
+that were added, stops the ones that were removed, takes the new Grants, and
+leaves every other Plugin Server alone. It never starts a Stopped Plugin again.
+With no Host running, the command writes the files and says nothing more.
 
 ### Official Plugins
 
@@ -354,10 +358,17 @@ Host changes the order
 | `/notices.json?after=<n>` | The Notices after `n`, for the Tray. Nothing is written. |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
+| `POST /reload`       | Read the Registry and the settings again. A terminal only. |
 
 A Plugin Page is a whole page: the Host links to it and the browser goes there,
 rather than framing it under chrome of its own
 ([ADR-0008](docs/adr/0008-a-plugin-page-is-a-whole-page.md)).
+
+`POST /reload` is the Host's own address, for the command line. Every Plugin
+Page shares the Host's origin and holds its cookie, so the Host answers it only
+when the request carries no `Origin` and no `Sec-Fetch-Site`: what a browser
+always sends and a terminal never does
+([ADR-0018](docs/adr/0018-a-terminal-asks-the-host-to-reload.md)).
 
 ## Call a Plugin's tools
 

@@ -151,6 +151,20 @@ export function startedByOwnPage(request: IncomingMessage, name: string): boolea
   return path.startsWith(`/p/${encodeURIComponent(name)}/`);
 }
 
+/**
+ * Whether a request came from a terminal, and not from a page.
+ *
+ * Every Plugin Page shares the Host's origin and holds its cookie, so the
+ * token alone cannot tell the operator from a page (ADR-0012). What can is
+ * what a browser always sends and a terminal never does: an Origin on every
+ * POST, which no page can take off, and Sec-Fetch-Site on every request.
+ * An address that makes the Host act on the operator's behalf answers only a
+ * request that carries neither (ADR-0018).
+ */
+export function startedByTerminal(request: IncomingMessage): boolean {
+  return request.headers.origin === undefined && header(request, 'sec-fetch-site') === undefined;
+}
+
 function refuse(reason: string): Admission {
   return { kind: 'refuse', reason };
 }

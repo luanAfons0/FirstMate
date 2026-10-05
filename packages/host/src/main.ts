@@ -3,8 +3,9 @@
  * and an address.
  *
  * Start it with `node packages/host/src/main.ts`. It reads its Registry,
- * listens on loopback, and writes the port and the token where the Tray finds
- * them.
+ * listens on loopback, and writes the port and the token where the Tray and
+ * the command line find them. It reads the Registry again when the command
+ * line asks it to reload.
  */
 import { randomBytes } from 'node:crypto';
 import { readConfig } from '@firstmate/core/config';
@@ -34,17 +35,29 @@ async function main(): Promise<void> {
 
   // From here a failure must take the Plugin Servers down with it: their pipes
   // would otherwise hold a Host that serves nothing up for ever.
+  // The Shelf can move while the Host runs, and a reload reads it again.
+  let shelf = config.shelf;
+  const reload = async (): Promise<void> => {
+    // Both are read before either is used, so a damaged file changes nothing.
+    const now = readRegistry(config.home);
+    const moved = readConfig().shelf;
+    await supervisor.hold(now);
+    shelf = moved;
+    console.log(`FirstMate: reloaded ${now.length} Plugin(s) from ${registryPath(config.home)}`);
+  };
+
   const host = await startHost({
     port: config.port,
-    plugins,
+    plugins: () => supervisor.plugins(),
     registryPath: registryPath(config.home),
-    shelf: config.shelf,
+    shelf: () => shelf,
     token,
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),
     shortcuts: () => readSettings(config.home).shortcuts ?? [],
     order: () => readSettings(config.home).order ?? [],
     notices: (after) => notices.after(after),
+    reload,
   }).catch((fault: unknown) => {
     supervisor.stopAll();
     throw fault;

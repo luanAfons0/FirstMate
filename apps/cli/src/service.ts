@@ -107,9 +107,6 @@ export function serviceOff(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
-/** The command that restarts the Host, for a person to run by hand. */
-export const RESTART_COMMAND = 'systemctl --user restart firstmate';
-
 /** Whether the Host runs as a service now, and whether it could. */
 export type ServiceState = 'active' | 'inactive' | 'no-systemd';
 
@@ -122,15 +119,6 @@ export function serviceState(env: NodeJS.ProcessEnv = process.env): ServiceState
   }
   const active = attempt(env, 'systemctl', ['--user', 'is-active', '--quiet', 'firstmate']);
   return active.error === undefined && active.status === 0 ? 'active' : 'inactive';
-}
-
-/**
- * Restart the Host's service, so that it reads the Registry again. The
- * Registry is read only when the Host starts.
- */
-export function restartService(env: NodeJS.ProcessEnv = process.env): void {
-  const [command = 'systemctl', ...argv] = RESTART_COMMAND.split(' ');
-  run(env, command, argv);
 }
 
 /**

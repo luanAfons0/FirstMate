@@ -38,7 +38,7 @@ test('a Shelf is remembered, and what is remembered is the real path', async (t)
 
   assert.equal(moved.code, 0, moved.stderr);
   assert.ok(moved.stdout.includes(`the Shelf is now ${real}`), moved.stdout);
-  assert.match(moved.stdout, /restart the Host/);
+  assert.doesNotMatch(moved.stdout, /restart/);
   assert.deepEqual(await settings(home), { shelf: real });
 
   const said = await firstmate(home, ['shelf']);
