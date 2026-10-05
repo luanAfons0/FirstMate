@@ -34,15 +34,18 @@ needs another, open an issue and make the case before you write the code.
 ## The check that must be green
 
 ```sh
-npm ci
-npm run check
+pnpm install --frozen-lockfile
+pnpm check
 ```
 
-`npm run check` checks the types, lints with Biome, checks the layout with
+The repository is a pnpm workspace. `package.json` names the pnpm version in
+`packageManager`, and pnpm switches to it on its own.
+
+`pnpm check` checks the types, lints with Biome, checks the layout with
 Prettier, looks for dead code with knip, and runs every test. It must pass
 before you open a pull request. The same steps run on every pull request in the
 [Check](.github/workflows/check.yml) workflow, so a machine says so too, not
-only you. `npm run format` fixes the layout for you.
+only you. `pnpm format` fixes the layout for you.
 
 Every test boots a real Host against a temporary home directory and drives it
 over HTTP, exactly as a browser does. No test imports a module of the Host: the
@@ -97,7 +100,7 @@ name.
    Host does, and what the version still does not do.
 
 Pushing the tag starts the [Release](.github/workflows/release.yml) workflow.
-It refuses a tag that disagrees with `package.json`, runs `npm run check`, and
+It refuses a tag that disagrees with `package.json`, runs `pnpm check`, and
 only then publishes.
 
 **There is no npm token anywhere.** npm accepts GitHub Actions as a trusted

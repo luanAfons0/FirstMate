@@ -34,14 +34,14 @@
   "scripts": {
     "start": "node src/main.ts",
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
+    "prepack": "pnpm build",
     "test": "node --test",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --error-on-warnings .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm knip && pnpm test"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
@@ -52,5 +52,6 @@
   },
   "dependencies": {
     "@webviewjs/webview": "^0.4.6"
-  }
+  },
+  "packageManager": "pnpm@12.9.1"
 }

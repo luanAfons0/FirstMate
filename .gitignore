@@ -3,7 +3,7 @@ node_modules/
 # Built output. Only packing makes it, and a clone never holds it (ADR-0010).
 dist/
 
-# An agent's worktrees. Untracked is not enough: npm pack reads the working
+# An agent's worktrees. Untracked is not enough: packing reads the working
 # directory rather than git, and packed a whole second copy of the repository
 # from here.
 .claude/

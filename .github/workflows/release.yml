@@ -31,11 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
+          cache: pnpm
 
       - name: The tag and the version must agree
         run: |
@@ -46,9 +48,9 @@ jobs:
             exit 1
           fi
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm run check
+      - run: pnpm check
 
       # Trusted publishing wants npm 11.5.1 or newer. Node 24 ships a newer one
       # already; this keeps a release from resting on that staying true.

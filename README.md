@@ -512,13 +512,13 @@ over HTTP. No test imports a module of the Host.
 ## Check it
 
 ```sh
-npm install
-npm run check
+pnpm install
+pnpm check
 ```
 
-`npm run check` checks the types, lints with Biome, checks the layout with
+`pnpm check` checks the types, lints with Biome, checks the layout with
 Prettier, looks for dead code with knip, and runs every test. CI runs the same
-command. `npx tsc --noEmit` checks the types alone.
+command. `pnpm typecheck` checks the types alone.
 
 Node 24 runs TypeScript without a build step, so a clone never holds built
 output and nothing here compiles. `typescript` checks the types, and compiles

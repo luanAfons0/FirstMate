@@ -6,7 +6,7 @@
  * copy of the repository once reached the package. This test is the guard: it
  * packs for real and reads the list back.
  *
- * It needs no network. `npm pack --dry-run` builds the package through
+ * It needs no network. `pnpm pack --dry-run` builds the package through
  * `prepack` and reports what it would write, which is also how this test
  * proves that packing always builds (ADR-0010).
  */
@@ -18,10 +18,10 @@ import test from 'node:test';
 
 const REPOSITORY = dirname(dirname(fileURLToPath(import.meta.url)));
 
-/** Every path packing would write, as npm itself reports them. */
+/** Every path packing would write, as pnpm itself reports them. */
 function packedFiles(): Promise<readonly string[]> {
   return new Promise((done, fail) => {
-    const child = spawn('npm', ['pack', '--dry-run', '--json'], {
+    const child = spawn('pnpm', ['pack', '--dry-run', '--json'], {
       cwd: REPOSITORY,
       env: { ...process.env, npm_config_loglevel: 'silent' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -32,7 +32,7 @@ function packedFiles(): Promise<readonly string[]> {
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
     child.once('error', fail);
     child.once('exit', (code) => {
-      if (code !== 0) return fail(new Error(`npm pack exited ${code}\n${stderr}`));
+      if (code !== 0) return fail(new Error(`pnpm pack exited ${code}\n${stderr}`));
       const reported = JSON.parse(stdout) as
         { files: { path: string }[] }[] | { files: { path: string }[] };
       const one = Array.isArray(reported) ? reported[0] : reported;
