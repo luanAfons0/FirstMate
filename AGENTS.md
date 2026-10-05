@@ -36,6 +36,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts desktop`            | The FirstMate window. Windows only.             |
 | `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `--help` alone also lists the exit codes. |
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
+| `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
 | `node apps/cli/src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
 | `node apps/cli/src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
 | `node apps/cli/src/cli.ts grant <from> <to>`  | Let `<from>` call `<to>`'s tools: a Grant.      |
@@ -139,6 +140,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate. In 1.x it carries
   src/setup.ts     firstmate setup: the conversation, and nothing else. Each
                    step calls commands.ts.
   src/prompt.ts    ask for text, yes or no, or numbers, over node:readline.
+  src/running-host.ts the running Host, as the terminal reaches it: over
+                   loopback, with the token from the runtime file.
   src/desktop-state.ts the part that decides: where the Host is, and whether
                    it is there. Imports nothing native, owns no window.
   src/desktop.ts   the part that shows: the window, and the one dependency.

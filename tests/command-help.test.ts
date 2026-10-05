@@ -17,6 +17,7 @@ const COMMANDS: readonly [string, string][] = [
   ['add', ' <name> <directory>'],
   ['remove', ' <name>'],
   ['list', ''],
+  ['status', ''],
   ['grant', ' <from> <to>'],
   ['revoke', ' <from> <to>'],
   ['shelf', ' [directory]'],
@@ -75,7 +76,7 @@ test('the usage names every exit code and what it means', async (t) => {
   const helped = await firstmate(home, ['--help']);
 
   assert.equal(helped.code, 0);
-  for (const code of [0, 1, 2, 3, 4, 5]) {
+  for (const code of [0, 1, 2, 3, 4, 5, 6]) {
     assert.match(helped.stdout, new RegExp(`^  ${code}  it \\w`, 'm'), `exit code ${code}`);
   }
 });

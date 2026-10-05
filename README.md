@@ -191,6 +191,24 @@ Without one it gets thirty seconds, and `FIRSTMATE_MAX_CALL_MS` is the ceiling:
 a call that asks for more is quietly given the ceiling rather than refused. A
 Plugin Page's own call is not a Tool Bus call and keeps its thirty seconds.
 
+## Ask the running Host
+
+```sh
+node apps/cli/src/cli.ts status
+node apps/cli/src/cli.ts status --json
+```
+
+`status` says whether the Host runs, and the state of each Plugin in the Plugin
+Order: Running, Stopped, or no Plugin Server. It asks the running Host itself,
+over loopback, with the port and the token from `runtime.json`, as the Tray
+does. With no Host it says `no Host runs.` and ends with exit code `6`. A
+`runtime.json` that a crashed Host left behind names a port nothing answers on,
+and that reads as no Host too.
+
+`status`, `list`, `order` and `shelf` say what they read as one JSON value with
+`--json`, and print nothing else, so a script can read them. A command that
+changes something prints no JSON, and refuses `--json` as typed wrong.
+
 ## Help and exit codes
 
 ```sh
@@ -213,6 +231,7 @@ refusal from another without reading the sentence:
 | `3`  | It refused a value that is not what it must be: a Plugin Name, a path, keys, a position. |
 | `4`  | It refused a Plugin or a Shortcut that is not there.                  |
 | `5`  | It refused a name, keys or a directory that is taken already.         |
+| `6`  | It needs a running Host, and none answers.                            |
 
 ## Run the Host
 

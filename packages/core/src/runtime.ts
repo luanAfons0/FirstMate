@@ -5,7 +5,7 @@
  * The Tray is a Windows process and the Host is a Linux process, so the two
  * find each other through this file and through no configuration (ADR-0007).
  */
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** The runtime file, inside the Host's home directory. */
@@ -43,4 +43,39 @@ export function writeRuntimeFile(home: string, runtime: Runtime): void {
 /** Take the runtime file away, because the run it describes is over. */
 export function removeRuntimeFile(home: string): void {
   rmSync(runtimePath(home), { force: true });
+}
+
+/**
+ * The runtime file the last run wrote, or nothing when no run wrote one. It
+ * says where a Host listened, not that one still listens there: a Host that
+ * crashed leaves its file behind.
+ */
+export function readRuntimeFile(home: string): Runtime | undefined {
+  const path = runtimePath(home);
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw new Error(`Cannot read the runtime file at ${path}.`, { cause });
+  }
+  const runtime = parseRuntime(text);
+  if (runtime === undefined) {
+    throw new Error(`The runtime file at ${path} needs a "port" and a "token".`);
+  }
+  return runtime;
+}
+
+function parseRuntime(text: string): Runtime | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { port, token } = value as Record<string, unknown>;
+  if (!Number.isInteger(port) || typeof port !== 'number' || port <= 0) return undefined;
+  if (typeof token !== 'string' || token === '') return undefined;
+  return { port, token };
 }
