@@ -21,7 +21,8 @@ import { readConfig } from '@firstmate/core/config';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import { openPrompt, type Prompt } from './prompt.ts';
 import { readRegistry } from '@firstmate/core/registry';
-import { NO_SYSTEMD, RESTART_COMMAND, restartService, serviceOn, serviceState } from './service.ts';
+import { reloadHost } from './running-host.ts';
+import { NO_SYSTEMD, serviceOn, serviceState } from './service.ts';
 import { readSettings } from '@firstmate/core/settings';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
 import { shortcutAddress } from '@firstmate/core/shortcut';
@@ -30,15 +31,13 @@ import { shortcutAddress } from '@firstmate/core/shortcut';
 type Changes = {
   /** One line for each thing done, for the summary. */
   readonly done: string[];
-  /** Whether the Registry changed, which only a restart of the Host picks up. */
-  registry: boolean;
   /** Whether a step failed and was left for the next one to carry on after. */
   failed: boolean;
 };
 
 /** Run the conversation, and give back the exit code. */
 export async function setup(): Promise<number> {
-  const changes: Changes = { done: [], registry: false, failed: false };
+  const changes: Changes = { done: [], failed: false };
   const prompt = openPrompt(() => {
     process.stdout.write('\n');
     summarise(changes);
@@ -51,7 +50,7 @@ export async function setup(): Promise<number> {
     await askGrants(prompt, changes);
     await askShortcuts(prompt, changes);
     await askService(prompt, changes);
-    await askRestart(prompt, changes);
+    await reload(changes);
   } finally {
     prompt.close();
     summarise(changes);
@@ -117,7 +116,6 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
       const row = await installPlugin(readConfig(), plugin.name);
       console.log(`firstmate: installed ${row.name} at ${row.directory}`);
       changes.done.push(`installed ${row.name}`);
-      changes.registry = true;
     } catch (fault) {
       console.error(`firstmate: could not install ${plugin.name}: ${sentence(fault)}`);
       changes.failed = true;
@@ -159,7 +157,6 @@ async function askGrants(prompt: Prompt, changes: Changes): Promise<void> {
       givePermission(home, row.name, to);
       console.log(`firstmate: granted ${row.name} the right to call ${to}'s tools.`);
       changes.done.push(`${row.name} may call ${to}`);
-      changes.registry = true;
     }
   }
 }
@@ -168,7 +165,7 @@ async function askGrants(prompt: Prompt, changes: Changes): Promise<void> {
  * Shortcuts to bind, one after another, until Enter at the keys. The keys,
  * the Plugin and the path are each checked as `bind` checks them, and a
  * refusal asks for that one answer again. The Tray picks a Shortcut up with
- * no restart, so a Shortcut is no reason to restart the Host (ADR-0013).
+ * no restart (ADR-0013).
  */
 async function askShortcuts(prompt: Prompt, changes: Changes): Promise<void> {
   const { home } = readConfig();
@@ -247,9 +244,6 @@ async function askService(prompt: Prompt, changes: Changes): Promise<void> {
   try {
     serviceOn();
     changes.done.push('the Host runs as a systemd user service');
-    // A service that was not running starts now, and reads the Registry as
-    // it is, so there is nothing left to restart.
-    changes.registry = false;
   } catch (fault) {
     console.error(`firstmate: ${sentence(fault)}`);
     changes.failed = true;
@@ -257,21 +251,16 @@ async function askService(prompt: Prompt, changes: Changes): Promise<void> {
 }
 
 /**
- * Whether to restart the Host now. It is asked only when the service runs and
- * this run changed the Registry, because the Host reads the Registry only
- * when it starts; a Shortcut or a Shelf needs no restart.
+ * Ask the running Host to pick up what this run changed, as every plain
+ * command does. It asks nothing of the operator: a reload leaves every Plugin
+ * Server that was not added or removed alone. With no Host running there is
+ * nothing to ask, and a service started a moment ago read the files as they
+ * are.
  */
-async function askRestart(prompt: Prompt, changes: Changes): Promise<void> {
-  if (!changes.registry || serviceState() !== 'active') return;
-  if (!(await prompt.confirm('Restart the Host now, so that it picks the changes up?', true))) {
-    console.log(`firstmate: restart it when you are ready: ${RESTART_COMMAND}`);
-    changes.registry = false;
-    return;
-  }
+async function reload(changes: Changes): Promise<void> {
+  if (changes.done.length === 0) return;
   try {
-    restartService();
-    changes.done.push('restarted the Host');
-    changes.registry = false;
+    await reloadHost(readConfig().home);
   } catch (fault) {
     console.error(`firstmate: ${sentence(fault)}`);
     changes.failed = true;
@@ -283,8 +272,6 @@ function summarise(changes: Changes): void {
   if (changes.done.length === 0) return;
   console.log('firstmate: setup changed:');
   for (const change of changes.done.splice(0)) console.log(`  ${change}`);
-  if (changes.registry) console.log('firstmate: restart the Host to pick it up.');
-  changes.registry = false;
 }
 
 /** What went wrong, as the sentence it carries. */

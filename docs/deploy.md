@@ -63,8 +63,9 @@ systemctl --user start firstmate
 systemctl --user restart firstmate
 ```
 
-A Plugin is read at start, so restarting the Host is how a new Plugin or a
-changed one is picked up.
+A Plugin added or removed needs no restart: the command line asks the running
+Host to reload. A Plugin whose own files changed keeps the Plugin Server it
+runs until the Host restarts.
 
 ## Windows: the logon task
 

@@ -3,8 +3,10 @@
  * each one.
  *
  * At start, every Registry row whose directory holds an executable named `mcp`
- * is spawned and kept for the life of the Host. A Plugin Server that exits
- * leaves its Plugin Stopped and is never started again: a broken Plugin must
+ * is spawned and kept until the Plugin leaves the Registry or the Host stops.
+ * A reload starts the Plugins added and stops the ones removed, and leaves
+ * every other one alone. A Plugin Server that exits leaves its Plugin Stopped
+ * and is never started again on the Host's own account: a broken Plugin must
  * stay visible rather than spin in a restart loop behind the operator's back.
  * It does not go quietly all the same: the Host puts a Notice on the queue, so
  * that the operator learns of it without opening the Index Page (ADR-0014).
@@ -33,10 +35,19 @@ export type PluginState =
   /** The Plugin ships no Plugin Server at all. */
   | 'no-plugin-server';
 
-/** The Plugin Servers of one run, and the way to stop them all. */
+/** The Plugin Servers of one run, and the way to change them or stop them all. */
 export type Supervisor = {
+  /** Every Plugin the Host holds now, in the order the Registry gave them. */
+  plugins(): readonly PluginRow[];
   stateOf(name: string): PluginState;
   serverOf(name: string): PluginServer | null;
+  /**
+   * Hold this Registry from now on. A Plugin added is started, a Plugin
+   * removed is stopped, and every other Plugin Server is left alone, Stopped
+   * or not: a reload is never how a broken Plugin is started again. It
+   * resolves once each added Plugin Server has answered or failed.
+   */
+  hold(plugins: readonly PluginRow[]): Promise<void>;
   stopAll(): void;
 };
 
@@ -51,76 +62,128 @@ export type Waits = {
   readonly maxCallMs: number;
 };
 
+/** One start of one Plugin's Plugin Server, and what became of it. */
+type Run = {
+  /** The Registry row it was started from. */
+  readonly row: PluginRow;
+  /** The Plugin Server, once it has answered the handshake. */
+  server: PluginServer | null;
+  /** The Plugin ships no Plugin Server at all, which is no failure. */
+  shipsNone: boolean;
+  /**
+   * The Host stops this one on purpose, so its end is no news: there is no
+   * Notice for the Plugin the operator removed, or for any Plugin when the
+   * Host itself stops.
+   */
+  quiet: boolean;
+};
+
 /** Start every Plugin Server in the Registry, and resolve once each has answered or failed. */
 export async function superviseAll(
   plugins: readonly PluginRow[],
   waits: Waits,
   notices: Notices,
 ): Promise<Supervisor> {
-  const servers = new Map<string, PluginServer>();
-  const shipsNone = new Set<string>();
-  // A Plugin Server the Host stops on its way out is not news, so it sends no
-  // Notice: there is no Host left for a click to open.
-  let stopping = false;
-  const stopped = (name: string, why: string): void => {
-    if (!stopping) notices.fromHost(`${name} is Stopped`, why);
-  };
+  let held: readonly PluginRow[] = [];
+  const runs = new Map<string, Run>();
 
   const stateOf = (name: string): PluginState => {
-    if (shipsNone.has(name)) return 'no-plugin-server';
-    const server = servers.get(name);
-    return server?.alive() === true ? 'running' : 'stopped';
+    const run = runs.get(name);
+    if (run?.shipsNone === true) return 'no-plugin-server';
+    return run?.server?.alive() === true ? 'running' : 'stopped';
   };
   const serverOf = (name: string): PluginServer | null => {
-    const server = servers.get(name);
+    const server = runs.get(name)?.server ?? null;
     return server?.alive() === true ? server : null;
   };
 
   // The Tool Bus is opened over this same map, which is still empty. A call is
   // resolved when it arrives, so every Plugin Server can reach every other one
   // however they were ordered at start.
-  const bus = openToolBus(plugins, { stateOf, serverOf }, waits.maxCallMs);
+  const bus = openToolBus(held, { stateOf, serverOf }, waits.maxCallMs);
 
-  await Promise.all(
-    plugins.map(async (plugin) => {
-      const toolBus = bus.answering(plugin.name);
-      // A Notice is not a Tool Bus call, so it never passes the Grant check:
-      // every Plugin may send one, under the gap between two (ADR-0014).
-      const answering: Answering = (method, params) =>
-        method === SEND_NOTICE
-          ? Promise.resolve(notices.send(plugin.name, params))
-          : toolBus(method, params);
-      const server = await startOne(plugin, shipsNone, waits.handshakeMs, answering, stopped);
-      if (server !== null) servers.set(plugin.name, server);
-    }),
-  );
+  const start = (plugin: PluginRow): Promise<Run> => {
+    const toolBus = bus.answering(plugin.name);
+    // A Notice is not a Tool Bus call, so it never passes the Grant check:
+    // every Plugin may send one, under the gap between two (ADR-0014).
+    const answering: Answering = (method, params) =>
+      method === SEND_NOTICE
+        ? Promise.resolve(notices.send(plugin.name, params))
+        : toolBus(method, params);
+    return startOne(plugin, waits.handshakeMs, answering, notices);
+  };
+
+  const retire = (name: string): void => {
+    const run = runs.get(name);
+    if (run === undefined) return;
+    runs.delete(name);
+    run.quiet = true;
+    run.server?.stop();
+  };
+
+  // One change at a time. Two reloads that crossed would each start what the
+  // other had already started.
+  let turn: Promise<void> = Promise.resolve();
+  const inTurn = (job: () => Promise<void>): Promise<void> => {
+    const done = turn.then(job);
+    turn = done.catch(() => undefined);
+    return done;
+  };
+
+  const hold = (next: readonly PluginRow[]): Promise<void> =>
+    inTurn(async () => {
+      // A Plugin is the same Plugin while its name and its directory are. One
+      // moved to another directory is another Plugin under an old name.
+      const same = (row: PluginRow): boolean => runs.get(row.name)?.row.directory === row.directory;
+      const staying = next.filter(same);
+      const leaving = held.filter((row) => !staying.some((kept) => kept.name === row.name));
+
+      // The Host stops serving a Plugin before it stops the Plugin Server, so
+      // that nothing new reaches a Plugin Server on its way out.
+      held = held.filter((row) => !leaving.includes(row));
+      bus.hold(held);
+      for (const row of leaving) retire(row.name);
+
+      const started = await Promise.all(next.filter((row) => !same(row)).map(start));
+      for (const run of started) runs.set(run.row.name, run);
+      held = next;
+      bus.hold(held);
+    });
+
+  await hold(plugins);
 
   return {
+    plugins: () => held,
     stateOf,
     serverOf,
+    hold,
     stopAll() {
-      stopping = true;
-      for (const server of servers.values()) server.stop();
+      for (const run of runs.values()) {
+        run.quiet = true;
+        run.server?.stop();
+      }
     },
   };
 }
 
 async function startOne(
   plugin: PluginRow,
-  shipsNone: Set<string>,
   handshakeMs: number,
   answering: Answering,
-  stopped: (name: string, why: string) => void,
-): Promise<PluginServer | null> {
+  notices: Notices,
+): Promise<Run> {
+  const run: Run = { row: plugin, server: null, shipsNone: false, quiet: false };
   const path = join(plugin.directory, SERVER_FILE);
-  const say = onceOnly(plugin.name, stopped);
+  const say = onceOnly(plugin.name, (why) => {
+    if (!run.quiet) notices.fromHost(`${plugin.name} is Stopped`, why);
+  });
 
   const found = await stat(path).catch(() => null);
   if (found === null || !found.isFile()) {
     // No `mcp` file: this Plugin ships no Plugin Server, which is allowed and
     // is not a failure.
-    shipsNone.add(plugin.name);
-    return null;
+    run.shipsNone = true;
+    return run;
   }
   const runnable = await access(path, constants.X_OK).then(
     () => true,
@@ -128,7 +191,7 @@ async function startOne(
   );
   if (!runnable) {
     say(`${path} is not executable`);
-    return null;
+    return run;
   }
 
   const child = spawn(path, [], {
@@ -159,10 +222,11 @@ async function startOne(
     }
     // A Plugin Server that never finished the handshake is one the Host
     // cannot forward a call to, so the Plugin is Stopped from the start.
-    return null;
+    return run;
   }
   console.log(`FirstMate: the Plugin Server of ${plugin.name} is running.`);
-  return server;
+  run.server = server;
+  return run;
 }
 
 /**
@@ -198,16 +262,13 @@ async function handshake(server: PluginServer, handshakeMs: number): Promise<voi
  * however many ways the Host learns of it. It is news, not a failure of the
  * Host: every other Plugin keeps serving.
  */
-function onceOnly(
-  name: string,
-  stopped: (name: string, why: string) => void,
-): (why: string) => void {
+function onceOnly(name: string, stopped: (why: string) => void): (why: string) => void {
   let said = false;
   return (why) => {
     if (said) return;
     said = true;
     console.error(`FirstMate: the Plugin named ${name} is Stopped: ${why}.`);
     // A reason may already end with a full stop, and a body needs just one.
-    stopped(name, `${why.replace(/\.$/, '')}.`);
+    stopped(`${why.replace(/\.$/, '')}.`);
   };
 }

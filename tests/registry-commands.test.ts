@@ -19,7 +19,11 @@ test('a Plugin is added by name and directory, and the Host then serves it', asy
   const added = await firstmate(home, ['add', 'both', fixture('both')]);
   assert.equal(added.code, 0, added.stderr);
   assert.match(added.stdout, /added both/);
-  assert.match(added.stdout, /restart the Host/);
+  assert.equal(
+    added.stdout,
+    `firstmate: added both at ${fixture('both')}\n`,
+    'no Host, nothing more',
+  );
 
   const written = await registry(home);
   assert.deepEqual(written.plugins, [{ name: 'both', directory: fixture('both'), grants: [] }]);
@@ -48,7 +52,7 @@ test('a Plugin is removed by name, and its directory is left alone', async (t) =
 
   const removed = await firstmate(home, ['remove', 'both']);
   assert.equal(removed.code, 0, removed.stderr);
-  assert.match(removed.stdout, /The directory is untouched/);
+  assert.equal(removed.stdout, 'firstmate: removed both. Its directory is untouched.\n');
 
   const written = await registry(home);
   assert.deepEqual(
@@ -128,7 +132,7 @@ test('a Grant is recorded for one pair, in one direction', async (t) => {
 
   const granted = await firstmate(home, ['grant', 'both', 'page-only']);
   assert.equal(granted.code, 0, granted.stderr);
-  assert.match(granted.stdout, /restart the Host/);
+  assert.doesNotMatch(granted.stdout, /restart/);
 
   const written = await registry(home);
   assert.deepEqual(written.plugins[0]?.grants, ['page-only'], 'both may call page-only');
@@ -159,7 +163,7 @@ test('a Grant is taken back, and the Registry says so', async (t) => {
 
   const revoked = await firstmate(home, ['revoke', 'both', 'page-only']);
   assert.equal(revoked.code, 0, revoked.stderr);
-  assert.match(revoked.stdout, /restart the Host/);
+  assert.doesNotMatch(revoked.stdout, /restart/);
 
   const written = await registry(home);
   assert.deepEqual(written.plugins[0]?.grants, []);

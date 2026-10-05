@@ -27,7 +27,7 @@ test('a git URL is cloned into the Shelf, registered, and then served', async (t
   // The name is the last segment of the URL, without its git suffix.
   const landed = join(home, 'shelf', 'both');
   assert.ok(installed.stdout.includes(`installed both at ${landed}`), installed.stdout);
-  assert.match(installed.stdout, /restart the Host/);
+  assert.doesNotMatch(installed.stdout, /restart/);
 
   assert.ok((await stat(join(landed, 'mcp'))).mode & 0o111, 'mcp is still executable');
   await readFile(join(landed, 'web', 'index.html'));

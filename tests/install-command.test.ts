@@ -41,7 +41,7 @@ test('a directory is copied into the Shelf, registered, and then served', async 
   assert.equal(installed.code, 0, installed.stderr);
   const landed = join(shelf, 'both');
   assert.ok(installed.stdout.includes(`installed both at ${landed}`), installed.stdout);
-  assert.match(installed.stdout, /restart the Host/);
+  assert.doesNotMatch(installed.stdout, /restart/);
 
   // The files landed, with the bit the Host needs to run the Plugin Server.
   assert.ok((await stat(join(landed, 'mcp'))).mode & 0o111, 'mcp is still executable');

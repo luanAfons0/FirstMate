@@ -47,19 +47,24 @@ export type Reach = {
   serverOf(name: string): PluginServer | null;
 };
 
-/** The Tool Bus, open over one Registry. */
+/** The Tool Bus, open over one Registry at a time. */
 export type ToolBus = {
   /** What the Host answers the Plugin Server of this one Plugin. */
   answering(from: string): Answering;
+  /**
+   * Carry calls under this Registry's Grants from now on. A call already on
+   * its way was checked when it arrived, and finishes under the Grant it had.
+   */
+  hold(plugins: readonly PluginRow[]): void;
 };
 
 /**
  * Open the Tool Bus over a Registry and the Plugin Servers behind it.
  *
- * The Grants are read once, because the Registry is read once: a Grant that
- * changes is a Grant the operator restarts the Host for, which is what the
- * `grant` and `revoke` commands say. A target is resolved when the call
- * arrives and never here, so a Plugin that is Stopped later says Stopped.
+ * The Grants are the Registry's as the Host last read it, and a reload hands
+ * the Tool Bus the new ones: `grant` and `revoke` take effect with no restart
+ * of any Plugin Server. A target is resolved when the call arrives and never
+ * here, so a Plugin that is Stopped later says Stopped.
  *
  * The ceiling is read once for the same reason: it comes from the environment
  * the Host was started in, and `FIRSTMATE_MAX_CALL_MS` moves it.
@@ -69,14 +74,23 @@ export function openToolBus(
   reach: Reach,
   maxCallMs: number,
 ): ToolBus {
-  const registered = new Set(plugins.map((plugin) => plugin.name));
-  const grants = new Map(plugins.map((plugin) => [plugin.name, new Set(plugin.grants)]));
-  // The chains of Plugin Names the Host is carrying into each Plugin now.
+  // The chains of Plugin Names the Host is carrying into each Plugin now. They
+  // outlive a reload, because the calls they count do.
   const carrying = new Map<string, string[][]>();
+  const over = (rows: readonly PluginRow[]): Bus => ({
+    registered: new Set(rows.map((plugin) => plugin.name)),
+    grants: new Map(rows.map((plugin) => [plugin.name, new Set(plugin.grants)])),
+    carrying,
+    reach,
+    maxCallMs,
+  });
+  let bus = over(plugins);
 
   return {
-    answering: (from) => (method, params) =>
-      carry({ registered, grants, carrying, reach, maxCallMs }, from, method, params),
+    answering: (from) => (method, params) => carry(bus, from, method, params),
+    hold(rows) {
+      bus = over(rows);
+    },
   };
 }
 

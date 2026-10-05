@@ -48,7 +48,7 @@ import {
 } from '@firstmate/core/registry';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
 import { STATE_WORDS } from '@firstmate/host/index-page';
-import { readHostStatus } from './running-host.ts';
+import { readHostStatus, reloadHost } from './running-host.ts';
 import { setup } from './setup.ts';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
@@ -239,9 +239,11 @@ The Host picks up a new order with no restart.`,
 status reads the running Host, and ends with exit code 6 when none answers.`,
   },
   {
-    about: ['add', 'remove', 'grant', 'revoke', 'install'],
-    text: `The Registry is read when the Host starts, so restart the Host to pick up a
-change: systemctl --user restart firstmate`,
+    about: ['add', 'remove', 'grant', 'revoke', 'shelf', 'install', 'bind', 'unbind', 'order'],
+    text: `A command that changes the Registry or the settings asks the running Host to
+reload: it starts the Plugins added, stops the ones removed, takes the new
+Grants, and leaves every other Plugin alone, Stopped or not. With no Host
+running, the command writes the files and says nothing more.`,
   },
 ];
 
@@ -394,7 +396,7 @@ async function desktop(argv: readonly string[]): Promise<number> {
   return openWindow({ distribution, home });
 }
 
-function add(home: string, argv: readonly string[]): number {
+async function add(home: string, argv: readonly string[]): Promise<number> {
   const [name, directory] = argv;
   if (name === undefined || directory === undefined || argv.length > 2) {
     return typedWrong('add', 'add takes a Plugin Name and a directory.');
@@ -422,11 +424,11 @@ function add(home: string, argv: readonly string[]): number {
 
   writeRegistry(home, [...rows, { name, directory, grants: [] }]);
   console.log(`firstmate: added ${name} at ${directory}`);
-  console.log('firstmate: restart the Host to pick it up.');
+  await reloadHost(home);
   return 0;
 }
 
-function remove(home: string, argv: readonly string[]): number {
+async function remove(home: string, argv: readonly string[]): Promise<number> {
   const [name] = argv;
   if (name === undefined || argv.length > 1) {
     return typedWrong('remove', 'remove takes one Plugin Name.');
@@ -462,15 +464,15 @@ function remove(home: string, argv: readonly string[]): number {
 
   writeRegistry(home, left);
   // The directory itself is untouched. The Host stops serving and running it.
-  console.log(`firstmate: removed ${name}`);
+  console.log(`firstmate: removed ${name}. Its directory is untouched.`);
   for (const shortcut of dropped) {
     console.log(`firstmate: unbound ${shortcut.keys}, which opened ${shortcutAddress(shortcut)}`);
   }
-  console.log('firstmate: restart the Host to pick it up. The directory is untouched.');
+  await reloadHost(home);
   return 0;
 }
 
-function grant(home: string, argv: readonly string[]): number {
+async function grant(home: string, argv: readonly string[]): Promise<number> {
   const [from, to] = argv;
   if (from === undefined || to === undefined || argv.length > 2) {
     return typedWrong('grant', 'grant takes two Plugin Names: <from> <to>.');
@@ -481,11 +483,11 @@ function grant(home: string, argv: readonly string[]): number {
     return 0;
   }
   console.log(`firstmate: granted ${from} the right to call ${to}'s tools.`);
-  console.log('firstmate: restart the Host to pick it up.');
+  await reloadHost(home);
   return 0;
 }
 
-function revoke(home: string, argv: readonly string[]): number {
+async function revoke(home: string, argv: readonly string[]): Promise<number> {
   const [from, to] = argv;
   if (from === undefined || to === undefined || argv.length > 2) {
     return typedWrong('revoke', 'revoke takes two Plugin Names: <from> <to>.');
@@ -496,7 +498,7 @@ function revoke(home: string, argv: readonly string[]): number {
     return 0;
   }
   console.log(`firstmate: took back ${from}'s right to call ${to}'s tools.`);
-  console.log('firstmate: restart the Host to pick it up.');
+  await reloadHost(home);
   return 0;
 }
 
@@ -509,7 +511,7 @@ function revoke(home: string, argv: readonly string[]): number {
  * could therefore send a request the Host cannot tell from the Index Page's
  * own (ADR-0012).
  */
-function shelf(config: Config, argv: readonly string[], json: boolean): number {
+async function shelf(config: Config, argv: readonly string[], json: boolean): Promise<number> {
   const [directory] = argv;
   if (argv.length > 1) {
     return typedWrong('shelf', 'shelf takes one directory, or nothing.');
@@ -528,7 +530,7 @@ function shelf(config: Config, argv: readonly string[], json: boolean): number {
       `firstmate: ${SHELF_VARIABLE} is set to ${moved.forced}, and wins until it is unset.`,
     );
   }
-  console.log('firstmate: restart the Host to pick it up.');
+  await reloadHost(config.home);
   return 0;
 }
 
@@ -547,12 +549,12 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
 
   const row = await installPlugin(config, source, given);
   console.log(`firstmate: installed ${row.name} at ${row.directory}`);
-  console.log('firstmate: restart the Host to pick it up.');
+  await reloadHost(config.home);
   return 0;
 }
 
 /** Bind keys to one address of one Plugin, for the Tray to hold in all of Windows. */
-function bind(home: string, argv: readonly string[]): number {
+async function bind(home: string, argv: readonly string[]): Promise<number> {
   const [typed, plugin, path = ''] = argv;
   if (typed === undefined || plugin === undefined || argv.length > 3) {
     return typedWrong('bind', 'bind takes keys, a Plugin Name, and a path or nothing.');
@@ -560,11 +562,12 @@ function bind(home: string, argv: readonly string[]): number {
 
   const shortcut = bindShortcut(home, typed, plugin, path);
   console.log(`firstmate: bound ${shortcut.keys} to open ${shortcutAddress(shortcut)}`);
+  await reloadHost(home);
   return 0;
 }
 
 /** Free a Shortcut's keys. A key that is not bound is a typing error, and says so. */
-function unbind(home: string, argv: readonly string[]): number {
+async function unbind(home: string, argv: readonly string[]): Promise<number> {
   const [typed] = argv;
   if (typed === undefined || argv.length > 1) {
     return typedWrong('unbind', 'unbind takes the keys of one Shortcut.');
@@ -587,6 +590,7 @@ function unbind(home: string, argv: readonly string[]): number {
     ),
   );
   console.log(`firstmate: unbound ${keys}, which opened ${shortcutAddress(held)}`);
+  await reloadHost(home);
   return 0;
 }
 
@@ -594,7 +598,7 @@ function unbind(home: string, argv: readonly string[]): number {
  * Say the Plugin Order, or move one Plugin in it. The Host reads the order on
  * every request, so a move needs no restart (ADR-0016).
  */
-function order(home: string, argv: readonly string[], json: boolean): number {
+async function order(home: string, argv: readonly string[], json: boolean): Promise<number> {
   if (argv.length === 0) {
     const names = pluginOrder(home);
     if (json) printJson({ order: names });
@@ -608,6 +612,7 @@ function order(home: string, argv: readonly string[], json: boolean): number {
   if (json) return typedWrong('order', 'order prints JSON only when it moves nothing.');
   const moved = movePlugin(home, name, position);
   console.log(`firstmate: moved ${name} to position ${moved.indexOf(name) + 1}`);
+  await reloadHost(home);
   return 0;
 }
 

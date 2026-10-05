@@ -42,6 +42,17 @@ export async function readHostStatus(home: string): Promise<HostStatus | undefin
 }
 
 /**
+ * Ask the running Host to read the Registry and the settings again, after a
+ * command changed them. With no Host running there is nothing to ask: the
+ * files are written, and the next Host reads them when it starts.
+ */
+export async function reloadHost(home: string): Promise<void> {
+  const answer = await askHost(home, 'POST', '/reload');
+  if (answer === undefined || answer.status === 200) return;
+  throw new Error(`The Host did not pick the change up. ${notAnswered(answer).message}`);
+}
+
+/**
  * One request to the running Host, or nothing when no Host runs. The token
  * goes in the address, as the Tray sends it, and no Origin goes with it:
  * the command line is not a browser, and does not act like one.
