@@ -20,19 +20,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The version comes from packageManager in package.json, so CI runs the
+      # pnpm a clone runs.
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm run typecheck
+      - run: pnpm typecheck
 
-      - run: npm run lint
+      - run: pnpm lint
 
-      - run: npm run format:check
+      - run: pnpm format:check
 
-      - run: npm run knip
+      - run: pnpm knip
 
-      - run: npm test
+      - run: pnpm test
