@@ -11,6 +11,7 @@ import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
 import type { Config } from './config.ts';
 import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
+import { refuse } from './refusal.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
 import { inPluginOrder, readSettings, writeSettings, type Settings } from './settings.ts';
@@ -59,12 +60,13 @@ export async function installPlugin(
   const name = given ?? official?.name ?? nameOf(source);
   if (!isPluginName(name)) {
     if (given === undefined) {
-      throw new Error(
+      throw refuse(
+        'invalid',
         `${source} does not name a Plugin. Give the name yourself: ` +
           `firstmate install ${source} <name>`,
       );
     }
-    throw new Error(notAPluginName(name));
+    throw refuse('invalid', notAPluginName(name));
   }
   const from = official?.url ?? checkSource(source);
 
@@ -72,7 +74,7 @@ export async function installPlugin(
   // Plugin that is running is never replaced under it.
   const taken = readRegistry(config.home).find((row) => row.name === name);
   if (taken !== undefined) {
-    throw new Error(`${name} is already registered, at ${taken.directory}.`);
+    throw refuse('taken', `${name} is already registered, at ${taken.directory}.`);
   }
 
   // The default Shelf is inside the Host's home directory, which the Host
@@ -93,7 +95,8 @@ export async function installPlugin(
   const now = readRegistry(config.home);
   const late = now.find((row) => row.name === name);
   if (late !== undefined) {
-    throw new Error(
+    throw refuse(
+      'taken',
       `${name} was registered at ${late.directory} while it was fetched. ` +
         `The files are at ${directory}; take them away, or add them under another name.`,
     );
@@ -113,17 +116,18 @@ function checkSource(source: string): string {
   if (isAbsolute(source)) {
     const found = statSync(source, { throwIfNoEntry: false });
     if (found === undefined || !found.isDirectory()) {
-      throw new Error(`${source} is not a directory.`);
+      throw refuse('invalid', `${source} is not a directory.`);
     }
     return source;
   }
   if (!/[/\\]/.test(source)) {
-    throw new Error(
+    throw refuse(
+      'invalid',
       `${source} is not a directory, not a URL and not an Official Plugin. ` +
         `The Official Plugins are ${OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ')}.`,
     );
   }
-  throw new Error(`${source} is not an absolute path, and is no URL either.`);
+  throw refuse('invalid', `${source} is not an absolute path, and is no URL either.`);
 }
 
 /**
@@ -178,12 +182,12 @@ function findPair(
   to: string,
 ): { readonly fromRow: PluginRow; readonly fromIndex: number } {
   for (const name of [from, to]) {
-    if (!isPluginName(name)) throw new Error(notAPluginName(name));
+    if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
   }
   const fromRow = rows.find((row) => row.name === from);
-  if (fromRow === undefined) throw new Error(`no Plugin named ${from} is registered.`);
+  if (fromRow === undefined) throw refuse('missing', `no Plugin named ${from} is registered.`);
   if (!rows.some((row) => row.name === to)) {
-    throw new Error(`no Plugin named ${to} is registered.`);
+    throw refuse('missing', `no Plugin named ${to} is registered.`);
   }
   return { fromRow, fromIndex: rows.indexOf(fromRow) };
 }
@@ -191,7 +195,7 @@ function findPair(
 /** The keys in normal form, or the sentence that says what is wrong with them. */
 export function checkKeys(typed: string): string {
   const read = readKeys(typed);
-  if (read.kind === 'wrong') throw new Error(read.reason);
+  if (read.kind === 'wrong') throw refuse('invalid', read.reason);
   return read.chord.keys;
 }
 
@@ -199,7 +203,8 @@ export function checkKeys(typed: string): string {
 export function checkKeysFree(home: string, keys: string): void {
   const held = (readSettings(home).shortcuts ?? []).find((shortcut) => shortcut.keys === keys);
   if (held !== undefined) {
-    throw new Error(
+    throw refuse(
+      'taken',
       `${keys} is already bound to ${held.plugin}, to open ` +
         `${shortcutAddress(held)}. Unbind it first: firstmate unbind ${keys}`,
     );
@@ -209,7 +214,8 @@ export function checkKeysFree(home: string, keys: string): void {
 /** Refuse a path that leaves its Plugin's address. */
 export function checkShortcutPath(path: string, plugin: string): void {
   if (!isPluginPath(path, plugin)) {
-    throw new Error(
+    throw refuse(
+      'invalid',
       `${path} is not a path inside ${plugin}'s address. Give it relative, ` +
         'with no leading slash and no "..".',
     );
@@ -228,7 +234,7 @@ export function checkShortcutPath(path: string, plugin: string): void {
 export function bindShortcut(home: string, typed: string, plugin: string, path: string): Shortcut {
   const keys = checkKeys(typed);
   if (!readRegistry(home).some((row) => row.name === plugin)) {
-    throw new Error(`no Plugin named ${plugin} is registered.`);
+    throw refuse('missing', `no Plugin named ${plugin} is registered.`);
   }
   checkShortcutPath(path, plugin);
   checkKeysFree(home, keys);
@@ -265,12 +271,15 @@ export function pluginOrder(home: string): string[] {
  * moved a Plugin would let any Plugin reorder the operator's (ADR-0016).
  */
 export function movePlugin(home: string, name: string, typed: string): string[] {
-  if (!isPluginName(name)) throw new Error(notAPluginName(name));
+  if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
   const order = pluginOrder(home);
-  if (!order.includes(name)) throw new Error(`no Plugin named ${name} is registered.`);
+  if (!order.includes(name)) throw refuse('missing', `no Plugin named ${name} is registered.`);
   const position = Number(typed);
   if (!/^\d+$/.test(typed) || position < 1 || position > order.length) {
-    throw new Error(`${typed} is not a position. Give a whole number from 1 to ${order.length}.`);
+    throw refuse(
+      'invalid',
+      `${typed} is not a position. Give a whole number from 1 to ${order.length}.`,
+    );
   }
   const others = order.filter((other) => other !== name);
   const moved = [...others.slice(0, position - 1), name, ...others.slice(position - 1)];

@@ -67,16 +67,16 @@ test('the refusals of the directory case hold for a URL too', async (t) => {
 
   // A name already in the Registry, and a directory already in the Shelf.
   const again = await firstmate(home, ['install', url]);
-  assert.equal(again.code, 1);
+  assert.equal(again.code, 5);
   assert.match(again.stderr, /already registered/);
 
   await firstmate(home, ['remove', 'page-only']);
   const overTheFiles = await firstmate(home, ['install', url]);
-  assert.equal(overTheFiles.code, 1);
+  assert.equal(overTheFiles.code, 5);
   assert.match(overTheFiles.stderr, /already exists/);
 
   // And a name that is not a Plugin Name, in the words add uses.
   const badName = await firstmate(home, ['install', url, 'Page Only']);
-  assert.equal(badName.code, 1);
+  assert.equal(badName.code, 3);
   assert.match(badName.stderr, /is not a Plugin Name\. Use lower-case letters/);
 });

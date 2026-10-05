@@ -69,7 +69,7 @@ test('a name already in the Registry is refused before anything is fetched', asy
 
   const refused = await firstmate(home, ['install', 'nexus'], env);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 5);
   assert.ok(
     refused.stderr.includes(`nexus is already registered, at ${elsewhere}.`),
     refused.stderr,
@@ -82,7 +82,7 @@ test('a bare name that is no Official Plugin says which names are', async (t) =>
 
   const refused = await firstmate(home, ['install', 'no-such-plugin']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(
     refused.stderr,
     /no-such-plugin is not a directory, not a URL and not an Official Plugin\. The Official Plugins are worklog, scheduler, nexus\./,
@@ -95,7 +95,7 @@ test('a relative path is still refused as it was', async (t) => {
 
   const refused = await firstmate(home, ['install', './relative']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /\.\/relative is not an absolute path, and is no URL either\./);
 });
 

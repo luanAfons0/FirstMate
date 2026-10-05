@@ -27,6 +27,7 @@ import { spawn } from 'node:child_process';
 import { lstatSync } from 'node:fs';
 import { cp, realpath, rename, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
+import { refuse } from './refusal.ts';
 
 /** A source git can clone: a URL with a scheme, or the scp-like short form. */
 const GIT_URL = /^(?:https?|ssh|git|ftps?|file|git\+ssh|git\+https):\/\//;
@@ -46,7 +47,10 @@ export async function fetchPlugin(source: string, shelf: string, name: string): 
   const target = join(shelf, name);
   // lstat, not exists: a symlink there that points nowhere is still in the way.
   if (lstatSync(target, { throwIfNoEntry: false }) !== undefined) {
-    throw new Error(`${target} already exists. Take it away, or give the Plugin another name.`);
+    throw refuse(
+      'taken',
+      `${target} already exists. Take it away, or give the Plugin another name.`,
+    );
   }
 
   const staging = join(shelf, `.${name}.pending`);
@@ -70,7 +74,10 @@ async function copyDirectory(source: string, staging: string, shelf: string): Pr
   const real = await realpath(source);
   // Copying a directory into something it holds never ends.
   if (isInside(shelf, real)) {
-    throw new Error(`The Shelf is inside ${source}, so a Plugin cannot be copied from there.`);
+    throw refuse(
+      'invalid',
+      `The Shelf is inside ${source}, so a Plugin cannot be copied from there.`,
+    );
   }
   // Symlinks inside the Plugin are copied as the Plugin wrote them, and
   // nothing is followed out of the Plugin's own directory.

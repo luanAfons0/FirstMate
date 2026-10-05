@@ -37,6 +37,7 @@ import {
   withShortcuts,
 } from '@firstmate/core/commands';
 import { readConfig, type Config } from '@firstmate/core/config';
+import { refusalOf, type Refusal } from '@firstmate/core/refusal';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import {
   isPluginName,
@@ -162,47 +163,116 @@ function usageLine(command: Command): string {
   return `${typed}\n${' '.repeat(DOES_COLUMN)}${command.does}`;
 }
 
+/** A paragraph of help, and the commands whose own help shows it too. */
+type Note = {
+  /** The commands this paragraph explains. */
+  readonly about: readonly string[];
+  readonly text: string;
+};
+
 /** What the usage says after the commands, about the words they take. */
-const NOTES = `The Shelf is the directory a fetched Plugin lands in. A source is a directory,
+const NOTES: readonly Note[] = [
+  {
+    about: ['shelf', 'install'],
+    text: `The Shelf is the directory a fetched Plugin lands in. A source is a directory,
 which is copied, a git URL, which is cloned, or the name of an Official Plugin,
 which is cloned from where FirstMate knows it is: ${OFFICIAL_NAMES}. install
 registers what it put there, under the last segment of the source or under the
 name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
-moves it for good, and that directory has to be there already.
-
-setup asks for the Shelf, the Official Plugins to install, the Grants for those
+moves it for good, and that directory has to be there already.`,
+  },
+  {
+    about: ['setup'],
+    text: `setup asks for the Shelf, the Official Plugins to install, the Grants for those
 that call others, Shortcuts, and whether to run the Host as a service. Each
 answer is written as it is given, by the same code the plain commands use. It
-never removes anything. Answers can be piped in, one per line.
-
-The window works out which distribution holds the Host and where the Host keeps
+never removes anything. Answers can be piped in, one per line.`,
+  },
+  {
+    about: ['desktop'],
+    text: `The window works out which distribution holds the Host and where the Host keeps
 its home directory. Say them yourself with --distribution <name> and
---home <path> when it cannot.
-
-A Plugin Name is lower-case letters, digits and hyphens, because it names the
+--home <path> when it cannot.`,
+  },
+  {
+    about: ['add', 'grant', 'revoke', 'install'],
+    text: `A Plugin Name is lower-case letters, digits and hyphens, because it names the
 Plugin in every address. A directory is an absolute path. A Grant is one way:
-granting <from> the right to call <to> does not let <to> call <from>.
-
-A Shortcut is one or more of Ctrl, Alt, Shift and Win and one key, joined by
+granting <from> the right to call <to> does not let <to> call <from>.`,
+  },
+  {
+    about: ['bind', 'unbind'],
+    text: `A Shortcut is one or more of Ctrl, Alt, Shift and Win and one key, joined by
 +, as in Ctrl+Alt+N. The path is relative to the Plugin's address; leave it out
-to open the Plugin Page. The Tray picks up a Shortcut with no restart.
-
-The Plugin Order is the order every list of Plugins shows them in. A position
+to open the Plugin Page. The Tray picks up a Shortcut with no restart.`,
+  },
+  {
+    about: ['order'],
+    text: `The Plugin Order is the order every list of Plugins shows them in. A position
 counts from 1 at the top, and the other Plugins keep their order. A Plugin
 that was never moved follows the ones that were, in the order it was added.
-The Host picks up a new order with no restart.
+The Host picks up a new order with no restart.`,
+  },
+  {
+    about: ['add', 'remove', 'grant', 'revoke', 'install'],
+    text: `The Registry is read when the Host starts, so restart the Host to pick up a
+change: systemctl --user restart firstmate`,
+  },
+];
 
-The Registry is read when the Host starts, so restart the Host to pick up a
-change: systemctl --user restart firstmate`;
+/** Every way a command can end. A refusal says which kind of refusal it is. */
+type Ending = 'done' | 'failed' | 'typed-wrong' | Refusal;
+
+/**
+ * The exit code of each way a command can end, and what it means, so that a
+ * script can tell one refusal from another without reading the sentence.
+ * The codes never change meaning: 0 and 2 meant this before there was a table.
+ */
+const EXIT_CODES: Readonly<Record<Ending, { readonly code: number; readonly means: string }>> = {
+  done: { code: 0, means: 'it did what it was asked.' },
+  failed: { code: 1, means: 'it failed: a damaged file, a fetch that went wrong, or a fault.' },
+  'typed-wrong': { code: 2, means: 'it was typed wrong: no such command, or the wrong words.' },
+  invalid: { code: 3, means: 'it refused a value that is not what it must be.' },
+  missing: { code: 4, means: 'it refused a Plugin or a Shortcut that is not there.' },
+  taken: { code: 5, means: 'it refused a name, keys or a directory that is taken already.' },
+};
+
+/** The exit code a command ends with. */
+function exit(ending: Ending): number {
+  return EXIT_CODES[ending].code;
+}
+
+const EXIT_HELP = `A command ends with one of these exit codes:
+${Object.values(EXIT_CODES)
+  .map(({ code, means }) => `  ${code}  ${means}`)
+  .join('\n')}`;
 
 const USAGE = `usage:
 ${COMMANDS.map(usageLine).join('\n')}
 
-${NOTES}`;
+${NOTES.map((note) => note.text).join('\n\n')}
 
-/** What the operator did wrong, as against what went wrong. */
-const USAGE_FAULT = 2;
+${EXIT_HELP}`;
+
+/** One command's own help: its usage line, and every note about it. */
+function helpOf(command: Command): string {
+  const notes = NOTES.filter((note) => note.about.includes(command.name));
+  return [`usage:\n${usageLine(command)}`, ...notes.map((note) => note.text)].join('\n\n');
+}
+
+/**
+ * Say how a command was typed wrong, then how it is typed, and give back the
+ * exit code for that.
+ */
+function typedWrong(name: string, sentence: string): number {
+  const command = COMMANDS.find((row) => row.name === name);
+  console.error(`firstmate: ${sentence}\n\n${command === undefined ? USAGE : helpOf(command)}`);
+  return exit('typed-wrong');
+}
+
+/** The words that ask for a command's help, wherever they are typed after it. */
+const HELP_WORDS: ReadonlySet<string> = new Set(['-h', '--help']);
 
 /**
  * The Host's home directory, read only by the commands that use it. The Host
@@ -214,14 +284,15 @@ const home = (): string => readConfig().home;
 
 async function main(argv: readonly string[]): Promise<number | undefined> {
   const [name, ...rest] = argv;
-  if (name === undefined || name === '-h' || name === '--help') {
+  if (name === undefined || HELP_WORDS.has(name)) {
     console.log(USAGE);
-    return name === undefined ? USAGE_FAULT : 0;
+    return exit(name === undefined ? 'typed-wrong' : 'done');
   }
   const command = COMMANDS.find((row) => row.name === name);
-  if (command === undefined) {
-    console.error(`firstmate: no such command: ${name}\n\n${USAGE}`);
-    return USAGE_FAULT;
+  if (command === undefined) return typedWrong(name, `no such command: ${name}`);
+  if (rest.some((word) => HELP_WORDS.has(word))) {
+    console.log(helpOf(command));
+    return exit('done');
   }
   return command.run(rest);
 }
@@ -237,8 +308,7 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
  */
 async function start(argv: readonly string[]): Promise<number | undefined> {
   if (argv.length > 0) {
-    console.error(`firstmate: start takes nothing.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('start', 'start takes nothing.');
   }
 
   await import('./main.ts');
@@ -251,8 +321,7 @@ async function start(argv: readonly string[]): Promise<number | undefined> {
 /** Hold the conversation that sets FirstMate up. It takes no words: it asks. */
 function setUp(argv: readonly string[]): Promise<number> | number {
   if (argv.length > 0) {
-    console.error(`firstmate: setup takes nothing. It asks.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('setup', 'setup takes nothing. It asks.');
   }
   return setup();
 }
@@ -273,11 +342,11 @@ async function desktop(argv: readonly string[]): Promise<number> {
     const flag = argv[at];
     const value = argv[at + 1];
     if (value === undefined || (flag !== '--distribution' && flag !== '--home')) {
-      console.error(
-        'firstmate: desktop takes --distribution <name> and --home <path>, and ' +
-          `works both out when you leave them out.\n\n${USAGE}`,
+      return typedWrong(
+        'desktop',
+        'desktop takes --distribution <name> and --home <path>, and ' +
+          `works both out when you leave them out.`,
       );
-      return USAGE_FAULT;
     }
     if (flag === '--distribution') distribution = value;
     else home = value;
@@ -290,28 +359,27 @@ async function desktop(argv: readonly string[]): Promise<number> {
 function add(home: string, argv: readonly string[]): number {
   const [name, directory] = argv;
   if (name === undefined || directory === undefined || argv.length > 2) {
-    console.error(`firstmate: add takes a Plugin Name and a directory.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('add', 'add takes a Plugin Name and a directory.');
   }
   if (!isPluginName(name)) {
     console.error(`firstmate: ${notAPluginName(name)}`);
-    return 1;
+    return exit('invalid');
   }
   if (!isAbsolute(directory)) {
     console.error(`firstmate: ${directory} is not an absolute path.`);
-    return 1;
+    return exit('invalid');
   }
   const found = statSync(directory, { throwIfNoEntry: false });
   if (found === undefined || !found.isDirectory()) {
     console.error(`firstmate: ${directory} is not a directory.`);
-    return 1;
+    return exit('invalid');
   }
 
   const rows = readRegistry(home);
   const taken = rows.find((row) => row.name === name);
   if (taken !== undefined) {
     console.error(`firstmate: ${name} is already registered, at ${taken.directory}.`);
-    return 1;
+    return exit('taken');
   }
 
   writeRegistry(home, [...rows, { name, directory, grants: [] }]);
@@ -323,15 +391,14 @@ function add(home: string, argv: readonly string[]): number {
 function remove(home: string, argv: readonly string[]): number {
   const [name] = argv;
   if (name === undefined || argv.length > 1) {
-    console.error(`firstmate: remove takes one Plugin Name.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('remove', 'remove takes one Plugin Name.');
   }
 
   const rows = readRegistry(home);
   const left = rows.filter((row) => row.name !== name);
   if (left.length === rows.length) {
     console.error(`firstmate: no Plugin named ${name} is registered.`);
-    return 1;
+    return exit('missing');
   }
 
   // The settings go first: a Shortcut that outlived its Plugin would open an
@@ -368,8 +435,7 @@ function remove(home: string, argv: readonly string[]): number {
 function grant(home: string, argv: readonly string[]): number {
   const [from, to] = argv;
   if (from === undefined || to === undefined || argv.length > 2) {
-    console.error(`firstmate: grant takes two Plugin Names: <from> <to>.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('grant', 'grant takes two Plugin Names: <from> <to>.');
   }
 
   if (!givePermission(home, from, to)) {
@@ -384,8 +450,7 @@ function grant(home: string, argv: readonly string[]): number {
 function revoke(home: string, argv: readonly string[]): number {
   const [from, to] = argv;
   if (from === undefined || to === undefined || argv.length > 2) {
-    console.error(`firstmate: revoke takes two Plugin Names: <from> <to>.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('revoke', 'revoke takes two Plugin Names: <from> <to>.');
   }
 
   if (!takePermission(home, from, to)) {
@@ -409,8 +474,7 @@ function revoke(home: string, argv: readonly string[]): number {
 function shelf(config: Config, argv: readonly string[]): number {
   const [directory] = argv;
   if (argv.length > 1) {
-    console.error(`firstmate: shelf takes one directory, or nothing.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('shelf', 'shelf takes one directory, or nothing.');
   }
   if (directory === undefined) {
     console.log(`firstmate: the Shelf is ${config.shelf}`);
@@ -435,11 +499,10 @@ function shelf(config: Config, argv: readonly string[]): number {
 async function install(config: Config, argv: readonly string[]): Promise<number> {
   const [source, given] = argv;
   if (source === undefined || argv.length > 2) {
-    console.error(
-      `firstmate: install takes a source, and a Plugin Name where the source ` +
-        `does not name one.\n\n${USAGE}`,
+    return typedWrong(
+      'install',
+      `install takes a source, and a Plugin Name where the source ` + `does not name one.`,
     );
-    return USAGE_FAULT;
   }
 
   const row = await installPlugin(config, source, given);
@@ -452,8 +515,7 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
 function bind(home: string, argv: readonly string[]): number {
   const [typed, plugin, path = ''] = argv;
   if (typed === undefined || plugin === undefined || argv.length > 3) {
-    console.error(`firstmate: bind takes keys, a Plugin Name, and a path or nothing.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('bind', 'bind takes keys, a Plugin Name, and a path or nothing.');
   }
 
   const shortcut = bindShortcut(home, typed, plugin, path);
@@ -465,8 +527,7 @@ function bind(home: string, argv: readonly string[]): number {
 function unbind(home: string, argv: readonly string[]): number {
   const [typed] = argv;
   if (typed === undefined || argv.length > 1) {
-    console.error(`firstmate: unbind takes the keys of one Shortcut.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('unbind', 'unbind takes the keys of one Shortcut.');
   }
 
   const keys = checkKeys(typed);
@@ -475,7 +536,7 @@ function unbind(home: string, argv: readonly string[]): number {
   const held = shortcuts.find((shortcut) => shortcut.keys === keys);
   if (held === undefined) {
     console.error(`firstmate: ${keys} is not bound.`);
-    return 1;
+    return exit('missing');
   }
 
   writeSettings(
@@ -500,8 +561,7 @@ function order(home: string, argv: readonly string[]): number {
   }
   const [name, position] = argv;
   if (name === undefined || position === undefined || argv.length > 2) {
-    console.error(`firstmate: order takes nothing, or a Plugin Name and a position.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('order', 'order takes nothing, or a Plugin Name and a position.');
   }
   const moved = movePlugin(home, name, position);
   console.log(`firstmate: moved ${name} to position ${moved.indexOf(name) + 1}`);
@@ -512,8 +572,7 @@ function order(home: string, argv: readonly string[]): number {
 function service(argv: readonly string[]): number {
   const [what] = argv;
   if (argv.length !== 1 || (what !== 'on' && what !== 'off')) {
-    console.error(`firstmate: service takes on or off.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('service', 'service takes on or off.');
   }
   if (what === 'on') serviceOn();
   else serviceOff();
@@ -522,8 +581,7 @@ function service(argv: readonly string[]): number {
 
 function list(home: string, argv: readonly string[]): number {
   if (argv.length > 0) {
-    console.error(`firstmate: list takes nothing.\n\n${USAGE}`);
-    return USAGE_FAULT;
+    return typedWrong('list', 'list takes nothing.');
   }
   // An empty Registry says nothing, as an empty directory listing says nothing.
   for (const row of readRegistry(home)) console.log(describe(row));
@@ -543,5 +601,5 @@ try {
   if (code !== undefined) process.exitCode = code;
 } catch (fault: unknown) {
   console.error(`firstmate: ${fault instanceof Error ? fault.message : String(fault)}`);
-  process.exitCode = 1;
+  process.exitCode = exit(refusalOf(fault) ?? 'failed');
 }

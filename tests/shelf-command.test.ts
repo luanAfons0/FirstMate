@@ -127,7 +127,7 @@ test('a relative path is refused, and the Shelf does not move', async (t) => {
 
   const refused = await firstmate(home, ['shelf', 'plugins']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /is not an absolute path/);
   assert.deepEqual(await settings(home), { shelf: chosen }, 'the Shelf did not move');
 });
@@ -140,7 +140,7 @@ test('a symlink leading to the Host home directory is refused', async (t) => {
 
   const refused = await firstmate(home, ['shelf', looksHarmless]);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /is the Host's own home directory/);
   await assert.rejects(readFile(join(home, 'settings.json')), 'nothing was written');
 });
@@ -153,7 +153,7 @@ test('a path spelled with .. that climbs above the home is refused', async (t) =
   const climbing = `${home}/plugins/../..`;
   const refused = await firstmate(home, ['shelf', climbing]);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /holds the Host's own home directory/);
 });
 
@@ -161,11 +161,11 @@ test('a path that is a file, and a path that is not there, each say so', async (
   const home = await makeHome(t);
 
   const file = await firstmate(home, ['shelf', join(fixture('both'), 'mcp')]);
-  assert.equal(file.code, 1);
+  assert.equal(file.code, 3);
   assert.match(file.stderr, /is a file, not a directory/);
 
   const missing = await firstmate(home, ['shelf', '/no/such/place']);
-  assert.equal(missing.code, 1);
+  assert.equal(missing.code, 3);
   assert.match(missing.stderr, /does not exist\. Create it/);
 });
 
@@ -173,12 +173,12 @@ test('a Windows path is refused with the WSL path it names', async (t) => {
   const home = await makeHome(t);
 
   const drive = await firstmate(home, ['shelf', 'C:\\Users\\me\\Plugins']);
-  assert.equal(drive.code, 1);
+  assert.equal(drive.code, 3);
   assert.match(drive.stderr, /is a Windows path/);
   assert.ok(drive.stderr.includes('/mnt/c/Users/me/Plugins'), drive.stderr);
 
   const unc = await firstmate(home, ['shelf', '\\\\wsl.localhost\\Debian\\home\\me\\plugins']);
-  assert.equal(unc.code, 1);
+  assert.equal(unc.code, 3);
   assert.ok(unc.stderr.includes('/home/me/plugins'), unc.stderr);
 });
 
@@ -193,7 +193,7 @@ test('a directory this user cannot write to is refused', async (t) => {
 
   const refused = await firstmate(home, ['shelf', shut]);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /cannot be written to by this user/);
 });
 

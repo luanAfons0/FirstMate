@@ -74,7 +74,7 @@ test('a source whose last segment is not a Plugin Name asks for a name', async (
   await writeFile(join(odd, 'private.txt'), 'nothing much\n');
 
   const refused = await firstmate(home, ['install', odd]);
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /does not name a Plugin\. Give the name yourself/);
 
   const named = await firstmate(home, ['install', odd, 'tidy']);
@@ -87,7 +87,7 @@ test('a name that is not a Plugin Name is refused in the words add uses', async 
 
   const refused = await firstmate(home, ['install', fixture('both'), 'Both']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /Both is not a Plugin Name\. Use lower-case letters/);
 });
 
@@ -97,7 +97,7 @@ test('a name already in the Registry is refused, and nothing is fetched', async 
 
   const refused = await firstmate(home, ['install', fixture('both')]);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 5);
   assert.match(refused.stderr, /already registered/);
   assert.deepEqual((await registry(home)).plugins.length, 1, 'the row that was there survives');
   await assert.rejects(stat(join(home, 'shelf')), 'nothing was copied anywhere');
@@ -111,7 +111,7 @@ test('a directory that already exists in the Shelf is refused, loudly', async (t
 
   const refused = await firstmate(home, ['install', fixture('both')]);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 5);
   assert.match(refused.stderr, /already exists/);
   assert.equal(
     await readFile(join(shelf, 'both', 'mine.txt'), 'utf8'),
@@ -169,7 +169,7 @@ test('the Shelf is checked again on every install, not trusted from the file', a
 
   const refused = await firstmate(home, ['install', fixture('both')]);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /is the Host's own home directory/);
   await assert.rejects(readFile(join(home, 'registry.json')), 'no row was written');
 });

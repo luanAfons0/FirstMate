@@ -17,6 +17,7 @@
 import { accessSync, constants, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { readSettings } from './settings.ts';
+import { refuse } from './refusal.ts';
 
 /** The environment variable that moves the Shelf. */
 export const SHELF_VARIABLE = 'FIRSTMATE_SHELF';
@@ -67,14 +68,14 @@ export function checkShelf(given: string, home: string): string {
     real = realpathSync(wanted);
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`${wanted} does not exist. Create it, then set it as the Shelf.`, {
+      throw refuse('invalid', `${wanted} does not exist. Create it, then set it as the Shelf.`, {
         cause,
       });
     }
-    throw new Error(`${wanted} cannot be reached.`, { cause });
+    throw refuse('invalid', `${wanted} cannot be reached.`, { cause });
   }
   if (!statSync(real).isDirectory()) {
-    throw new Error(`${real} is a file, not a directory.`);
+    throw refuse('invalid', `${real} is a file, not a directory.`);
   }
 
   // A Shelf that is, or holds, the home directory is a Shelf that writes a
@@ -82,10 +83,10 @@ export function checkShelf(given: string, home: string): string {
   const realHome = realPathOf(resolve(home));
   const belongings = 'where the Registry and the runtime file live';
   if (real === realHome) {
-    throw new Error(`${real} is the Host's own home directory, ${belongings}.`);
+    throw refuse('invalid', `${real} is the Host's own home directory, ${belongings}.`);
   }
   if (holds(real, realHome)) {
-    throw new Error(`${real} holds the Host's own home directory, ${belongings}.`);
+    throw refuse('invalid', `${real} holds the Host's own home directory, ${belongings}.`);
   }
 
   // Advice, not a guarantee: a directory writable now can be read-only later.
@@ -93,7 +94,7 @@ export function checkShelf(given: string, home: string): string {
   try {
     accessSync(real, constants.W_OK | constants.X_OK);
   } catch (cause) {
-    throw new Error(`${real} cannot be written to by this user.`, { cause });
+    throw refuse('invalid', `${real} cannot be written to by this user.`, { cause });
   }
   return real;
 }
@@ -102,20 +103,20 @@ export function checkShelf(given: string, home: string): string {
 function lexical(given: string): string {
   const trimmed = given.trim();
   if (trimmed === '') {
-    throw new Error('A Shelf is a directory, and none was given.');
+    throw refuse('invalid', 'A Shelf is a directory, and none was given.');
   }
   if (Buffer.byteLength(trimmed) > PATH_LIMIT) {
-    throw new Error(`A Shelf is ${PATH_LIMIT} bytes at most, and that path is longer.`);
+    throw refuse('invalid', `A Shelf is ${PATH_LIMIT} bytes at most, and that path is longer.`);
   }
   if (/\p{Cc}/u.test(trimmed)) {
-    throw new Error('A Shelf may not hold a control character.');
+    throw refuse('invalid', 'A Shelf may not hold a control character.');
   }
   const inside = wslPathOf(trimmed);
   if (inside !== undefined) {
-    throw new Error(`${trimmed} is a Windows path. Inside WSL it is ${inside}.`);
+    throw refuse('invalid', `${trimmed} is a Windows path. Inside WSL it is ${inside}.`);
   }
   if (!isAbsolute(trimmed)) {
-    throw new Error(`${trimmed} is not an absolute path.`);
+    throw refuse('invalid', `${trimmed} is not an absolute path.`);
   }
   return resolve(trimmed);
 }

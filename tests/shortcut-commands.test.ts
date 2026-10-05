@@ -75,7 +75,7 @@ test('bind refuses keys with no modifier', async (t) => {
 
   const refused = await firstmate(home, ['bind', 'N', 'both']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 3);
   assert.match(refused.stderr, /N has no modifier/);
   await assert.rejects(readFile(join(home, 'settings.json')), 'nothing was written');
 });
@@ -89,11 +89,11 @@ test('bind refuses a key name it does not know, and names the part', async (t) =
     ['Ctrl+Alt+NN', 'NN'],
   ] as const) {
     const refused = await firstmate(home, ['bind', typed, 'both']);
-    assert.equal(refused.code, 1, typed);
+    assert.equal(refused.code, 3, typed);
     assert.ok(refused.stderr.includes(`${part} in ${typed} is not a key`), refused.stderr);
   }
   const twoKeys = await firstmate(home, ['bind', 'Ctrl+A+B', 'both']);
-  assert.equal(twoKeys.code, 1);
+  assert.equal(twoKeys.code, 3);
   assert.match(twoKeys.stderr, /names two keys, A and B/);
   await assert.rejects(readFile(join(home, 'settings.json')), 'nothing was written');
 });
@@ -103,7 +103,7 @@ test('bind refuses a Plugin that is not in the Registry', async (t) => {
 
   const refused = await firstmate(home, ['bind', 'Ctrl+Alt+N', 'nobody']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 4);
   assert.match(refused.stderr, /no Plugin named nobody is registered/);
 });
 
@@ -120,7 +120,7 @@ test('bind refuses a path that is absolute or leaves the Plugin', async (t) => {
     'a\\..\\b',
   ]) {
     const refused = await firstmate(home, ['bind', 'Ctrl+Alt+N', 'both', path]);
-    assert.equal(refused.code, 1, path);
+    assert.equal(refused.code, 3, path);
     assert.match(refused.stderr, /is not a path inside both's address/, path);
   }
   await assert.rejects(readFile(join(home, 'settings.json')), 'nothing was written');
@@ -133,7 +133,7 @@ test('bind refuses keys already bound, and names the Plugin that holds them', as
 
   const refused = await firstmate(home, ['bind', 'ALT+CTRL+n', 'page-only']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 5);
   assert.match(
     refused.stderr,
     /Ctrl\+Alt\+N is already bound to both, to open \/p\/both\/new\.html/,
@@ -165,7 +165,7 @@ test('unbind of keys that are not bound says so and fails', async (t) => {
 
   const refused = await firstmate(home, ['unbind', 'Ctrl+Alt+N']);
 
-  assert.equal(refused.code, 1);
+  assert.equal(refused.code, 4);
   assert.match(refused.stderr, /Ctrl\+Alt\+N is not bound/);
 });
 
