@@ -1,5 +1,7 @@
 # The published package is built, the repository is not
 
+Superseded by [ADR-0017](0017-the-repository-is-a-workspace-and-the-package-is-a-bundle.md): the repository is a workspace, and the package is a bundle.
+
 ADR-0006 put the Host in TypeScript on Node, and Node 24 runs TypeScript with no build step. That is true of a clone and stays true. It cannot be true of a package on npm, because Node refuses to strip types anywhere beneath `node_modules`, and an installed FirstMate is beneath `node_modules`. Installing a packed tarball and running `npx firstmate` fails with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. Neither `--experimental-strip-types` nor `--experimental-transform-types` lifts that refusal; it is deliberate. So the package is compiled on its way out: publishing emits JavaScript, and nothing else in the project ever emits anything.
 
 ## Consequences

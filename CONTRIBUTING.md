@@ -86,8 +86,10 @@ refused as too similar to `first-mate`, an unrelated package. The command it
 installs is still `firstmate`, because `bin` is independent of the package
 name.
 
-1. Set the version in `package.json`, and commit it with everything else the
-   release carries.
+1. Set the version in every `package.json` (the root, `apps/cli`,
+   `packages/core` and `packages/host`), and commit it with everything else the
+   release carries. They share one version, and a test says so when they do
+   not.
 2. Tag it and push the tag:
 
    ```sh
@@ -100,8 +102,8 @@ name.
    Host does, and what the version still does not do.
 
 Pushing the tag starts the [Release](.github/workflows/release.yml) workflow.
-It refuses a tag that disagrees with `package.json`, runs `pnpm check`, and
-only then publishes.
+It refuses a tag that disagrees with any `package.json`, runs `pnpm check`,
+packs `apps/cli` with pnpm, and only then publishes that tarball with npm.
 
 **There is no npm token anywhere.** npm accepts GitHub Actions as a trusted
 publisher over OIDC, so the job asks for an identity token minted for that one
@@ -112,7 +114,7 @@ the npm package page, against this repository and `.github/workflows/release.yml
 — not by adding a secret here.
 
 Packing always builds, so a published package can never be stale against the
-source. A clone still holds no built output ([ADR-0010](docs/adr/0010-the-published-package-is-built-the-repository-is-not.md)).
+source. A clone still holds no built output ([ADR-0017](docs/adr/0017-the-repository-is-a-workspace-and-the-package-is-a-bundle.md)).
 
 ## Where to help
 

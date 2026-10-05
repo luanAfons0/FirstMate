@@ -520,6 +520,8 @@ pnpm check
 Prettier, looks for dead code with knip, and runs every test. CI runs the same
 command. `pnpm typecheck` checks the types alone.
 
-Node 24 runs TypeScript without a build step, so a clone never holds built
-output and nothing here compiles. `typescript` checks the types, and compiles
-the package on the way to npm and nowhere else (ADR-0010).
+The repository is a pnpm workspace: `packages/core` and `packages/host` are
+private, and `apps/cli` is the package on npm. Node 24 runs TypeScript without a
+build step, so a clone never holds built output and nothing here compiles.
+Packing bundles `apps/cli`, with `core` and `host` inside it, on the way to npm
+and nowhere else (ADR-0017). `pnpm build` makes the same bundle by hand.

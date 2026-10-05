@@ -8,8 +8,8 @@
 #
 # The whole check (types, lint, layout, dead code, tests) runs before anything
 # is published, so a broken release cannot leave the machine. The tag and the
-# version in package.json have to agree, because a tag that lies is worse than
-# no tag. The package is apps/cli, so its version is the one that counts.
+# version of every package in the workspace have to agree, because a tag that
+# lies is worse than no tag. One tag publishes all of it (ADR-0017).
 name: Release
 
 on:
@@ -39,14 +39,16 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
-      - name: The tag and the version must agree
+      - name: The tag and every version must agree
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          version="$(node -p "require('./apps/cli/package.json').version")"
-          if [ "$tag" != "$version" ]; then
-            echo "The tag says $tag and apps/cli/package.json says $version." >&2
-            exit 1
-          fi
+          for manifest in package.json apps/cli/package.json packages/*/package.json; do
+            version="$(node -p "require('./$manifest').version")"
+            if [ "$tag" != "$version" ]; then
+              echo "The tag says $tag and $manifest says $version." >&2
+              exit 1
+            fi
+          done
 
       - run: pnpm install --frozen-lockfile
 

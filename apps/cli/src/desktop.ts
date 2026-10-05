@@ -129,7 +129,7 @@ const BLUR_GRACE_MS = 120;
  *
  * The path is read from this module rather than from the working directory, so
  * it is `icons/` beside `src/` in a clone and `icons/` beside `dist/` in the
- * package, and neither needs a build step to put it there (ADR-0010).
+ * package, and neither needs a build step to put it there (ADR-0017).
  */
 const MARKS: Readonly<Record<Pulse['state'], URL>> = {
   running: new URL('../icons/firstmate-running.ico', import.meta.url),

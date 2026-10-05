@@ -34,6 +34,12 @@ export type BootOptions = {
    * only reason this option exists.
    */
   readonly viaCommandLine?: boolean;
+  /**
+   * Boot the bundle in this directory, which `build` wrote, rather than the
+   * source. The built Host has to answer what the source answers, and proving
+   * that is the only reason this option exists.
+   */
+  readonly built?: string;
 };
 
 export type Booted = {
@@ -129,10 +135,14 @@ export async function bootHostIn(
   env: Readonly<Record<string, string>> = {},
   options: BootOptions = {},
 ): Promise<Booted> {
-  const entry =
-    options.viaCommandLine === true
-      ? [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), 'start']
-      : [join(REPOSITORY, 'packages', 'host', 'src', 'main.ts')];
+  const built = options.built;
+  const cli =
+    built === undefined ? join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts') : join(built, 'cli.js');
+  const main =
+    built === undefined
+      ? join(REPOSITORY, 'packages', 'host', 'src', 'main.ts')
+      : join(built, 'main.js');
+  const entry = options.viaCommandLine === true ? [cli, 'start'] : [main];
   const child = spawn(process.execPath, entry, {
     cwd: REPOSITORY,
     env: { ...process.env, FIRSTMATE_HOME: home, FIRSTMATE_PORT: '0', ...env },
@@ -172,6 +182,29 @@ export async function bootHostIn(
       }),
     raw: (request) => rawRequest(runtime.port, runtime.token, request),
   };
+}
+
+/**
+ * Build the command line's bundle as packing builds it, into a directory of
+ * this test's own, and return that directory. It is removed when the test
+ * ends. The package's own `dist/` is left to packing, which empties it first.
+ */
+export async function build(t: TestContext): Promise<string> {
+  const out = await mkdtemp(join(tmpdir(), 'firstmate-build-'));
+  t.after(() => rm(out, { recursive: true, force: true }));
+  await new Promise<void>((done, fail) => {
+    const child = spawn('pnpm', ['run', 'build', '--out-dir', out], {
+      cwd: join(REPOSITORY, 'apps', 'cli'),
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    collectText(child.stderr, (chunk) => (stderr += chunk));
+    child.once('error', fail);
+    child.once('exit', (code) =>
+      code === 0 ? done() : fail(new Error(`The build exited ${code}.\n${stderr}`)),
+    );
+  });
+  return out;
 }
 
 /** The Registry file, as the Host reads it. */
