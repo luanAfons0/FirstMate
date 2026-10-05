@@ -52,25 +52,118 @@ import { serviceOff, serviceOn } from './service.ts';
 
 const OFFICIAL_NAMES = OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ');
 
-const USAGE = `usage:
-  firstmate start                    run the Host until it is stopped.
-  firstmate setup                    answer a few questions, and have FirstMate set up.
-  firstmate desktop                  open the FirstMate window. Windows only.
-  firstmate add <name> <directory>   register a Plugin. The directory is not copied.
-  firstmate remove <name>            take a Plugin out of the Registry.
-  firstmate list                     every Plugin in the Registry.
-  firstmate grant <from> <to>        let <from> call <to>'s tools.
-  firstmate revoke <from> <to>       take that Grant back.
-  firstmate shelf [directory]        say where a fetched Plugin lands, or move it.
-  firstmate install <source> [name]  fetch a Plugin into the Shelf and register it.
-  firstmate bind <keys> <plugin> [path]
-                                     open a Plugin's address from a Shortcut in Windows.
-  firstmate unbind <keys>            free that Shortcut's keys.
-  firstmate order [<name> <position>]
-                                     say the Plugin Order, or move one Plugin in it.
-  firstmate service on|off           run the Host as a systemd user service, or stop.
+/** One command: how it is typed, what it does in one line, and what runs it. */
+type Command = {
+  /** The word typed after `firstmate`. */
+  readonly name: string;
+  /** What the command takes after its name, as the usage line shows it. */
+  readonly takes: string;
+  /** What it does, in one line. */
+  readonly does: string;
+  /**
+   * Run it with the words typed after its name. It gives back the exit code,
+   * or nothing when the command hands the process to something that sets its
+   * own.
+   */
+  readonly run: (argv: readonly string[]) => Promise<number | undefined> | number | undefined;
+};
 
-The Shelf is the directory a fetched Plugin lands in. A source is a directory,
+/**
+ * Every command, in the order the usage shows them. A command is one row
+ * here, and the usage, the dispatch and the help are all read off this table.
+ */
+const COMMANDS: readonly Command[] = [
+  { name: 'start', takes: '', does: 'run the Host until it is stopped.', run: start },
+  {
+    name: 'setup',
+    takes: '',
+    does: 'answer a few questions, and have FirstMate set up.',
+    run: setUp,
+  },
+  { name: 'desktop', takes: '', does: 'open the FirstMate window. Windows only.', run: desktop },
+  {
+    name: 'add',
+    takes: '<name> <directory>',
+    does: 'register a Plugin. The directory is not copied.',
+    run: (argv) => add(home(), argv),
+  },
+  {
+    name: 'remove',
+    takes: '<name>',
+    does: 'take a Plugin out of the Registry.',
+    run: (argv) => remove(home(), argv),
+  },
+  {
+    name: 'list',
+    takes: '',
+    does: 'every Plugin in the Registry.',
+    run: (argv) => list(home(), argv),
+  },
+  {
+    name: 'grant',
+    takes: '<from> <to>',
+    does: "let <from> call <to>'s tools.",
+    run: (argv) => grant(home(), argv),
+  },
+  {
+    name: 'revoke',
+    takes: '<from> <to>',
+    does: 'take that Grant back.',
+    run: (argv) => revoke(home(), argv),
+  },
+  {
+    name: 'shelf',
+    takes: '[directory]',
+    does: 'say where a fetched Plugin lands, or move it.',
+    run: (argv) => shelf(readConfig(), argv),
+  },
+  {
+    name: 'install',
+    takes: '<source> [name]',
+    does: 'fetch a Plugin into the Shelf and register it.',
+    run: (argv) => install(readConfig(), argv),
+  },
+  {
+    name: 'bind',
+    takes: '<keys> <plugin> [path]',
+    does: "open a Plugin's address from a Shortcut in Windows.",
+    run: (argv) => bind(home(), argv),
+  },
+  {
+    name: 'unbind',
+    takes: '<keys>',
+    does: "free that Shortcut's keys.",
+    run: (argv) => unbind(home(), argv),
+  },
+  {
+    name: 'order',
+    takes: '[<name> <position>]',
+    does: 'say the Plugin Order, or move one Plugin in it.',
+    run: (argv) => order(home(), argv),
+  },
+  {
+    name: 'service',
+    takes: 'on|off',
+    does: 'run the Host as a systemd user service, or stop.',
+    run: service,
+  },
+];
+
+/** The column every command's one line starts at, in the usage. */
+const DOES_COLUMN = 37;
+
+/**
+ * One command's usage line. A command too long to leave two spaces before the
+ * column says what it does on the line below, at the same column.
+ */
+function usageLine(command: Command): string {
+  const typed = `  firstmate ${command.name}${command.takes === '' ? '' : ` ${command.takes}`}`;
+  if (typed.length + 2 <= DOES_COLUMN) return `${typed.padEnd(DOES_COLUMN)}${command.does}`;
+  return `${typed}\n${' '.repeat(DOES_COLUMN)}${command.does}`;
+}
+
+/** What the usage says after the commands, about the words they take. */
+const NOTES = `The Shelf is the directory a fetched Plugin lands in. A source is a directory,
 which is copied, a git URL, which is cloned, or the name of an Official Plugin,
 which is cloned from where FirstMate knows it is: ${OFFICIAL_NAMES}. install
 registers what it put there, under the last segment of the source or under the
@@ -103,58 +196,34 @@ The Host picks up a new order with no restart.
 The Registry is read when the Host starts, so restart the Host to pick up a
 change: systemctl --user restart firstmate`;
 
+const USAGE = `usage:
+${COMMANDS.map(usageLine).join('\n')}
+
+${NOTES}`;
+
 /** What the operator did wrong, as against what went wrong. */
 const USAGE_FAULT = 2;
 
-async function main(argv: readonly string[]): Promise<number | undefined> {
-  const [command, ...rest] = argv;
-  // Read only by the commands that use it. The Host reads its own, and the
-  // window runs on Windows, where this machine's settings mean nothing; and
-  // --help has to work while an environment variable holds nonsense.
-  const home = (): string => readConfig().home;
+/**
+ * The Host's home directory, read only by the commands that use it. The Host
+ * reads its own, and the window runs on Windows, where this machine's settings
+ * mean nothing; and --help has to work while an environment variable holds
+ * nonsense.
+ */
+const home = (): string => readConfig().home;
 
-  switch (command) {
-    case 'start':
-      return start(rest);
-    case 'desktop':
-      return desktop(rest);
-    case 'setup':
-      if (rest.length > 0) {
-        console.error(`firstmate: setup takes nothing. It asks.\n\n${USAGE}`);
-        return USAGE_FAULT;
-      }
-      return setup();
-    case 'add':
-      return add(home(), rest);
-    case 'remove':
-      return remove(home(), rest);
-    case 'list':
-      return list(home(), rest);
-    case 'grant':
-      return grant(home(), rest);
-    case 'revoke':
-      return revoke(home(), rest);
-    case 'shelf':
-      return shelf(readConfig(), rest);
-    case 'install':
-      return install(readConfig(), rest);
-    case 'bind':
-      return bind(home(), rest);
-    case 'unbind':
-      return unbind(home(), rest);
-    case 'order':
-      return order(home(), rest);
-    case 'service':
-      return service(rest);
-    case undefined:
-    case '-h':
-    case '--help':
-      console.log(USAGE);
-      return command === undefined ? USAGE_FAULT : 0;
-    default:
-      console.error(`firstmate: no such command: ${command}\n\n${USAGE}`);
-      return USAGE_FAULT;
+async function main(argv: readonly string[]): Promise<number | undefined> {
+  const [name, ...rest] = argv;
+  if (name === undefined || name === '-h' || name === '--help') {
+    console.log(USAGE);
+    return name === undefined ? USAGE_FAULT : 0;
   }
+  const command = COMMANDS.find((row) => row.name === name);
+  if (command === undefined) {
+    console.error(`firstmate: no such command: ${name}\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+  return command.run(rest);
 }
 
 /**
@@ -177,6 +246,15 @@ async function start(argv: readonly string[]): Promise<number | undefined> {
   // signal, and sets its own code when it could not start at all, which may
   // be before or after this line runs; a code set here would overwrite it.
   return undefined;
+}
+
+/** Hold the conversation that sets FirstMate up. It takes no words: it asks. */
+function setUp(argv: readonly string[]): Promise<number> | number {
+  if (argv.length > 0) {
+    console.error(`firstmate: setup takes nothing. It asks.\n\n${USAGE}`);
+    return USAGE_FAULT;
+  }
+  return setup();
 }
 
 /**
