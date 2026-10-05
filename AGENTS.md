@@ -63,17 +63,19 @@ knip and every test.
 
 ## Tech stack
 
-- **Node 24**, which runs TypeScript with no build step. There is no bundler,
-  no transpiler and no watcher. Publishing to npm compiles, because Node strips
-  no types under `node_modules`; that build is on the publish path alone, and a
-  clone never holds its output (ADR-0010).
+- **Node 24**, which runs TypeScript with no build step. A clone has no
+  bundler, no transpiler and no watcher. Publishing to npm bundles `apps/cli`
+  with `tsdown`, because Node strips no types under `node_modules` and `core`
+  and `host` are never published; that build is on the publish path alone, and
+  a clone never holds its output (ADR-0017).
 - **pnpm**, as a workspace, with no Turbo. `packageManager` in `package.json`
   names the version, and pnpm and CI both switch to it.
 - **TypeScript 5.8**, `strict`, `noUncheckedIndexedAccess`,
   `erasableSyntaxOnly`. `typescript` is a dev dependency and is used only to
   check the types.
 - **Biome, Prettier and knip**, as dev dependencies, for the lint, the layout
-  and the dead code. None of them runs in the Host or ships in the package.
+  and the dead code, and **tsdown** in `apps/cli`, for the bundle. None of them
+  runs in the Host or ships in the package.
 - **One runtime dependency, and the Host uses none of it.** The Host speaks MCP
   over stdio with about 140 lines of its own JSON-RPC (`packages/host/src/mcp.ts`) rather than
   take a dependency. Keep it that way. The desktop program draws its window with
@@ -230,6 +232,8 @@ and drives it over HTTP, exactly as a browser does.
   lets the whole inside of the Host be rewritten without touching a test.
 - A test asserts on what a browser and the Tray can see: status codes, headers,
   response bytes, and the files the Host writes into its home directory.
+- Tests run the source. `tests/build.test.ts` alone builds the bundle, with the
+  helper's `build`, and boots it through the same helper with `built`.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
   `notifier`. Add a fixture rather than a mock.
@@ -276,7 +280,7 @@ and drives it over HTTP, exactly as a browser does.
 - Let a Plugin Page reach another Plugin. The Tool Bus is on the pipe, under
   a Grant, and a browser holds no end of it (ADR-0009).
 - Give the Host a scheduler (ADR-0004), a front-end framework, or a build step
-  anywhere but the publish path (ADR-0010).
+  anywhere but the publish path (ADR-0017).
 - Print or commit the token, `runtime.json`, or anything from
   `$FIRSTMATE_HOME`.
 - Rewrite, wrap, inject into or frame a Plugin Page (ADR-0008). The bytes are

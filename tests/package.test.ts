@@ -8,7 +8,7 @@
  *
  * It needs no network. `pnpm pack --dry-run` builds the package through
  * `prepack` and reports what it would write, which is also how this test
- * proves that packing always builds (ADR-0010). The package is `apps/cli`, and
+ * proves that packing always builds (ADR-0017). The package is `apps/cli`, and
  * `core` and `host` reach it only inside the bundle.
  */
 import assert from 'node:assert/strict';
@@ -103,6 +103,17 @@ test('the package holds the desktop program and the icons it draws with', async 
   // not code, so they are packed from where they live rather than built.
   assert.ok(files.includes('icons/firstmate-running.ico'));
   assert.ok(files.includes('icons/firstmate-stopped.ico'));
+});
+
+test('every package in the workspace carries one version', async () => {
+  // One tag publishes all of it, so a bug report can name one number.
+  const versions: Record<string, string | undefined> = {};
+  for (const where of ['.', 'apps/cli', 'packages/core', 'packages/host']) {
+    const path = join(REPOSITORY, where, 'package.json');
+    versions[where] = (JSON.parse(await readFile(path, 'utf8')) as { version?: string }).version;
+  }
+
+  assert.equal(new Set(Object.values(versions)).size, 1, JSON.stringify(versions));
 });
 
 test('the package holds the Windows logon task, so an npm install can hold WSL up', async () => {

@@ -1,6 +1,6 @@
 node_modules/
 
-# Built output. Only packing makes it, and a clone never holds it (ADR-0010).
+# Built output. Only packing makes it, and a clone never holds it (ADR-0017).
 dist/
 
 # Packing copies these two in from the root, because npm shows the README of
