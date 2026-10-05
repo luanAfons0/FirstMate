@@ -131,8 +131,8 @@ export async function bootHostIn(
 ): Promise<Booted> {
   const entry =
     options.viaCommandLine === true
-      ? [join(REPOSITORY, 'src', 'cli.ts'), 'start']
-      : [join(REPOSITORY, 'src', 'main.ts')];
+      ? [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), 'start']
+      : [join(REPOSITORY, 'packages', 'host', 'src', 'main.ts')];
   const child = spawn(process.execPath, entry, {
     cwd: REPOSITORY,
     env: { ...process.env, FIRSTMATE_HOME: home, FIRSTMATE_PORT: '0', ...env },
@@ -231,11 +231,15 @@ export function firstmate(
   input?: string,
 ): Promise<CommandResult> {
   return new Promise((done, fail) => {
-    const child = spawn(process.execPath, [join(REPOSITORY, 'src', 'cli.ts'), ...argv], {
-      cwd: REPOSITORY,
-      env: { ...process.env, FIRSTMATE_HOME: home, ...env },
-      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      process.execPath,
+      [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), ...argv],
+      {
+        cwd: REPOSITORY,
+        env: { ...process.env, FIRSTMATE_HOME: home, ...env },
+        stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+      },
+    );
     if (input !== undefined) child.stdin?.end(input);
     let stdout = '';
     let stderr = '';

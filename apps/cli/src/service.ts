@@ -5,8 +5,9 @@
  * the program, so that `firstmate service on` works from the published package,
  * which ships no `systemd/` and no `scripts/`. It starts the program that ran
  * the command: the absolute path of this Node, because the service's PATH has
- * no nvm, and the Host entry point beside this file, which is the clone's
- * `src/main.ts` in a clone and the package's `dist/main.js` in an install.
+ * no nvm, and the Host entry point beside this file, which is
+ * `apps/cli/src/main.ts` in a clone and the package's `dist/main.js` in an
+ * install.
  *
  * `off` removes exactly the file `on` wrote. Neither turns lingering off: other
  * services can depend on it.

@@ -2,16 +2,17 @@
  * The Host: one long-running process that gives any Plugin a process, a page
  * and an address.
  *
- * Start it with `node src/main.ts`. It reads its Registry, listens on
- * loopback, and writes the port and the token where the Tray finds them.
+ * Start it with `node packages/host/src/main.ts`. It reads its Registry,
+ * listens on loopback, and writes the port and the token where the Tray finds
+ * them.
  */
 import { randomBytes } from 'node:crypto';
-import { readConfig } from './config.ts';
+import { readConfig } from '@firstmate/core/config';
 import { startHost, type Host } from './host.ts';
 import { openNotices } from './notices.ts';
-import { readRegistry, registryPath } from './registry.ts';
-import { removeRuntimeFile, runtimePath, writeRuntimeFile } from './runtime.ts';
-import { readSettings } from './settings.ts';
+import { readRegistry, registryPath } from '@firstmate/core/registry';
+import { removeRuntimeFile, runtimePath, writeRuntimeFile } from '@firstmate/core/runtime';
+import { readSettings } from '@firstmate/core/settings';
 import { superviseAll, type Supervisor } from './supervisor.ts';
 
 async function main(): Promise<void> {

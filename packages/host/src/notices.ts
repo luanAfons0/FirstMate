@@ -11,7 +11,7 @@
  * gone, and the answer a Plugin Server gets means "accepted" and nothing more.
  */
 import { HOST_ERROR, type Answer } from './mcp.ts';
-import { isPluginPath } from './shortcut.ts';
+import { isPluginPath } from '@firstmate/core/shortcut';
 
 /** The method a Plugin Server sends a Notice with. */
 export const SEND_NOTICE = 'firstmate/notice';

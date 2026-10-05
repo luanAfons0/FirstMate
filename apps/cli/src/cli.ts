@@ -6,20 +6,20 @@
  * holds the path and nothing else, so a Plugin stays in its own repository
  * wherever it already lives.
  *
- *   node src/cli.ts start
- *   node src/cli.ts setup
- *   node src/cli.ts desktop
- *   node src/cli.ts add <name> <directory>
- *   node src/cli.ts remove <name>
- *   node src/cli.ts list
- *   node src/cli.ts grant <from> <to>
- *   node src/cli.ts revoke <from> <to>
- *   node src/cli.ts shelf [directory]
- *   node src/cli.ts install <directory|git-url|official-name> [name]
- *   node src/cli.ts bind <keys> <plugin> [path]
- *   node src/cli.ts unbind <keys>
- *   node src/cli.ts order [<name> <position>]
- *   node src/cli.ts service on|off
+ *   node apps/cli/src/cli.ts start
+ *   node apps/cli/src/cli.ts setup
+ *   node apps/cli/src/cli.ts desktop
+ *   node apps/cli/src/cli.ts add <name> <directory>
+ *   node apps/cli/src/cli.ts remove <name>
+ *   node apps/cli/src/cli.ts list
+ *   node apps/cli/src/cli.ts grant <from> <to>
+ *   node apps/cli/src/cli.ts revoke <from> <to>
+ *   node apps/cli/src/cli.ts shelf [directory]
+ *   node apps/cli/src/cli.ts install <directory|git-url|official-name> [name]
+ *   node apps/cli/src/cli.ts bind <keys> <plugin> [path]
+ *   node apps/cli/src/cli.ts unbind <keys>
+ *   node apps/cli/src/cli.ts order [<name> <position>]
+ *   node apps/cli/src/cli.ts service on|off
  */
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
@@ -35,14 +35,19 @@ import {
   takePermission,
   withoutInOrder,
   withShortcuts,
-} from './commands.ts';
-import { readConfig, type Config } from './config.ts';
-import { OFFICIAL_PLUGINS } from './official-plugins.ts';
-import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
-import { readSettings, writeSettings } from './settings.ts';
+} from '@firstmate/core/commands';
+import { readConfig, type Config } from '@firstmate/core/config';
+import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
+import {
+  isPluginName,
+  readRegistry,
+  writeRegistry,
+  type PluginRow,
+} from '@firstmate/core/registry';
+import { readSettings, writeSettings } from '@firstmate/core/settings';
 import { setup } from './setup.ts';
-import { shortcutAddress } from './shortcut.ts';
-import { SHELF_VARIABLE } from './shelf.ts';
+import { shortcutAddress } from '@firstmate/core/shortcut';
+import { SHELF_VARIABLE } from '@firstmate/core/shelf';
 import { serviceOff, serviceOn } from './service.ts';
 
 const OFFICIAL_NAMES = OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ');
@@ -156,9 +161,10 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
  * Run the Host in this process.
  *
  * The Host's entry point starts the Host as it is imported, so importing it is
- * the whole of this command. Nothing is copied out of `src/main.ts`, which is
- * what keeps `firstmate start` and `node src/main.ts` the same Host, reading
- * the same environment variables and printing the same output.
+ * the whole of this command. Nothing is copied out of `packages/host`, which
+ * is what keeps `firstmate start` and `node packages/host/src/main.ts` the
+ * same Host, reading the same environment variables and printing the same
+ * output.
  */
 async function start(argv: readonly string[]): Promise<number | undefined> {
   if (argv.length > 0) {

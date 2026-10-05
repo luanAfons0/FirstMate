@@ -24,7 +24,7 @@
  * nothing is put into it (ADR-0008).
  */
 import { ASK, openAsk, type Plugins } from './desktop-state.ts';
-import { STATE_WORDS } from './index-page.ts';
+import { STATE_WORDS } from '@firstmate/host/index-page';
 
 /** Where the window is: the Index Page, one Plugin Page, or the Settings View. */
 export type Here =
