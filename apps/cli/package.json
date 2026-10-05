@@ -1,0 +1,47 @@
+{
+  "name": "@luan-afonso/firstmate",
+  "version": "1.2.0",
+  "description": "A local plugin host: one process that gives any Plugin a process, a page and an address.",
+  "license": "MIT",
+  "keywords": [
+    "plugin-host",
+    "mcp",
+    "model-context-protocol",
+    "local-first",
+    "localhost",
+    "self-hosted"
+  ],
+  "homepage": "https://github.com/luanAfons0/FirstMate#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luanAfons0/FirstMate.git",
+    "directory": "apps/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/luanAfons0/FirstMate/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "firstmate": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "icons",
+    "windows"
+  ],
+  "scripts": {
+    "build": "tsdown --logLevel warn",
+    "prepack": "pnpm build && node -e \"for (const f of ['README.md', 'LICENSE.md']) require('node:fs').copyFileSync('../../' + f, f)\""
+  },
+  "dependencies": {
+    "@webviewjs/webview": "^0.4.6"
+  },
+  "devDependencies": {
+    "@firstmate/core": "workspace:*",
+    "@firstmate/host": "workspace:*",
+    "tsdown": "^0.23.0"
+  }
+}

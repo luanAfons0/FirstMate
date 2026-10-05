@@ -15,7 +15,7 @@ import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { speak, type Answering, type PluginServer } from './mcp.ts';
 import { SEND_NOTICE, type Notices } from './notices.ts';
-import type { PluginRow } from './registry.ts';
+import type { PluginRow } from '@firstmate/core/registry';
 import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */

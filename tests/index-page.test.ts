@@ -89,7 +89,10 @@ test('an empty Registry says how to add a Plugin', async (t) => {
 
   const page = await (await host.fetch('/')).text();
 
-  assert.ok(page.includes('node src/cli.ts add'), 'the empty page is an invitation to act');
+  assert.ok(
+    page.includes('node apps/cli/src/cli.ts add'),
+    'the empty page is an invitation to act',
+  );
 });
 
 test('the Index Page says where a fetched Plugin lands, and how to move it', async (t) => {
@@ -98,7 +101,7 @@ test('the Index Page says where a fetched Plugin lands, and how to move it', asy
   const page = await (await host.fetch('/')).text();
 
   assert.ok(page.includes(`${host.home}/shelf`), 'it shows the Shelf in force');
-  assert.ok(page.includes('node src/cli.ts shelf'), 'it names the command that moves it');
+  assert.ok(page.includes('node apps/cli/src/cli.ts shelf'), 'it names the command that moves it');
 });
 
 test('the Index Page shows the Shelf with an empty Registry too', async (t) => {

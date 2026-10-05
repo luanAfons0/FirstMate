@@ -124,7 +124,7 @@ function emptyRegistry(registryPath: string): string {
   return `<p>No Plugins are registered. The Registry is at <code>${escapeHtml(
     registryPath,
   )}</code>.</p>
-<p>Add one with <code>node src/cli.ts add &lt;name&gt; &lt;dir&gt;</code>.</p>`;
+<p>Add one with <code>node apps/cli/src/cli.ts add &lt;name&gt; &lt;dir&gt;</code>.</p>`;
 }
 
 /**
@@ -135,7 +135,7 @@ function emptyRegistry(registryPath: string): string {
 function shelfNote(shelf: string): string {
   return `<footer>
 <p>A fetched Plugin lands in <code>${escapeHtml(shelf)}</code>. Move it with
-<code>node src/cli.ts shelf &lt;dir&gt;</code>.</p>
+<code>node apps/cli/src/cli.ts shelf &lt;dir&gt;</code>.</p>
 </footer>`;
 }
 

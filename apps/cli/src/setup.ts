@@ -16,15 +16,15 @@ import {
   givePermission,
   installPlugin,
   moveShelf,
-} from './commands.ts';
-import { readConfig } from './config.ts';
-import { OFFICIAL_PLUGINS } from './official-plugins.ts';
+} from '@firstmate/core/commands';
+import { readConfig } from '@firstmate/core/config';
+import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import { openPrompt, type Prompt } from './prompt.ts';
-import { readRegistry } from './registry.ts';
+import { readRegistry } from '@firstmate/core/registry';
 import { NO_SYSTEMD, RESTART_COMMAND, restartService, serviceOn, serviceState } from './service.ts';
-import { readSettings } from './settings.ts';
-import { SHELF_VARIABLE } from './shelf.ts';
-import { shortcutAddress } from './shortcut.ts';
+import { readSettings } from '@firstmate/core/settings';
+import { SHELF_VARIABLE } from '@firstmate/core/shelf';
+import { shortcutAddress } from '@firstmate/core/shortcut';
 
 /** What one run of `setup` changed so far. */
 type Changes = {

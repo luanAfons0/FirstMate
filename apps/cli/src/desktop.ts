@@ -80,7 +80,7 @@ import {
   startNoticeHelper,
   type NoticeHelper,
 } from './notice-helper.ts';
-import { STATE_WORDS } from './index-page.ts';
+import { STATE_WORDS } from '@firstmate/host/index-page';
 import { readLogon, setLogon } from './logon.ts';
 import { nameTheWindow } from './taskbar.ts';
 import { settingsPage, type Mover } from './settings-view.ts';

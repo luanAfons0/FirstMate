@@ -21,8 +21,8 @@ import {
   type Plugins,
   type Saved,
 } from './desktop-state.ts';
-import { STATE_WORDS } from './index-page.ts';
-import type { Shortcut } from './shortcut.ts';
+import { STATE_WORDS } from '@firstmate/host/index-page';
+import type { Shortcut } from '@firstmate/core/shortcut';
 import { escaped } from './strip.ts';
 
 /** Whether the window can move a Plugin in the Plugin Order right now. */

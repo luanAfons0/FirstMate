@@ -14,13 +14,13 @@
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { posix } from 'node:path';
-import { HOME_VARIABLE } from './config.ts';
-import { isPluginName, readRegistry } from './registry.ts';
-import { RUNTIME_FILE, type Runtime } from './runtime.ts';
-import { readSettings } from './settings.ts';
-import type { PluginState } from './supervisor.ts';
-import { TOKEN_PARAMETER } from './security.ts';
-import { readKeys, type KeyChord, type Shortcut } from './shortcut.ts';
+import { HOME_VARIABLE } from '@firstmate/core/config';
+import { isPluginName, readRegistry } from '@firstmate/core/registry';
+import { RUNTIME_FILE, type Runtime } from '@firstmate/core/runtime';
+import { readSettings } from '@firstmate/core/settings';
+import type { PluginState } from '@firstmate/host/supervisor';
+import { TOKEN_PARAMETER } from '@firstmate/host/security';
+import { readKeys, type KeyChord, type Shortcut } from '@firstmate/core/shortcut';
 
 /** The command Windows reaches a distribution through. */
 const WSL = 'wsl.exe';

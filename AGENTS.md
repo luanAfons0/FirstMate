@@ -29,22 +29,22 @@ Run every command from the repository root.
 | `pnpm format`                        | Format with Prettier. `format:check` only looks. |
 | `pnpm knip`                          | Find unused files, exports and dependencies.    |
 | `pnpm check`                         | All of the above, then every test. CI runs it.  |
-| `pnpm build`                         | Compile into `dist/`. Packing does this; you do not. |
-| `node src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
-| `node src/cli.ts start`              | The same Host, from the command line.           |
-| `node src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
-| `node src/cli.ts desktop`            | The FirstMate window. Windows only.             |
-| `node src/cli.ts list`               | Every Plugin in the Registry.                   |
-| `node src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
-| `node src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
-| `node src/cli.ts grant <from> <to>`  | Let `<from>` call `<to>`'s tools: a Grant.      |
-| `node src/cli.ts revoke <from> <to>` | Take that Grant back.                           |
-| `node src/cli.ts shelf [dir]`        | Say where a fetched Plugin lands, or move it.   |
-| `node src/cli.ts install <dir\|url\|official-name> [name]` | Fetch a Plugin into the Shelf and register it. |
-| `node src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
-| `node src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
-| `node src/cli.ts order [<name> <position>]` | Say the Plugin Order, or move one Plugin in it. |
-| `node src/cli.ts service on\|off`    | Install or remove the systemd user service.     |
+| `pnpm build`                         | Bundle `apps/cli` into `apps/cli/dist/`. Packing does this; you do not. |
+| `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
+| `node apps/cli/src/cli.ts start`              | The same Host, from the command line.           |
+| `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
+| `node apps/cli/src/cli.ts desktop`            | The FirstMate window. Windows only.             |
+| `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
+| `node apps/cli/src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
+| `node apps/cli/src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
+| `node apps/cli/src/cli.ts grant <from> <to>`  | Let `<from>` call `<to>`'s tools: a Grant.      |
+| `node apps/cli/src/cli.ts revoke <from> <to>` | Take that Grant back.                           |
+| `node apps/cli/src/cli.ts shelf [dir]`        | Say where a fetched Plugin lands, or move it.   |
+| `node apps/cli/src/cli.ts install <dir\|url\|official-name> [name]` | Fetch a Plugin into the Shelf and register it. |
+| `node apps/cli/src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
+| `node apps/cli/src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
+| `node apps/cli/src/cli.ts order [<name> <position>]` | Say the Plugin Order, or move one Plugin in it. |
+| `node apps/cli/src/cli.ts service on\|off`    | Install or remove the systemd user service.     |
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
 Six environment variables move the Host: `FIRSTMATE_HOME` (default
@@ -75,33 +75,32 @@ knip and every test.
 - **Biome, Prettier and knip**, as dev dependencies, for the lint, the layout
   and the dead code. None of them runs in the Host or ships in the package.
 - **One runtime dependency, and the Host uses none of it.** The Host speaks MCP
-  over stdio with about 140 lines of its own JSON-RPC (`src/mcp.ts`) rather than
+  over stdio with about 140 lines of its own JSON-RPC (`packages/host/src/mcp.ts`) rather than
   take a dependency. Keep it that way. The desktop program draws its window with
-  `@webviewjs/webview`; `src/desktop.ts` imports it when the desktop subcommand
+  `@webviewjs/webview`; `apps/cli/src/desktop.ts` imports it when the desktop subcommand
   runs and never when a module loads, so every other command works on a machine
   where the native binary will not load (ADR-0011). `install` runs the `git`
   binary to clone a Plugin: an external tool the command line assumes, not a
   package dependency, and the Host still calls nothing outside Node.
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
   removing the logon task, and for the three things the running Tray asks of
-  it: the taskbar button (`src/taskbar.ts`), the
-  helper that holds the Shortcuts (`src/hotkeys.ts`) and the helper that shows
-  the Notices (`src/notice-helper.ts`), **systemd** for the service, **WSL
+  it: the taskbar button (`apps/cli/src/taskbar.ts`), the
+  helper that holds the Shortcuts (`apps/cli/src/hotkeys.ts`) and the helper that shows
+  the Notices (`apps/cli/src/notice-helper.ts`), **systemd** for the service, **WSL
   Debian** for the machine it all runs on (ADR-0007). The Tray itself is
-  TypeScript, in `src/desktop*.ts`, and runs on Windows Node.
+  TypeScript, in `apps/cli/src/desktop*.ts`, and runs on Windows Node.
 
 ## Project structure
 
+A pnpm workspace. `core` and `host` are private: they are never published, and
+reach the npm package only inside the bundle `apps/cli` builds. `core` imports
+nothing from `host`, and neither imports the window library.
+
 ```
-src/         the Host. Every file is one job.
-  main.ts          start-up: read the Registry, mint the token, supervise, listen.
-  cli.ts           the terminal: start, desktop, shelf, install, bind, unbind,
-                   service, and the Registry: add, remove, list, grant, revoke.
+packages/core/src/  what the command line and the Host share. Imports nothing
+                    from host.
   commands.ts      what the writing commands change, apart from how they are
                    typed and printed, so every refusal has one sentence.
-  setup.ts         firstmate setup: the conversation, and nothing else. Each
-                   step calls commands.ts.
-  prompt.ts        ask for text, yes or no, or numbers, over node:readline.
   official-plugins.ts the Official Plugins, as data: name, URL, one line,
                    and whether each calls other Plugins (ADR-0015).
   config.ts        FIRSTMATE_HOME, FIRSTMATE_PORT, the handshake and the Shelf.
@@ -113,6 +112,8 @@ src/         the Host. Every file is one job.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
                    a git URL, and run none of what lands.
+packages/host/src/  the Host. Every file is one job.
+  main.ts          start-up: read the Registry, mint the token, supervise, listen.
   host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
                    /notices.json,
                    /p/<name>/…, POST /p/<name>/rpc.
@@ -124,34 +125,45 @@ src/         the Host. Every file is one job.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
   notices.ts       hold the Notices for the Tray, and refuse a bad one.
-  desktop-state.ts the part that decides: where the Host is, and whether it is
-                   there. Imports nothing native, owns no window.
-  desktop.ts       the part that shows: the window, and the one dependency.
-  strip.ts         the chrome strip above the content view: the breadcrumb and
+apps/cli/           the npm package, @luan-afonso/firstmate. In 1.x it carries
+                    the Host and the window too.
+  src/cli.ts       the terminal: start, desktop, shelf, install, bind, unbind,
+                   service, and the Registry: add, remove, list, grant, revoke.
+  src/main.ts      the Host's entry point beside cli.ts, in a clone and in the
+                   build: start imports it, and the service unit names it.
+  src/setup.ts     firstmate setup: the conversation, and nothing else. Each
+                   step calls commands.ts.
+  src/prompt.ts    ask for text, yes or no, or numbers, over node:readline.
+  src/desktop-state.ts the part that decides: where the Host is, and whether
+                   it is there. Imports nothing native, owns no window.
+  src/desktop.ts   the part that shows: the window, and the one dependency.
+  src/strip.ts     the chrome strip above the content view: the breadcrumb and
                    the switcher, one file with no assets of its own. The Host
                    never serves it.
-  settings-view.ts the Settings View, the window's own page for FirstMate's
-                   settings, one file with no assets of its own. The Host never
-                   serves it either.
-  logon.ts         whether FirstMate starts at logon: one file in Startup.
-  service.ts       the Host as a systemd user service: write the unit from a
+  src/settings-view.ts the Settings View, the window's own page for
+                   FirstMate's settings, one file with no assets of its own.
+                   The Host never serves it either.
+  src/logon.ts     whether FirstMate starts at logon: one file in Startup.
+  src/service.ts   the Host as a systemd user service: write the unit from a
                    template of its own, and ask systemctl and loginctl.
-  taskbar.ts       the name Windows groups the taskbar button by, so that the
+  src/taskbar.ts   the name Windows groups the taskbar button by, so that the
                    button wears FirstMate's mark and not node.exe's.
-  hotkeys.ts       the PowerShell helper that holds the Shortcuts in Windows:
+  src/hotkeys.ts   the PowerShell helper that holds the Shortcuts in Windows:
                    one command per line in, one event per line out.
-  notice-helper.ts the PowerShell helper that shows Notices under FirstMate's
-                   own name and mark, and hears a click on one.
-tests/       one file per behaviour, plus fixtures/ and helpers/.
-icons/       the mark, running and stopped. The window wears it; the Tray
-             draws with both. Packed with the program.
+  src/notice-helper.ts the PowerShell helper that shows Notices under
+                   FirstMate's own name and mark, and hears a click on one.
+  icons/           the mark, running and stopped. The window wears it; the
+                   Tray draws with both. Packed with the program.
+  windows/         install and remove the logon task that holds the
+                   distribution up: three PowerShell scripts and the VBScript
+                   shim that starts one with no window. Packed with the
+                   program, so an npm install can run it too.
+  tsdown.config.ts the bundle, which runs on the publish path alone.
+tests/       one file per behaviour, plus fixtures/ and helpers/, for every
+             package at once.
 docs/adr/    the decisions that are expensive to reverse.
 docs/agents/ how an agent works in this repo. See "Agent skills" below.
 docs/brand/  the anchor, at the sizes GitHub asks for.
-windows/     install and remove the logon task that holds the distribution
-             up: three PowerShell scripts and the VBScript shim that starts
-             one with no window. Packed with the program, so an npm install
-             can run it too.
 ```
 
 ## Code style
@@ -192,7 +204,9 @@ What that shows, and what every file follows:
   inheritance, no framework.
 - `readonly` on every field of an exported type. Data in, data out.
 - Node built-ins carry the `node:` prefix. Local imports carry the `.ts`
-  extension, because Node runs the TypeScript directly.
+  extension, because Node runs the TypeScript directly. An import from another
+  package names the package and the file, with no extension:
+  `@firstmate/core/registry`.
 - Single quotes, semicolons, two-space indent, lines under 100 columns.
   Prettier owns the layout (`.prettierrc.json`); run `pnpm format` and do
   not argue with it. Markdown is left alone: prose line breaks are chosen by
@@ -210,7 +224,8 @@ What that shows, and what every file follows:
 and drives it over HTTP, exactly as a browser does.
 
 - **No test imports a module of the Host.** The one seam is
-  `tests/helpers/host.ts`, which spawns `src/main.ts` and returns `fetch`,
+  `tests/helpers/host.ts`, which spawns `packages/host/src/main.ts`, runs
+  `apps/cli/src/cli.ts`, and returns `fetch`,
   `raw`, `port`, `token`, `home` and `output()`. Keep it that way: it is what
   lets the whole inside of the Host be rewritten without touching a test.
 - A test asserts on what a browser and the Tray can see: status codes, headers,
@@ -253,7 +268,7 @@ and drives it over HTTP, exactly as a browser does.
 🚫 **Never**
 
 - Bind anything but `127.0.0.1` (ADR-0007), or weaken a check in
-  `src/security.ts` to make a test pass.
+  `packages/host/src/security.ts` to make a test pass.
 - Restart a Stopped Plugin. A broken Plugin stays visible instead of spinning
   in a restart loop.
 - Read or write a Plugin's data, or keep run history, logs or settings for it

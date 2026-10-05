@@ -25,7 +25,7 @@ import {
   type JsonRpcMessage,
   type PluginServer,
 } from './mcp.ts';
-import type { PluginRow } from './registry.ts';
+import type { PluginRow } from '@firstmate/core/registry';
 import type { PluginState } from './supervisor.ts';
 
 /** The method a Plugin Server calls another Plugin's tool with. */

@@ -1,5 +1,19 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/cli.ts", "tests/**/*.test.ts", "tests/helpers/no-webview.ts"],
-  "project": ["src/**/*.ts", "tests/**/*.ts"]
+  "includeEntryExports": true,
+  "workspaces": {
+    ".": {
+      "entry": ["tests/**/*.test.ts", "tests/helpers/no-webview.ts"],
+      "project": ["tests/**/*.ts"]
+    },
+    "apps/cli": {
+      "project": ["src/**/*.ts"]
+    },
+    "packages/core": {
+      "project": ["src/**/*.ts"]
+    },
+    "packages/host": {
+      "project": ["src/**/*.ts"]
+    }
+  }
 }

@@ -18,6 +18,8 @@ import { firstmate, makeHome, type CommandResult } from './helpers/host.ts';
 import { machine, type Machine } from './helpers/systemd.ts';
 
 const REPOSITORY = dirname(dirname(fileURLToPath(import.meta.url)));
+/** The root of the running program: the command line's own package. */
+const PROGRAM = join(REPOSITORY, 'apps', 'cli');
 const NO_SYSTEMD =
   'No systemd here, so the Host does not run as a service. Start it with `firstmate start`.';
 
@@ -42,11 +44,8 @@ test('service on writes the unit, enables the service and turns lingering on', a
   const unit = await readFile(m.unit, 'utf8');
   // The Node that ran the command, by its absolute path, because the service's
   // PATH has no nvm; and the Host entry point beside the running command line.
-  assert.match(
-    unit,
-    new RegExp(`^ExecStart="${process.execPath}" "${REPOSITORY}/src/main.ts"$`, 'm'),
-  );
-  assert.match(unit, new RegExp(`^WorkingDirectory=${REPOSITORY}$`, 'm'));
+  assert.match(unit, new RegExp(`^ExecStart="${process.execPath}" "${PROGRAM}/src/main.ts"$`, 'm'));
+  assert.match(unit, new RegExp(`^WorkingDirectory=${PROGRAM}$`, 'm'));
   for (const line of [
     'Restart=on-failure',
     'StartLimitIntervalSec=60',
@@ -206,7 +205,7 @@ test('service on refuses a Node older than 24', async (t) => {
   const m = await machine(t);
 
   const run = await new Promise<CommandResult>((done, fail) => {
-    const child = spawn(node, [join(REPOSITORY, 'src', 'cli.ts'), 'service', 'on'], {
+    const child = spawn(node, [join(PROGRAM, 'src', 'cli.ts'), 'service', 'on'], {
       env: { ...process.env, FIRSTMATE_HOME: m.home, NODE_NO_WARNINGS: '1', ...m.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -225,7 +224,7 @@ test('service on refuses a Node older than 24', async (t) => {
 
 /** The command that runs one of this program's own logon task scripts from Windows. */
 function logonCommand(script: string): string {
-  const path = join(REPOSITORY, 'windows', script).replaceAll('/', '\\');
+  const path = join(PROGRAM, 'windows', script).replaceAll('/', '\\');
   return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File \\\\wsl.localhost\\Debian${path}`;
 }
 
@@ -237,7 +236,7 @@ test('inside WSL, service on prints the command that installs the logon task', a
   assert.equal(on.code, 0, on.stderr);
   assert.ok(on.stdout.includes(`\n${logonCommand('install-logon-task.ps1')}\n`), on.stdout);
   // The script it names is really there, beside the running program.
-  await readFile(join(REPOSITORY, 'windows', 'install-logon-task.ps1'), 'utf8');
+  await readFile(join(PROGRAM, 'windows', 'install-logon-task.ps1'), 'utf8');
 });
 
 test('inside WSL, service off prints the command that removes the logon task', async (t) => {

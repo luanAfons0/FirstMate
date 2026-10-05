@@ -7,13 +7,13 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { existsSync } from 'node:fs';
-import { BIND_ADDRESS } from './config.ts';
+import { BIND_ADDRESS } from '@firstmate/core/config';
 import { indexPage, type PluginView } from './index-page.ts';
 import type { NoticesAfter } from './notices.ts';
-import type { PluginRow } from './registry.ts';
-import { inPluginOrder } from './settings.ts';
+import type { PluginRow } from '@firstmate/core/registry';
+import { inPluginOrder } from '@firstmate/core/settings';
 import { checkRequest, startedByOwnPage } from './security.ts';
-import { shortcutAddress, type Shortcut } from './shortcut.ts';
+import { shortcutAddress, type Shortcut } from '@firstmate/core/shortcut';
 import { serveStatic, webRoot } from './static-files.ts';
 import type { PluginState } from './supervisor.ts';
 import type { PluginServer } from './mcp.ts';

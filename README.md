@@ -33,7 +33,7 @@ From a clone instead, which is how you work on the Host itself:
 ```sh
 git clone https://github.com/luanAfons0/FirstMate.git
 cd FirstMate
-node src/main.ts
+node packages/host/src/main.ts
 ```
 
 Node 24 or newer, and nothing else. The Host imports nothing outside Node, and
@@ -142,15 +142,15 @@ contract: what the Host enforces, and what it only advises.
 ## Add a Plugin
 
 ```sh
-node src/cli.ts add <name> /absolute/path/to/the/directory
-node src/cli.ts install /absolute/path/to/the/directory [name]
-node src/cli.ts install https://example.com/someone/a-plugin.git [name]
-node src/cli.ts install worklog [name]
-node src/cli.ts remove <name>
-node src/cli.ts list
-node src/cli.ts grant <from> <to>
-node src/cli.ts revoke <from> <to>
-node src/cli.ts order [<name> <position>]
+node apps/cli/src/cli.ts add <name> /absolute/path/to/the/directory
+node apps/cli/src/cli.ts install /absolute/path/to/the/directory [name]
+node apps/cli/src/cli.ts install https://example.com/someone/a-plugin.git [name]
+node apps/cli/src/cli.ts install worklog [name]
+node apps/cli/src/cli.ts remove <name>
+node apps/cli/src/cli.ts list
+node apps/cli/src/cli.ts grant <from> <to>
+node apps/cli/src/cli.ts revoke <from> <to>
+node apps/cli/src/cli.ts order [<name> <position>]
 ```
 
 `install` is `add` for a Plugin you do not have yet. A directory is copied and
@@ -194,13 +194,13 @@ Plugin Page's own call is not a Tool Bus call and keeps its thirty seconds.
 ## Run the Host
 
 ```sh
-node src/main.ts
-node src/cli.ts start   # the same Host, from the command line
+node packages/host/src/main.ts
+node apps/cli/src/cli.ts start   # the same Host, from the command line
 ```
 
 It listens on `http://127.0.0.1:4747/` and on no other address. `start` boots
-the Host that `node src/main.ts` boots: the same environment variables move it,
-and it prints the same output. One command line does the whole job, so whoever
+the Host that `node packages/host/src/main.ts` boots: the same environment
+variables move it, and it prints the same output. One command line does the whole job, so whoever
 installs FirstMate can run what they installed.
 
 ## Configure it
@@ -224,8 +224,8 @@ The Shelf is the directory a fetched Plugin lands in. Say where it is, or move
 it:
 
 ```sh
-node src/cli.ts shelf                      # where a fetched Plugin lands
-node src/cli.ts shelf /absolute/directory  # move it, and remember it
+node apps/cli/src/cli.ts shelf                      # where a fetched Plugin lands
+node apps/cli/src/cli.ts shelf /absolute/directory  # move it, and remember it
 ```
 
 The directory has to be there already, and it may not be, hold, or lead to the
@@ -249,10 +249,10 @@ Plugin. The Tray holds it, and pressing it opens that address in a Popup: a
 small window with no frame, on top of every other window.
 
 ```sh
-node src/cli.ts bind Ctrl+Alt+N worklog new.html  # open /p/worklog/new.html
-node src/cli.ts bind Ctrl+Alt+W worklog           # open the Plugin Page
-node src/cli.ts unbind Ctrl+Alt+N
-node src/cli.ts list                              # the Shortcuts follow the Plugins
+node apps/cli/src/cli.ts bind Ctrl+Alt+N worklog new.html  # open /p/worklog/new.html
+node apps/cli/src/cli.ts bind Ctrl+Alt+W worklog           # open the Plugin Page
+node apps/cli/src/cli.ts unbind Ctrl+Alt+N
+node apps/cli/src/cli.ts list                              # the Shortcuts follow the Plugins
 ```
 
 The keys are one or more of `Ctrl`, `Alt`, `Shift` and `Win`, and one key: a
@@ -277,8 +277,8 @@ Every list of Plugins shows them in the Plugin Order: the Index Page,
 `/plugins.json`, the window's switcher and the Tray menu. You choose it.
 
 ```sh
-node src/cli.ts order            # every Plugin, with its position
-node src/cli.ts order worklog 1  # move worklog to the top
+node apps/cli/src/cli.ts order            # every Plugin, with its position
+node apps/cli/src/cli.ts order worklog 1  # move worklog to the top
 ```
 
 A position counts from 1 at the top, and the other Plugins keep their order. A
