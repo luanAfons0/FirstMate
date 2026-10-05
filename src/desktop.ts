@@ -1,7 +1,7 @@
 /**
  * The FirstMate window and the notification-area icon above it.
  *
- * This is the part that shows. It owns the window, the icon and the three views,
+ * This is the part that shows. It owns the window, the icon and the four views,
  * and it is the only file in FirstMate that imports the webview library. It
  * imports it when the subcommand runs rather than when the module loads, so
  * that every other command keeps working on a machine where the native binary
@@ -84,7 +84,15 @@ import { STATE_WORDS } from './index-page.ts';
 import { readLogon, setLogon } from './logon.ts';
 import { nameTheWindow } from './taskbar.ts';
 import { settingsPage, type Mover } from './settings-view.ts';
-import { stripPage, type Here, type StripView } from './strip.ts';
+import {
+  stripPage,
+  SWITCHER_LEFT,
+  SWITCHER_WIDTH,
+  switcherHeight,
+  switcherPage,
+  type Here,
+  type StripView,
+} from './strip.ts';
 
 /** The window's title. The chrome strip names what is open inside it. */
 const TITLE = 'FirstMate';
@@ -155,6 +163,7 @@ let shown:
       readonly strip: Webview;
       readonly content: Webview;
       readonly settings: Webview;
+      readonly switcher: Webview;
       readonly context: WebContext;
       readonly tray: TrayIcon;
       readonly popup: BrowserWindow;
@@ -219,7 +228,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   let plugins: Plugins = { kind: 'untold' };
   /** Whether the Host answered the last time it was asked. */
   let running = true;
-  /** Whether the switcher is open. While it is, the strip fills the window. */
+  /** Whether the switcher is open, below the breadcrumb and over the page. */
   let switching = false;
   /** Whether the Settings View is shown in place of the content view. */
   let setting = false;
@@ -240,7 +249,6 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   const stripView = (): StripView => ({
     here: here(),
     switcher: switching,
-    plugins,
     ...(fault === undefined ? {} : { fault }),
   });
 
@@ -248,6 +256,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
    *  thing again is not loaded again: loading it would lose the focus in it. */
   let stripSaid = stripPage(stripView());
   let settingsSaid = '';
+  let switcherSaid = '';
 
   const size = window.getInnerSize(true);
 
@@ -308,21 +317,43 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
   });
   settings.setWebviewVisibility(false);
 
+  // The switcher is made last, because the library draws the view made last on
+  // top of the others. It opens over the page below the breadcrumb, and the
+  // page under it is neither moved nor reloaded.
+  const switcher = window.createWebview({
+    html: '',
+    x: SWITCHER_LEFT,
+    y: STRIP,
+    width: SWITCHER_WIDTH,
+    height: switcherHeight(plugins),
+    webContext: context,
+    navigationHandler: asking,
+  });
+  switcher.setWebviewVisibility(false);
+
   /**
    * Put every view where it belongs. The library holds bounds rather than a
    * layout, so this runs whenever the window or what it shows changes.
    *
-   * No view is ever drawn over another. While the switcher is open the strip
-   * takes the whole window and the views below it are hidden, still loaded.
+   * The content view and the Settings View share one place, and one of the two
+   * is shown. The switcher is the one view drawn over another, and it is held
+   * inside the window, so a long list scrolls in it.
    */
   const layout = (): void => {
     const now = window.getInnerSize(true);
     const below = { x: 0, y: STRIP, width: now.width, height: Math.max(now.height - STRIP, 0) };
-    strip.setBounds({ x: 0, y: 0, width: now.width, height: switching ? now.height : STRIP });
+    strip.setBounds({ x: 0, y: 0, width: now.width, height: STRIP });
     content.setBounds(below);
     settings.setBounds(below);
-    content.setWebviewVisibility(!switching && !setting);
-    settings.setWebviewVisibility(!switching && setting);
+    switcher.setBounds({
+      x: SWITCHER_LEFT,
+      y: STRIP,
+      width: Math.max(Math.min(SWITCHER_WIDTH, now.width - 2 * SWITCHER_LEFT), 0),
+      height: Math.max(Math.min(switcherHeight(plugins), now.height - STRIP - SWITCHER_LEFT), 0),
+    });
+    content.setWebviewVisibility(!setting);
+    settings.setWebviewVisibility(setting);
+    switcher.setWebviewVisibility(switching);
   };
 
   /** Say the strip and the Settings View again. Each is a small page the
@@ -332,6 +363,13 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     if (said !== stripSaid) {
       stripSaid = said;
       strip.loadHtml(said);
+    }
+    if (switching) {
+      const list = switcherPage({ open, plugins });
+      if (list !== switcherSaid) {
+        switcherSaid = list;
+        switcher.loadHtml(list);
+      }
     }
     if (setting) {
       const page = settingsPage({
@@ -459,9 +497,12 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
       toTheBrowser();
     } else if (asked.kind === 'switcher' || asked.kind === 'switcher-close') {
       switching = asked.kind === 'switcher' && !switching;
+      // Written again on every open, so that its script puts the focus on the
+      // open Plugin each time.
+      switcherSaid = '';
       redraw();
       // The keys of the open switcher work at once, without a click into it.
-      if (switching) strip.focus();
+      if (switching) switcher.focus();
     } else if (asked.kind === 'open') {
       if (known(asked.name)?.hasPage === true) {
         show(pluginAddress(run, asked.name));
@@ -855,6 +896,7 @@ export async function openWindow(asked: Partial<Where>): Promise<number> {
     strip,
     content,
     settings,
+    switcher,
     context,
     tray,
     popup,

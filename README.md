@@ -409,10 +409,11 @@ them.
 in it. A Plugin Page is then a page of FirstMate's own rather than a tab among
 thirty others. A narrow strip above the page says where you are, as a
 breadcrumb: *FirstMate › worklog*. *FirstMate* goes back to the Plugin list.
-The last part opens the switcher, which lists every Plugin in the Plugin Order
-with its state; click one, or move with the arrow keys and press Enter, to open
-it. Esc, or a click anywhere else, closes the switcher. A Plugin with no Plugin
-Page is listed and not offered, as in the Tray menu. *Open in browser*
+The last part opens the switcher over the page, which lists every Plugin in
+the Plugin Order with its state; click one, or move with the arrow keys and
+press Enter, to open it. Esc, or a click anywhere else, closes the switcher. A
+Plugin with no Plugin Page is listed and not offered, as in the Tray menu.
+*Open in browser*
 gives the address the window shows, Plugin Page or Index Page, to your system
 browser with this run's token on it, so the page loads with no token to paste.
 That address may stay in the browser's history; the token in it works only on
