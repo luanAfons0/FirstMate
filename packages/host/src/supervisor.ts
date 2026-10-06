@@ -23,6 +23,7 @@ import { WSL_EXE } from '@firstmate/core/wsl';
 import { speak, type Answering, type PluginServer } from './mcp.ts';
 import { SEND_NOTICE, type Notices } from './notices.ts';
 import type { HeldPlugin } from '@firstmate/core/plugin-places';
+import type { PluginState, Restarted } from '@firstmate/core/plugin-state';
 import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */
@@ -54,15 +55,6 @@ const STOP_GRACE_MS = 5_000;
 /** The MCP version the Host asks for when it starts a Plugin Server. */
 const PROTOCOL_VERSION = '2025-06-18';
 
-/** What the Host knows about a Plugin's Plugin Server. */
-export type PluginState =
-  /** The Plugin Server is up and has answered the handshake. */
-  | 'running'
-  /** The Plugin Server is no longer running, or never started. */
-  | 'stopped'
-  /** The Plugin ships no Plugin Server at all. */
-  | 'no-plugin-server';
-
 /** The Plugin Servers of one run, and the way to change them or stop them all. */
 export type Supervisor = {
   /** Every Plugin the Host holds now, in the order the Registry gave them. */
@@ -87,13 +79,6 @@ export type Supervisor = {
    * killed, so that none outlives the Host that started it.
    */
   stopAll(): Promise<void>;
-};
-
-/** What became of a Plugin the operator restarted. */
-export type Restarted = {
-  readonly state: PluginState;
-  /** Why it is Stopped, when it is. */
-  readonly why?: string;
 };
 
 /**

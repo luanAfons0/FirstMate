@@ -13,12 +13,10 @@
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
+import { TOKEN_PARAMETER } from '@firstmate/core/runtime';
 
 /** The cookie the Host admits a browser with. It is host-only and per run. */
 const COOKIE_NAME = 'firstmate_token';
-
-/** The query parameter the token arrives on, once. */
-export const TOKEN_PARAMETER = 'token';
 
 /** What a request is checked against: this run's port and this run's token. */
 export type Doorstep = {

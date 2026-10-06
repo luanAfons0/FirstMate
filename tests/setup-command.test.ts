@@ -4,33 +4,54 @@
  * was printed, and the files written.
  */
 import assert from 'node:assert/strict';
-import { mkdir, readFile, realpath } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { hasGit, officialSources } from './helpers/git.ts';
 import { bootHostIn, firstmate, makeHome, until, type CommandResult } from './helpers/host.ts';
-import { binWith, machine, pathWith } from './helpers/systemd.ts';
+import { pathWith } from './helpers/path.ts';
+import { fakeWindows } from './helpers/windows.ts';
+import { fakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
 
 /**
- * One run of `setup` on a machine with no systemd: git is on `PATH`, and no
- * `systemctl` is, so no test here can reach the real one.
+ * One run of `setup` on a machine of the test's own: git is on `PATH`, and no
+ * Windows program is, so no test here reaches the real Windows.
  */
 async function setupIn(
   t: TestContext,
   home: string,
   input: string,
   env: NodeJS.ProcessEnv = {},
+  shelfAnswers = 1,
 ): Promise<CommandResult> {
-  return firstmate(home, ['setup'], { PATH: await pathWith(t, ['git']), ...env }, input);
+  // On Windows setup also asks for WSL distributions to add, after the Shelf,
+  // and Enter there adds none. Inside WSL a test that wants it says so.
+  const lines = input.split('\n');
+  const asked =
+    process.platform === 'win32'
+      ? [...lines.slice(0, shelfAnswers), '', ...lines.slice(shelfAnswers)]
+      : lines;
+  return firstmate(home, ['setup'], { PATH: await pathWith(t, ['git']), ...env }, asked.join('\n'));
 }
+
+/** A fake WSL, with a `wsl` Place for its Debian, which the Official Plugins run in. */
+async function debian(t: TestContext, home: string): Promise<Wsl> {
+  const wsl = await fakeWsl(t, ['Debian']);
+  const added = await firstmate(home, ['place', 'add', 'deb', 'wsl', 'Debian', wsl.root], wsl.env);
+  assert.equal(added.code, 0, added.stderr);
+  return wsl;
+}
+
+/** Where an Official Plugin lands in the Debian Place: its Shelf, inside the distribution. */
+const SHELF = '/home/mate/.firstmate/shelf';
 
 async function registry(
   home: string,
-): Promise<{ name: string; directory: string; grants: string[] }[]> {
+): Promise<{ name: string; place: string; directory: string; grants: string[] }[]> {
   try {
     return (
       JSON.parse(await readFile(join(home, 'registry.json'), 'utf8')) as {
-        plugins: { name: string; directory: string; grants: string[] }[];
+        plugins: { name: string; place: string; directory: string; grants: string[] }[];
       }
     ).plugins;
   } catch {
@@ -60,9 +81,6 @@ function answers(...lines: readonly string[]): string {
   return lines.map((line) => `${line}\n`).join('');
 }
 
-/** systemd is Linux only, so on Windows setup asks nothing about a service. */
-const LINUX_ONLY = process.platform === 'win32' && 'systemd is Linux only';
-
 test('Enter keeps the Shelf, and a run that changes nothing says nothing more', async (t) => {
   const home = await makeHome(t);
 
@@ -90,7 +108,7 @@ test('a bad Shelf is refused in the words shelf uses, and asked for again', asyn
   const shelf = await directory(home, 'plugins');
 
   const alone = await firstmate(home, ['shelf', 'relative/path']);
-  const run = await setupIn(t, home, answers('relative/path', shelf, ''));
+  const run = await setupIn(t, home, answers('relative/path', shelf, ''), {}, 2);
 
   assert.equal(run.code, 0, run.stderr);
   assert.equal(run.stderr, alone.stderr, 'one rule, one sentence');
@@ -130,39 +148,55 @@ test('setup takes nothing on the command line, and the help names it', async (t)
   assert.match(help.stdout, /firstmate setup/);
 });
 
-test('the Official Plugins chosen are fetched into the Shelf and registered', async (t) => {
-  if (!(await hasGit())) {
-    t.skip('this machine has no git to clone with');
-    return;
-  }
-  const env = await officialSources(t);
+test(
+  'the Official Plugins chosen are fetched into the Shelf of their Place',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    if (!(await hasGit())) {
+      t.skip('this machine has no git to clone with');
+      return;
+    }
+    const env = await officialSources(t);
+    const home = await makeHome(t);
+    const wsl = await debian(t, home);
+
+    const run = await setupIn(t, home, answers('', '1, 3', ''), { ...env, ...wsl.env });
+
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(run.stdout, / 1\. worklog +keeps what you work on/);
+    assert.match(run.stdout, / 2\. scheduler +calls one tool/);
+    assert.match(run.stdout, /fetching worklog from https:\/\/github\.com\/luanAfons0\/worklog/);
+    assert.ok(run.stdout.includes(`installed nexus at ${SHELF}/nexus, in deb`), run.stdout);
+    assert.match(run.stdout, /setup changed:\n {2}installed worklog\n {2}installed nexus\n/);
+    assert.deepEqual(
+      (await registry(home)).map((row) => [row.name, row.place, row.directory]),
+      [
+        ['worklog', 'deb', `${SHELF}/worklog`],
+        ['nexus', 'deb', `${SHELF}/nexus`],
+      ],
+    );
+
+    // A second run shows them as installed, and offers only what is left.
+    const again = await setupIn(t, home, answers('', '', ''), { ...env, ...wsl.env });
+    assert.equal(again.code, 0, again.stderr);
+    assert.match(again.stdout, /worklog +keeps what you work on.* \(installed\)/);
+    assert.match(again.stdout, / 1\. scheduler/);
+    assert.doesNotMatch(again.stdout, / 2\./);
+    assert.doesNotMatch(again.stdout, /setup changed/);
+  },
+);
+
+test('an Official Plugin with no Place to run in is not fetched, and setup says why', async (t) => {
   const home = await makeHome(t);
-  const shelf = await directory(home, 'plugins');
 
-  const run = await setupIn(t, home, answers(shelf, '1, 3', ''), env);
+  const run = await setupIn(t, home, answers('', '1', ''));
 
-  assert.equal(run.code, 0, run.stderr);
-  assert.match(run.stdout, / 1\. worklog +keeps what you work on/);
-  assert.match(run.stdout, / 2\. scheduler +calls one tool/);
-  assert.match(run.stdout, /fetching worklog from https:\/\/github\.com\/luanAfons0\/worklog/);
-  assert.ok(run.stdout.includes(`installed nexus at ${join(shelf, 'nexus')}`), run.stdout);
-  assert.match(run.stdout, /setup changed:\n.*\n {2}installed worklog\n {2}installed nexus\n/);
-  assert.doesNotMatch(run.stdout, /restart the Host/, 'with no Host running, nothing more');
-  assert.deepEqual(
-    (await registry(home)).map((row) => [row.name, row.directory]),
-    [
-      ['worklog', join(shelf, 'worklog')],
-      ['nexus', join(shelf, 'nexus')],
-    ],
+  assert.equal(run.code, 1, 'a step failed, and the exit code says so');
+  assert.match(
+    run.stderr,
+    /worklog runs in a wsl Place, and there is none\. Add one, then run setup again\./,
   );
-
-  // A second run shows them as installed, and offers only what is left.
-  const again = await setupIn(t, home, answers('', '', ''), env);
-  assert.equal(again.code, 0, again.stderr);
-  assert.match(again.stdout, /worklog +keeps what you work on.* \(installed\)/);
-  assert.match(again.stdout, / 1\. scheduler/);
-  assert.doesNotMatch(again.stdout, / 2\./);
-  assert.doesNotMatch(again.stdout, /setup changed/);
+  assert.deepEqual(await registry(home), []);
 });
 
 test('a Plugin registered from elsewhere under an official name shows as installed', async (t) => {
@@ -189,53 +223,67 @@ test('Enter installs nothing, and a number off the list is asked again', async (
   assert.deepEqual(await registry(home), []);
 });
 
-test('a clone that fails names the Plugin, and the others are still installed', async (t) => {
-  if (!(await hasGit())) {
-    t.skip('this machine has no git to clone with');
-    return;
-  }
-  const env = await officialSources(t, ['worklog', 'nexus']);
-  const home = await makeHome(t);
+test(
+  'a clone that fails names the Plugin, and the others are still installed',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    if (!(await hasGit())) {
+      t.skip('this machine has no git to clone with');
+      return;
+    }
+    const env = await officialSources(t, ['worklog', 'nexus']);
+    const home = await makeHome(t);
+    const wsl = await debian(t, home);
 
-  const run = await setupIn(t, home, answers('', '1 2 3', ''), env);
+    const run = await setupIn(t, home, answers('', '1 2 3', ''), { ...env, ...wsl.env });
 
-  assert.equal(run.code, 1, 'a step failed, and the exit code says so');
-  assert.match(run.stderr, /could not install scheduler: git could not clone/);
-  assert.deepEqual(
-    (await registry(home)).map((row) => row.name),
-    ['worklog', 'nexus'],
-  );
-});
+    assert.equal(run.code, 1, 'a step failed, and the exit code says so');
+    assert.match(run.stderr, /could not install scheduler: git could not clone/);
+    assert.deepEqual(
+      (await registry(home)).map((row) => row.name),
+      ['worklog', 'nexus'],
+    );
+  },
+);
 
-test('a Plugin that calls others is offered Grants to every other Plugin', async (t) => {
-  if (!(await hasGit())) {
-    t.skip('this machine has no git to clone with');
-    return;
-  }
-  const env = await officialSources(t);
-  const home = await makeHome(t);
-  const mine = await directory(home, 'mine');
-  await firstmate(home, ['add', 'mine', mine]);
+test(
+  'a Plugin that calls others is offered Grants to every other Plugin',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    if (!(await hasGit())) {
+      t.skip('this machine has no git to clone with');
+      return;
+    }
+    const env = await officialSources(t);
+    const home = await makeHome(t);
+    const wsl = await debian(t, home);
+    const mine = await directory(home, 'mine');
+    await firstmate(home, ['add', 'mine', mine]);
 
-  // Install scheduler and worklog, then let scheduler call mine.
-  const run = await setupIn(t, home, answers('', '1 2', '1', ''), env);
+    // Install scheduler and worklog, then let scheduler call mine.
+    const run = await setupIn(t, home, answers('', '1 2', '1', ''), { ...env, ...wsl.env });
 
-  assert.equal(run.code, 0, run.stderr);
-  assert.match(run.stdout, /The Plugins scheduler may call:\n {2} 1\. mine\n {2} 2\. worklog\n/);
-  assert.match(run.stdout, /granted scheduler the right to call mine's tools/);
-  assert.match(run.stdout, / {2}scheduler may call mine\n/);
-  const rows = await registry(home);
-  assert.deepEqual(rows.find((row) => row.name === 'scheduler')?.grants, ['mine']);
-  assert.deepEqual(rows.find((row) => row.name === 'worklog')?.grants, [], 'no Grant for worklog');
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(run.stdout, /The Plugins scheduler may call:\n {2} 1\. mine\n {2} 2\. worklog\n/);
+    assert.match(run.stdout, /granted scheduler the right to call mine's tools/);
+    assert.match(run.stdout, / {2}scheduler may call mine\n/);
+    const rows = await registry(home);
+    assert.deepEqual(rows.find((row) => row.name === 'scheduler')?.grants, ['mine']);
+    assert.deepEqual(
+      rows.find((row) => row.name === 'worklog')?.grants,
+      [],
+      'no Grant for worklog',
+    );
 
-  // A second run shows the Grant given, offers the rest, and Enter gives none.
-  const again = await setupIn(t, home, answers('', '', '', ''), env);
-  assert.equal(again.code, 0, again.stderr);
-  assert.match(again.stdout, / {6}mine \(granted\)\n {2} 1\. worklog\n/);
-  assert.deepEqual((await registry(home)).find((row) => row.name === 'scheduler')?.grants, [
-    'mine',
-  ]);
-});
+    // A second run shows the Grant given, offers the rest, and Enter gives none.
+    const again = await setupIn(t, home, answers('', '', '', ''), { ...env, ...wsl.env });
+    assert.equal(again.code, 0, again.stderr);
+    assert.match(again.stdout, / {6}mine \(granted\)\n {2} 1\. worklog\n/);
+    assert.deepEqual((await registry(home)).find((row) => row.name === 'scheduler')?.grants, [
+      'mine',
+    ]);
+  },
+);
 
 test('setup never takes a Grant back, and asks nothing of a Plugin that calls none', async (t) => {
   const home = await makeHome(t);
@@ -324,88 +372,123 @@ test('Enter at the keys binds nothing, and an empty Registry asks nothing', asyn
   assert.equal((await settings(home)).shortcuts, undefined);
 });
 
-const INACTIVE = { systemctl: [{ when: '--user is-active', code: 3 }] };
-
 /** A Registry where `setup` has one Grant to offer, so it can change the Registry. */
 async function schedulerAndWorklog(home: string): Promise<void> {
   await firstmate(home, ['add', 'scheduler', await directory(home, 'scheduler')]);
   await firstmate(home, ['add', 'worklog', await directory(home, 'worklog')]);
 }
 
-test(
-  'with no systemd, setup says so in the words service uses, and goes on',
-  { skip: LINUX_ONLY },
-  async (t) => {
-    const home = await makeHome(t);
-    const alone = await firstmate(home, ['service', 'on'], { PATH: await binWith(t, []) });
-
-    const run = await setupIn(t, home, answers('', ''));
-
-    assert.equal(run.code, 0, run.stderr);
-    assert.ok(run.stdout.includes(alone.stderr), 'one sentence, in both places');
-    assert.doesNotMatch(run.stdout, /Run the Host as a systemd user service\?/);
-  },
-);
-
-test(
-  'yes to the service installs it as service on does, and needs no restart',
-  { skip: LINUX_ONLY },
-  async (t) => {
-    const m = await machine(t, INACTIVE);
-    const home = await makeHome(t);
-    await schedulerAndWorklog(home);
-
-    const run = await setupIn(t, home, answers('', '', '1', '', 'y'), m.env);
-
-    assert.equal(run.code, 0, run.stderr);
-    assert.ok(run.stdout.includes(`installed ${m.unit}`), run.stdout);
-    assert.match(await readFile(m.unit, 'utf8'), /^ExecStart=/m);
-    const calls = await m.calls();
-    assert.ok(calls.includes('systemctl --user enable --now firstmate.service'), calls.join('\n'));
-    assert.ok(calls.includes('loginctl enable-linger mate'));
-    assert.match(run.stdout, / {2}the Host runs as a systemd user service\n/);
-    assert.doesNotMatch(run.stdout, /Restart the Host now/, 'a service that just started is fresh');
-    assert.doesNotMatch(run.stdout, /restart the Host to pick it up/);
-  },
-);
-
-test('no to the service installs nothing', { skip: LINUX_ONLY }, async (t) => {
-  const m = await machine(t, INACTIVE);
+test('inside WSL, setup adds a distribution as a Place', { skip: NO_FAKE_WSL }, async (t) => {
   const home = await makeHome(t);
+  const wsl = await fakeWsl(t, ['Debian']);
 
-  const run = await setupIn(t, home, answers('', '', 'n'), m.env);
+  const run = await setupIn(t, home, answers('', 'Nope', 'Debian', '', ''), {
+    ...wsl.env,
+    WSL_DISTRO_NAME: 'Debian',
+  });
 
   assert.equal(run.code, 0, run.stderr);
-  assert.match(run.stdout, /Run the Host as a systemd user service\? \[Y\/n\]/);
-  await assert.rejects(readFile(m.unit, 'utf8'), 'no unit is written');
-  assert.ok(!(await m.calls()).some((call) => call.includes('enable')));
+  assert.match(run.stdout, /The Places:\n {2}local {2}\(local\)\n/);
+  assert.match(run.stderr, /the distribution Nope did not answer/, 'a refusal asks again');
+  assert.match(run.stdout, /added the wsl Place debian/);
+  const places = JSON.parse(await readFile(join(home, 'settings.json'), 'utf8')).places;
+  assert.deepEqual(
+    places.map((place: { name: string; distribution: string }) => [place.name, place.distribution]),
+    [['debian', 'Debian']],
+  );
+});
+
+test(
+  'setup offers to import a 1.x install, and imports it on yes',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    const home = await makeHome(t);
+    const wsl = await debian(t, home);
+    const oneX = join(wsl.root, wsl.home, '.firstmate');
+    await mkdir(oneX, { recursive: true });
+    await writeFile(
+      join(oneX, 'registry.json'),
+      JSON.stringify({
+        plugins: [{ name: 'worklog', directory: '/home/mate/.worklog', grants: [] }],
+      }),
+    );
+
+    const run = await setupIn(t, home, answers('', 'y', '', ''), wsl.env);
+
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(run.stdout, /deb holds a 1\.x install\. Import it\? \[Y\/n\]/);
+    assert.match(run.stdout, /imported worklog at \/home\/mate\/\.worklog, in deb/);
+    assert.match(run.stdout, / {2}imported 1 Plugin\(s\) from deb\n/);
+
+    const again = await setupIn(t, home, answers('', '', ''), wsl.env);
+    assert.doesNotMatch(
+      again.stdout,
+      /holds a 1\.x install/,
+      'a Place with Plugins is not asked again',
+    );
+  },
+);
+
+test(
+  'with the App installed, setup asks whether it starts at logon',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    const home = await makeHome(t);
+    const windows = await fakeWindows(t);
+    windows.install(windows.version);
+    const env = { ...windows.env, PATH: `${windows.env['PATH']}:${process.env['PATH']}` };
+
+    const no = await setupIn(t, home, answers('', '', '', 'n'), env);
+    assert.equal(no.code, 0, no.stderr);
+    assert.match(no.stdout, /Start FirstMate at logon\? \[y\/N\]/);
+    assert.ok(!(await windows.calls()).some((call) => call.startsWith('reg.exe add')));
+
+    const yes = await setupIn(t, home, answers('', '', '', 'y'), env);
+    assert.equal(yes.code, 0, yes.stderr);
+    assert.match(yes.stdout, / {2}FirstMate starts at logon\n/);
+    const added = (await windows.calls()).find((call) => call.startsWith('reg.exe add'));
+    assert.match(
+      added ?? '',
+      /^reg\.exe add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run \/v FirstMate \/t REG_SZ \/d "C:\\.*\\FirstMate\.exe" --at-logon \/f$/,
+    );
+
+    const once = await setupIn(t, home, answers('', '', ''), env);
+    assert.doesNotMatch(once.stdout, /Start FirstMate at logon/, 'it is on, so it is not asked');
+  },
+);
+
+test('with no App installed, setup says how to install it', { skip: NO_FAKE_WSL }, async (t) => {
+  const home = await makeHome(t);
+  const windows = await fakeWindows(t);
+  const env = { ...windows.env, PATH: `${windows.env['PATH']}:${process.env['PATH']}` };
+
+  const run = await setupIn(t, home, answers('', '', ''), env);
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stdout, /the App is not installed yet\. Run firstmate desktop to install it\./);
+  assert.doesNotMatch(run.stdout, /Start FirstMate at logon/);
 });
 
 test('a run that changes the Registry reloads the running Host, and asks nothing', async (t) => {
-  const m = await machine(t);
   const home = await makeHome(t);
   await schedulerAndWorklog(home);
   const host = await bootHostIn(t, home);
 
-  const run = await setupIn(t, home, answers('', '', '1', ''), m.env);
+  const run = await setupIn(t, home, answers('', '', '1', ''));
 
   assert.equal(run.code, 0, run.stderr);
-  assert.doesNotMatch(run.stdout, /Run the Host as a systemd user service\?/);
   assert.doesNotMatch(run.stdout, /Restart the Host/);
   assert.match(run.stdout, / {2}scheduler may call worklog\n/);
-  assert.ok(!(await m.calls()).some((call) => call.includes('restart')), 'no restart');
   await until(host, /reloaded 2 Plugin\(s\)/);
 });
 
 test('setup never asks to restart the Host', async (t) => {
-  const m = await machine(t);
   const home = await makeHome(t);
   await firstmate(home, ['add', 'alpha', await directory(home, 'alpha')]);
 
-  const run = await setupIn(t, home, answers('', '', 'Ctrl+Alt+A', '1', '', ''), m.env);
+  const run = await setupIn(t, home, answers('', '', 'Ctrl+Alt+A', '1', '', ''));
 
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, /bound Ctrl\+Alt\+A/);
   assert.doesNotMatch(run.stdout, /Restart the Host now/);
-  assert.ok(!(await m.calls()).some((call) => call.includes('restart')));
 });

@@ -1,7 +1,7 @@
 {
   "name": "@luan-afonso/firstmate",
   "version": "1.4.0",
-  "description": "A local plugin host: one process that gives any Plugin a process, a page and an address.",
+  "description": "The FirstMate command line: install the App, and manage its Plugins, Places and settings.",
   "license": "MIT",
   "keywords": [
     "plugin-host",
@@ -28,20 +28,14 @@
     "firstmate": "dist/cli.js"
   },
   "files": [
-    "dist",
-    "icons",
-    "windows"
+    "dist"
   ],
   "scripts": {
     "build": "tsdown --logLevel warn",
     "prepack": "pnpm build && node -e \"for (const f of ['README.md', 'LICENSE.md']) require('node:fs').copyFileSync('../../' + f, f)\""
   },
-  "dependencies": {
-    "@webviewjs/webview": "^0.4.6"
-  },
   "devDependencies": {
     "@firstmate/core": "workspace:*",
-    "@firstmate/host": "workspace:*",
     "tsdown": "^0.23.0"
   }
 }

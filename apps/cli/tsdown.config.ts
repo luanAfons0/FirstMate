@@ -23,7 +23,7 @@ import { defineConfig } from 'tsdown';
 
 // biome-ignore lint/style/noDefaultExport: tsdown reads its config from the default export.
 export default defineConfig({
-  entry: ['src/cli.ts', 'src/main.ts'],
+  entry: ['src/cli.ts'],
   format: 'esm',
   platform: 'node',
   outDir: 'dist',

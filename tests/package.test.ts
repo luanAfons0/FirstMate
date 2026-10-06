@@ -66,13 +66,12 @@ test('the package holds the built output, the README and the licence', async () 
   const files = await packed;
 
   assert.ok(files.includes('dist/cli.js'), 'the command line, built');
-  assert.ok(files.includes('dist/main.js'), 'the Host, built, beside it');
   assert.ok(files.includes('README.md'));
   assert.ok(files.includes('LICENSE.md'));
   assert.ok(files.includes('package.json'));
 });
 
-test('the package carries core and host inside the bundle', async () => {
+test('the package carries core inside the bundle, and depends on nothing', async () => {
   const code = await builtCode();
 
   // Neither is published, so an import of either would fail on every install.
@@ -82,17 +81,24 @@ test('the package carries core and host inside the bundle', async () => {
   const manifest = JSON.parse(await readFile(join(PACKAGE, 'package.json'), 'utf8')) as {
     dependencies?: Readonly<Record<string, string>>;
   };
-  assert.deepEqual(Object.keys(manifest.dependencies ?? {}), ['@webviewjs/webview']);
+  assert.deepEqual(Object.keys(manifest.dependencies ?? {}), [], 'npx pulls nothing else');
 });
 
-test('no part of the package loads the 1.x window', async () => {
+test('the package holds no Host and no window', async () => {
+  const files = await packed;
   const code = await builtCode();
 
-  // firstmate desktop installs the App now (ADR-0023), and nothing reaches the
-  // 1.x window. Its library stays a dependency until #145 takes both out.
+  // The App holds the Host and the window, and the package is the command
+  // line alone (ADR-0024). These names belong to the Host's own source.
+  assert.ok(!files.includes('dist/main.js'), 'no Host entry point');
   for (const [path, text] of code) {
     assert.ok(!text.includes('@webviewjs/webview'), `${path} loads the window library`);
+    for (const host of ['superviseAll', 'openToolBus', 'keepLog', 'startHost']) {
+      assert.ok(!text.includes(host), `${path} carries the Host's ${host}`);
+    }
   }
+  assert.ok(!files.some((file) => file.startsWith('windows/')), 'no logon scripts');
+  assert.ok(!files.some((file) => file.startsWith('icons/')), 'no Tray marks');
 });
 
 test('the command line reads its own version beside the bundle', async () => {
@@ -121,21 +127,6 @@ test('every package in the workspace carries one version', async () => {
   }
 
   assert.equal(new Set(Object.values(versions)).size, 1, JSON.stringify(versions));
-});
-
-test('the package holds the Windows logon task, so an npm install can hold WSL up', async () => {
-  const files = await packed;
-
-  // `firstmate service on` prints the command that runs these from where the
-  // package is, so they have to be there.
-  for (const file of [
-    'install-logon-task.ps1',
-    'uninstall-logon-task.ps1',
-    'hold-distribution.ps1',
-    'firstmate-hidden.vbs',
-  ]) {
-    assert.ok(files.includes(`windows/${file}`), file);
-  }
 });
 
 test('the package holds nothing a stranger has no use for', async () => {

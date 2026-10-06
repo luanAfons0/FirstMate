@@ -26,7 +26,7 @@ import {
   type PluginServer,
 } from './mcp.ts';
 import type { PluginRow } from '@firstmate/core/registry';
-import type { PluginState } from './supervisor.ts';
+import type { PluginState } from '@firstmate/core/plugin-state';
 
 /** The method a Plugin Server calls another Plugin's tool with. */
 const CALL_TOOL = 'firstmate/tools/call';

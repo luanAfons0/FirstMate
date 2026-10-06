@@ -16,19 +16,27 @@ to build a runtime of its own.
 
 ## Install it
 
+FirstMate is an App for Windows: one program that holds the Host, the Tray and
+the window. Install it with the command line, from Windows or from inside WSL:
+
 ```sh
-npx @luan-afonso/firstmate start
+npx @luan-afonso/firstmate desktop
 ```
 
-That is the whole of it. The Host listens on `http://127.0.0.1:4747/` and
-prints the address to open, token and all. To keep the command around:
+`desktop` downloads the App installer of its own version from the GitHub
+Release, checks its SHA-256, installs it for you alone with no administrator,
+and opens it ([The App](#the-app)). The npm package is the command line and
+nothing more: it holds no Host
+([ADR-0024](docs/adr/0024-the-npm-package-is-the-command-line-only.md)). To keep
+the command around:
 
 ```sh
 npm install -g @luan-afonso/firstmate
-firstmate start
+firstmate desktop
 ```
 
-From a clone instead, which is how you work on the Host itself:
+From a clone instead, which is how you work on FirstMate itself, the Host runs
+on plain Node 24 with no build step:
 
 ```sh
 git clone https://github.com/luanAfons0/FirstMate.git
@@ -36,9 +44,8 @@ cd FirstMate
 node packages/host/src/main.ts
 ```
 
-Node 24 or newer, and nothing else. The Host imports nothing outside Node, and
-a clone needs no build step. The FirstMate window is the App, which
-`firstmate desktop` installs ([The App](#the-app)).
+Coming from 1.x? See [Moving from 1.x](#moving-from-1x) and the
+[2.0.0 release notes](docs/releases/2.0.0.md).
 
 ## Set it up
 
@@ -48,29 +55,33 @@ firstmate setup
 
 `setup` asks a few questions in the terminal and does what you answer, with the
 same code the plain commands use, so every step is also a command of its own.
-It asks where the Shelf is, and Enter keeps the one in force. A path it refuses
-is refused in the words `firstmate shelf` uses, and the question comes again.
+It asks, in order:
 
-Then it lists the [Official Plugins](#official-plugins), each with one line
-about it, and fetches the ones you choose by number: `1 3` or `1, 3`, and Enter
-for none. One already in the Registry, under that Plugin Name, is marked
-installed and is not offered. A clone that fails names the Plugin and says why,
-and the others are still fetched.
+1. **The Shelf** of this machine's Place. Enter keeps the one in force. A path
+   it refuses is refused in the words `firstmate shelf` uses, and the question
+   comes again.
+2. **Places.** On Windows and inside WSL, it shows the Places and asks for WSL
+   distributions to add as Places, one after another, until Enter. A
+   distribution's Place is named after it, as `debian` for `Debian`.
+3. **The import.** For each `wsl` Place that holds a 1.x install and no Plugin
+   yet, it asks whether to bring it across, as `firstmate import` does.
+4. **The [Official Plugins](#official-plugins)**, each with one line about it.
+   It fetches the ones you choose by number: `1 3` or `1, 3`, and Enter for
+   none. Each goes into a Place it runs in: the only one, or the one you pick.
+   One already in the Registry is marked installed and is not offered, one with
+   no Place to run in is not fetched and `setup` says why, and a clone that
+   fails names the Plugin and the others are still fetched.
+5. **Grants**, for each installed Official Plugin that calls others, such as
+   `scheduler`. Every other Plugin is on the list; a Grant already given is
+   shown and not offered. `setup` gives Grants and never takes one back.
+6. **Shortcuts**, one after another: the keys, the Plugin by number, and the
+   path, where `/` is the Plugin Page. Enter at the keys ends the step.
+7. **Start at logon**, where the App is installed and does not start at logon
+   yet. It is off until you say yes. Where the App is not installed, `setup`
+   says to run `firstmate desktop`.
 
-For each installed Official Plugin that calls other Plugins, such as
-`scheduler`, it asks which Plugins it may call, and gives those Grants. Every
-Plugin in the Registry but the caller is on the list; a Grant already given is
-shown and not offered. `setup` gives Grants and never takes one back.
-
-Then it shows the Shortcuts bound now and asks for new ones, one after
-another: the keys, the Plugin by number, and the path, where `/` is the Plugin
-Page. Keys and paths are checked as `bind` checks them. Enter at the keys ends
-the step. The Tray picks the new Shortcuts up with no restart.
-
-Last, when the Host does not run as a service yet, it asks whether it should,
-and on yes does what `firstmate service on` does. Where there is no systemd it
-says so and goes on. When a Host runs and this run changed something, `setup`
-asks it to reload, as every plain command does, and asks you nothing.
+When a Host runs and this run changed something, `setup` asks it to reload, as
+every plain command does, and asks you nothing.
 
 Each answer is written when it is given, so Ctrl-C keeps the steps that
 finished. `setup` never removes anything, so it is safe to run again. A script
@@ -84,22 +95,18 @@ changed, and nothing when nothing changed.
 
 Evidence, not a promise. "Proved" means someone has run it.
 
-| Platform        | Host and command line | Plugin Server    | Service           | Tray      |
-| --------------- | --------------------- | ---------------- | ----------------- | --------- |
-| WSL Debian      | proved                | proved           | proved, systemd   | proved    |
-| Linux, native   | should work, untried  | should work, untried | should work, untried | not built |
-| macOS           | should work, untried  | should work, untried | not built      | not built |
-| Windows, native | proved by CI          | proved by CI, from `mcp.cmd` or `mcp.exe` | not built | not built |
+| Platform        | App         | Host          | Plugin Server                        | Command line |
+| --------------- | ----------- | ------------- | ------------------------------------ | ------------ |
+| Windows         | proved      | proved        | proved, from `mcp.cmd` or `mcp.exe`  | proved       |
+| WSL, as a Place | —           | —             | proved, through `wsl.exe`            | proved       |
+| Linux, native   | not built   | proved by CI  | proved by CI                         | proved by CI |
+| macOS           | not built   | should work, untried | should work, untried          | should work, untried |
 
-**Native Windows runs a Plugin Server from `mcp.cmd` or `mcp.exe`.** Windows
-reads no shebang, so a Plugin with only the shell form `mcp` is Stopped there,
-with one sentence that names the file it needs. The Host still serves that
-Plugin's `web/` directory byte for byte, so its Plugin Page works (ADR-0019).
-
-The service is a systemd unit, so it is Linux only. The Tray is a Windows
-program and reads the runtime file over a `\\wsl.localhost\` path, so it is
-WSL-bound by construction. Neither is a judgement about the other platforms;
-nobody has written those halves (ADR-0007).
+**The App is Windows only** (ADR-0020). A Plugin in a `wsl` Place keeps its
+`mcp` file and runs inside its distribution (ADR-0021). On Windows itself a
+Plugin Server starts from `mcp.cmd` or `mcp.exe`, because Windows reads no
+shebang (ADR-0019). The Host runs on plain Node anywhere, which is how the tests
+run it; only the App, the Tray and the window are Windows programs.
 
 A Plugin is a directory and nothing more. Put a `web/` folder in it and the Host
 serves it as a Plugin Page. Put an executable named `mcp` in it and the Host
@@ -321,13 +328,12 @@ refusal from another without reading the sentence:
 
 ```sh
 node packages/host/src/main.ts
-node apps/cli/src/cli.ts start   # the same Host, from the command line
 ```
 
-It listens on `http://127.0.0.1:4747/` and on no other address. `start` boots
-the Host that `node packages/host/src/main.ts` boots: the same environment
-variables move it, and it prints the same output. One command line does the whole job, so whoever
-installs FirstMate can run what they installed.
+The App runs the Host in its own process. From a clone, this runs the same Host
+on plain Node, which is how you work on it and how every test runs it. It
+listens on `http://127.0.0.1:4747/` and on no other address, and the same
+environment variables move it.
 
 ## The App
 
@@ -564,101 +570,9 @@ check it failed.
 
 ## Keep it running
 
-The Host is a systemd user service inside WSL Debian, with a Windows Task
-Scheduler entry at logon that starts WSL and holds the distribution up. Both
-halves, with the exact commands to install and to remove them, are in
-[`docs/deploy.md`](docs/deploy.md).
-
-```sh
-firstmate service on                # install and start it
-journalctl --user -u firstmate -f   # read it
-firstmate service off               # remove it
-```
-
-Inside WSL, `firstmate service on` also prints the one `powershell.exe` command
-that installs the Windows logon task from where FirstMate is, whether that is
-the npm install or a clone, and `firstmate service off` prints the one that
-removes it. Run it once, from Windows.
-
-## Open it from Windows
-
-This is the 1.x window. In 2.0, `firstmate desktop` installs the App instead
-([The App](#the-app)), and no command opens this window any more.
-
-The Tray is FirstMate's Windows program. It runs on Windows, where the desktop
-is, while the Host and every Plugin Server stay in WSL Debian. The two talk over
-loopback, which WSL already forwards, so nothing new carries traffic between
-them.
-
-The window is FirstMate's own, and it shows the Index Page. A Plugin Page is then a page of FirstMate's own rather than a tab among
-thirty others. A narrow strip above the page says where you are, as a
-breadcrumb: *FirstMate › worklog*. *FirstMate* goes back to the Plugin list.
-The last part opens the switcher over the page, which lists every Plugin in
-the Plugin Order with its state; click one, or move with the arrow keys and
-press Enter, to open it. Esc, or a click anywhere else, closes the switcher. A
-Plugin with no Plugin Page is listed and not offered, as in the Tray menu.
-*Open in browser*
-gives the address the window shows, Plugin Page or Index Page, to your system
-browser with this run's token on it, so the page loads with no token to paste.
-That address may stay in the browser's history; the token in it works only on
-`127.0.0.1` and only until the Host restarts. One Plugin Page is open at a time, so
-leaving one and coming back loads it again.
-
-The gear at the right of the strip opens the Settings View in place of the page,
-and the gear again, or Esc, puts it away with the page as you left it. It lists
-the Plugins in the Plugin Order: drag one, or use its arrows, to move it. The
-window moves it by running `firstmate order` inside the distribution, with the
-Node and the program the service runs the Host with, so it needs the service
-installed (`firstmate service on`). It also turns start at logon on and off and
-restarts the Host, as the Tray menu does, and it shows the Shelf, the Shortcuts
-and the Grants with the command that changes each. Those three are changed from
-a terminal alone. The Host does not serve the strip or the Settings View, and no
-Plugin Page can reach either.
-
-While it runs, FirstMate is in the notification area. The icon shows whether the
-Host is running, and its tooltip names the state and the port. Clicking it opens
-the window; closing the window hides it and leaves the icon. The menu opens the
-window, lists every Plugin the Host reports, starts or restarts the Host,
-toggles start at logon, and quits. A Plugin that ships no Plugin Page is listed
-and is not offered, and a Stopped Plugin is still listed. A Host that will not
-answer disables the list rather than showing it as empty.
-
-While it runs, it also holds the Shortcuts in all of Windows, and picks up a
-Shortcut you `bind` or `unbind` within a few seconds, with no restart. Pressing
-one opens its address in a Popup at the center of the screen, on top of every
-other window, with the focus in it, whether the FirstMate window is shown or
-hidden. The Popup has no frame, asks Windows for no taskbar button, and loads
-its page fresh every time. It hides when it loses focus, on Esc, on its own
-Shortcut pressed again, and when its page goes to any address other than its
-own. That last one is refused, so the Popup never shows a second page, and it
-is how a Plugin Page says it is finished: after a save, go to `./`. Esc is held
-only while the Popup is shown, and works as always everywhere else.
-
-The Tray asks Windows for exactly the keys you bound, with `RegisterHotKey`,
-through a small PowerShell helper, and sees no other key. A key another program
-already holds, and a press while the Host is not running, are each said in a
-Windows pop-up.
-
-It also shows each Notice a Plugin Server sends, and the Host's own Notice when
-a Plugin goes Stopped, as a Windows pop-up named FirstMate and wearing its mark.
-A click opens the Notice's address in the FirstMate window. A Tray that starts
-late shows no Notice sent before it started
-([ADR-0014](docs/adr/0014-a-notice-travels-on-the-pipe-and-the-poll.md)).
-
-Start at logon is one file, `FirstMate.vbs` in the Startup folder. Turning it
-off deletes exactly that file, and nothing is scheduled. The one thing the Tray
-writes to the registry is the key that names its pop-ups to Windows,
-`HKCU\Software\Classes\AppUserModelId\LuanAfonso.FirstMate`; it writes it at
-every start, and nothing removes it on its own.
-
-Install it with `npm install -g @luan-afonso/firstmate`, then `firstmate
-desktop`; update it by running the same install again; remove it with `npm
-uninstall -g @luan-afonso/firstmate` and the registry key above. The exact
-steps, and how to run this repository's own code instead of the published
-package, are in [`docs/deploy.md`](docs/deploy.md).
-
-A browser still works. The address still opens, and a Plugin Page is still a
-whole page that anything can load. The window is another door, not the only one.
+The App keeps the Host running for as long as it runs, and it can start at
+logon: turn that on from the Tray, or say yes when `setup` asks. Closing the
+window keeps the App and every Plugin running; Quit ends them.
 
 ## The first Plugin
 

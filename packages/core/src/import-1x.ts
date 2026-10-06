@@ -39,6 +39,14 @@ function oneXHomeOf(place: Place & { readonly kind: 'wsl' }): string {
   return posix.join(place.home, '.firstmate');
 }
 
+/** Whether this Place holds a 1.x install to bring across: a `wsl` Place with a 1.x home. */
+export function holdsOneX(place: Place): boolean {
+  if (place.kind !== 'wsl') return false;
+  return (
+    statSync(filesOf(place, oneXHomeOf(place)), { throwIfNoEntry: false })?.isDirectory() === true
+  );
+}
+
 /** Read the 1.x install in this `wsl` Place and write it into this home. */
 export function importOneX(home: string, place: Place): Imported {
   if (place.kind !== 'wsl') {

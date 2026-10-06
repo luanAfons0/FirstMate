@@ -32,18 +32,6 @@ export type Row = {
 
 export type BootOptions = {
   /**
-   * Start the Host through `firstmate start` rather than through the Host's
-   * own entry point. The Host is the same either way, and proving that is the
-   * only reason this option exists.
-   */
-  readonly viaCommandLine?: boolean;
-  /**
-   * Boot the bundle in this directory, which `build` wrote, rather than the
-   * source. The built Host has to answer what the source answers, and proving
-   * that is the only reason this option exists.
-   */
-  readonly built?: string;
-  /**
    * Start the packaged App at this path, which `packageApp` wrote, rather
    * than the Host's own entry point. The App holds the same Host, and proving
    * that is the only reason this option exists.
@@ -93,6 +81,16 @@ type RawResponse = {
  * which is `windows` on Windows and `local` anywhere else (ADR-0021).
  */
 export const DEFAULT_PLACE = process.platform === 'win32' ? 'windows' : 'local';
+
+/**
+ * What a command that needs the Host says when none answers. On Windows there
+ * is a Windows to hold the App, and a test machine has none installed, so the
+ * sentence says to install it; anywhere else it says only that no Host runs.
+ */
+export const NO_HOST =
+  process.platform === 'win32'
+    ? 'the App is not installed. Run firstmate desktop to install it.'
+    : 'no Host runs.';
 
 /** The absolute path of a fixture Plugin. */
 export function fixture(name: string): string {
@@ -189,14 +187,7 @@ export async function bootHostIn(
   env: Readonly<Record<string, string>> = {},
   options: BootOptions = {},
 ): Promise<Booted> {
-  const built = options.built;
-  const cli =
-    built === undefined ? join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts') : join(built, 'cli.js');
-  const main =
-    built === undefined
-      ? join(REPOSITORY, 'packages', 'host', 'src', 'main.ts')
-      : join(built, 'main.js');
-  const entry = options.viaCommandLine === true ? [cli, 'start'] : [main];
+  const entry = [join(REPOSITORY, 'packages', 'host', 'src', 'main.ts')];
   const [program, argv] = options.app === undefined ? [process.execPath, entry] : [options.app, []];
   const child = spawn(program, argv, {
     cwd: REPOSITORY,
@@ -356,16 +347,33 @@ export function firstmate(
   env: NodeJS.ProcessEnv = {},
   input?: string,
 ): Promise<CommandResult> {
+  return run(join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), home, argv, env, input);
+}
+
+/**
+ * The command line as `build` built it into this directory, run as
+ * `firstmate` runs the source. The built command line has to answer what the
+ * source answers, and proving that is the only reason this exists.
+ */
+export function builtFirstmate(built: string): typeof firstmate {
+  return (home, argv, env, input) => run(join(built, 'cli.js'), home, argv, env, input);
+}
+
+function run(
+  program: string,
+  home: string,
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv = {},
+  input?: string,
+): Promise<CommandResult> {
   return new Promise((done, fail) => {
-    const child = spawn(
-      process.execPath,
-      [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), ...argv],
-      {
-        cwd: REPOSITORY,
-        env: { ...process.env, FIRSTMATE_HOME: home, ...env },
-        stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-      },
-    );
+    const child = spawn(process.execPath, [program, ...argv], {
+      cwd: REPOSITORY,
+      // Not inside WSL unless a test says so, so that no command reaches the
+      // real Windows of the machine the tests run on.
+      env: { ...process.env, WSL_DISTRO_NAME: '', FIRSTMATE_HOME: home, ...env },
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    });
     if (input !== undefined) child.stdin?.end(input);
     let stdout = '';
     let stderr = '';
@@ -392,7 +400,7 @@ export function firstmateRunning(t: TestContext, home: string, argv: readonly st
     [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), ...argv],
     {
       cwd: REPOSITORY,
-      env: { ...process.env, FIRSTMATE_HOME: home },
+      env: { ...process.env, WSL_DISTRO_NAME: '', FIRSTMATE_HOME: home },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );

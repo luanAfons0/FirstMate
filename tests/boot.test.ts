@@ -5,7 +5,7 @@ import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { connect } from 'node:net';
 import test from 'node:test';
-import { bootHost, firstmate, makeHome } from './helpers/host.ts';
+import { bootHost, bootHostIn, makeHome } from './helpers/host.ts';
 
 test('the runtime file holds the port actually listened on and the token', async (t) => {
   const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
@@ -46,26 +46,23 @@ test('the Host is reachable from this machine and from nowhere else', async (t) 
 test('a ceiling on a call that is not a number stops the Host with a sentence', async (t) => {
   const home = await makeHome(t);
 
-  const said = await firstmate(home, ['start'], { FIRSTMATE_MAX_CALL_MS: 'ten minutes' });
-
   // The same sentence, and the same refusal to start at all, that a handshake
   // which is not a number of milliseconds gets.
-  assert.equal(said.code, 1);
-  assert.match(
-    said.stderr,
-    /FIRSTMATE_MAX_CALL_MS must be a whole number of milliseconds above zero, not "ten minutes"\./,
+  await assert.rejects(
+    bootHostIn(t, home, { FIRSTMATE_MAX_CALL_MS: 'ten minutes' }),
+    /exited before it listened(.|\n)*FIRSTMATE_MAX_CALL_MS must be a whole number of milliseconds above zero, not "ten minutes"\./,
   );
 });
 
 test('a ceiling longer than a timer can hold stops the Host with a sentence', async (t) => {
   const home = await makeHome(t);
 
-  const said = await firstmate(home, ['start'], { FIRSTMATE_MAX_CALL_MS: '3000000000' });
-
   // Node would fire a timer this long after one millisecond, so every call
   // would be cut short at once. Better to refuse the setting than to obey it.
-  assert.equal(said.code, 1);
-  assert.match(said.stderr, /FIRSTMATE_MAX_CALL_MS may be 2147483647 milliseconds at most/);
+  await assert.rejects(
+    bootHostIn(t, home, { FIRSTMATE_MAX_CALL_MS: '3000000000' }),
+    /exited before it listened(.|\n)*FIRSTMATE_MAX_CALL_MS may be 2147483647 milliseconds at most/,
+  );
 });
 
 function ownAddress(): string | null {

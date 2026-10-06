@@ -58,9 +58,10 @@ The Host refuses a name that does not fit, a path that is not absolute, a
 path that is not a directory, and a name already in the Registry. It says
 which, in a sentence you can act on.
 
-The Registry is read once, when the Host starts. After `add`, `install` or
-`remove`, restart the Host — from the Tray, or with
-`systemctl --user restart firstmate`.
+Each of `add`, `install` and `remove` asks the running Host to reload, so the
+Host picks the change up with no restart (ADR-0018). In a `wsl` Place, keep
+your `mcp` file as it is; on Windows itself, ship `mcp.cmd` or `mcp.exe` beside
+it (ADR-0019).
 
 ## The Plugin Page: your `web/` directory
 
@@ -336,9 +337,11 @@ None of this is enforced. All of it is what the first Plugin learned.
 Then:
 
 ```sh
-node src/cli.ts add <name> /absolute/path/to/your/plugin
-systemctl --user restart firstmate
+firstmate add <name> /absolute/path/to/your/plugin
 ```
+
+The running Host picks it up with no restart. After you fix a Stopped Plugin,
+`firstmate restart <name>` starts it again.
 
 Open the Index Page. If it says `Stopped`, the reason is in
 `firstmate logs`.

@@ -9,14 +9,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { existsSync } from 'node:fs';
 import { BIND_ADDRESS } from '@firstmate/core/config';
-import { indexPage, type PluginView } from './index-page.ts';
+import { indexPage } from './index-page.ts';
 import type { NoticesAfter } from './notices.ts';
 import type { HeldPlugin } from '@firstmate/core/plugin-places';
 import { inPluginOrder } from '@firstmate/core/settings';
 import { checkRequest, startedByOwnPage, startedByTerminal } from './security.ts';
 import { shortcutAddress, type Shortcut } from '@firstmate/core/shortcut';
 import { serveStatic, webRoot } from './static-files.ts';
-import type { PluginState, Restarted } from './supervisor.ts';
+import type { PluginState, PluginView, Restarted } from '@firstmate/core/plugin-state';
 import type { PluginServer } from './mcp.ts';
 import { callTools } from './tool-call.ts';
 

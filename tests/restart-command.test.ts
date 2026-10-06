@@ -6,7 +6,15 @@ import assert from 'node:assert/strict';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHost, firstmate, fixture, makeHome, until, type Booted } from './helpers/host.ts';
+import {
+  bootHost,
+  firstmate,
+  fixture,
+  makeHome,
+  until,
+  type Booted,
+  NO_HOST,
+} from './helpers/host.ts';
 
 /** The state the Host says one Plugin is in. */
 async function stateOf(host: Booted, name: string): Promise<string | undefined> {
@@ -94,7 +102,7 @@ test('restart with no Host says so, and ends with its own code', async (t) => {
   const restarted = await firstmate(home, ['restart', 'both']);
 
   assert.equal(restarted.code, 6);
-  assert.equal(restarted.stderr, 'firstmate: no Host runs.\n');
+  assert.equal(restarted.stderr, `firstmate: ${NO_HOST}\n`);
 });
 
 test('the restart address answers a terminal with the token, and nobody else', async (t) => {

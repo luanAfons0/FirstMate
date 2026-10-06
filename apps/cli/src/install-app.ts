@@ -38,6 +38,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { AT_LOGON, LOGON_NAME, RUN_KEY } from '@firstmate/core/logon';
 import { refuse } from '@firstmate/core/refusal';
 
 /** The variable that points `firstmate desktop` at another place for the Releases. */
@@ -72,8 +73,46 @@ type Windows = {
   readonly here: (path: string) => Promise<string>;
 };
 
-/** The App as it is installed: its version, and its program as this process reaches it. */
-type Installed = { readonly version: string; readonly program: string };
+/** The App as it is installed: its version, and its program as this process and Windows reach it. */
+type Installed = {
+  readonly version: string;
+  readonly program: string;
+  readonly windowsProgram: string;
+};
+
+/**
+ * The App on this machine, as `setup` and the commands that need it see it:
+ * how Windows is reached, and the App, or nothing when it is not installed.
+ */
+export type AppHere = { readonly windows: Windows; readonly installed: Installed | undefined };
+
+/**
+ * The App on this machine, or nothing when there is no Windows here to hold
+ * one: on Linux outside WSL, on macOS, or where interop is not on the PATH.
+ */
+export async function appHere(env: NodeJS.ProcessEnv = process.env): Promise<AppHere | undefined> {
+  try {
+    const windows = await reachWindows(env);
+    return { windows, installed: await installedApp(windows) };
+  } catch {
+    // reg.exe or interop not on the PATH: there is no Windows here to ask.
+    return undefined;
+  }
+}
+
+/** Whether the App starts at logon: whether its entry is in the Run key. */
+export async function logonIsOn(here: AppHere): Promise<boolean> {
+  return (await readKey(here.windows, RUN_KEY))?.has(LOGON_NAME) === true;
+}
+
+/**
+ * Have the App start at logon, by the same entry the App writes from its
+ * Tray, so that each sees what the other set.
+ */
+export async function turnLogonOn(installed: Installed): Promise<void> {
+  const command = `"${installed.windowsProgram}" ${AT_LOGON}`;
+  await ask('reg.exe', ['add', RUN_KEY, '/v', LOGON_NAME, '/t', 'REG_SZ', '/d', command, '/f']);
+}
 
 /**
  * Install the App of this version unless it is there already, then open it.
@@ -163,9 +202,10 @@ async function installedApp(windows: Windows): Promise<Installed | undefined> {
   const version = (await readKey(windows, UNINSTALL_KEY))?.get('DisplayVersion');
   const folder = (await readKey(windows, INSTALL_KEY))?.get('InstallLocation');
   if (version === undefined || folder === undefined) return undefined;
-  const program = await windows.here(`${folder}\\${APP_PROGRAM}`);
+  const windowsProgram = `${folder}\\${APP_PROGRAM}`;
+  const program = await windows.here(windowsProgram);
   // A folder deleted by hand leaves its keys behind, and installing again mends both.
-  return isFile(program) ? { version, program } : undefined;
+  return isFile(program) ? { version, program, windowsProgram } : undefined;
 }
 
 /**

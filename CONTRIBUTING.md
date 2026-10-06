@@ -26,10 +26,11 @@ Node 24, and nothing else. Node runs the TypeScript directly, so there is no
 build step, no bundler and no watcher in a clone. `typescript` is a development
 dependency and is used only to check the types.
 
-The Host imports nothing outside Node. Keep it that way. The package has one
-runtime dependency, `@webviewjs/webview`, which draws the FirstMate window and
-loads only when `firstmate desktop` runs (ADR-0011). If you believe a change
-needs another, open an issue and make the case before you write the code.
+The Host imports nothing outside Node. Keep it that way. The npm package is the
+command line alone and has no runtime dependency (ADR-0024). The App, in
+`apps/desktop`, is built with Electron, electron-vite and electron-builder, all
+dev dependencies of a private package (ADR-0020). If you believe a change needs
+another dependency, open an issue and make the case before you write the code.
 
 ## The check that must be green
 
@@ -54,9 +55,10 @@ under `tests/fixtures/` rather than a mock.
 
 ## Where FirstMate runs
 
-FirstMate is developed on WSL Debian, and only there. The Host runs under
-systemd; the Tray is Windows Node. macOS and native Windows are not
-tested by anyone, so nobody can honestly claim they work.
+FirstMate is developed from WSL Debian, for Windows. The App is a Windows
+program, and CI runs the whole suite on `windows-latest` and `ubuntu-latest`.
+The Host runs on plain Node anywhere, which is how the tests run it. macOS is
+tested by nobody, so nobody can honestly claim it works.
 
 This is not a rule against them. It is a statement of what has been run. If you
 use FirstMate somewhere else, an issue saying what broke is useful, and a
