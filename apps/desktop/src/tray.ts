@@ -4,7 +4,8 @@
  * The icon wears the running mark, or the stopped mark while any Plugin is
  * Stopped, so a broken Plugin shows without opening anything. A click on it
  * brings the window up. Its menu opens the Index Page, opens each Plugin,
- * turns start at logon on and off, and quits. Quit is the one way the App
+ * restarts a Stopped one, opens the Settings View, turns start at logon on and
+ * off, and quits. Quit is the one way the App
  * ends: closing the window only hides it, and every Plugin keeps running.
  *
  * Start at logon is Windows's own entry for the App (`logon.ts`), and it is off
@@ -14,7 +15,7 @@
  * The Tray shows before the Host is ready, and its Plugins say "Starting…"
  * until the Host first names them.
  */
-import { app, Menu, Tray, type MenuItemConstructorOptions } from 'electron';
+import { app, Menu, nativeImage, Tray, type MenuItemConstructorOptions } from 'electron';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { pluginPath } from './addresses.ts';
 import type { PluginSeen, Plugins } from './host-lists.ts';
@@ -29,6 +30,10 @@ export type TrayNeeds = {
   readonly reveal: () => void;
   /** Start at logon changed, so the Settings View shows it too. */
   readonly changed: () => void;
+  /** Bring the window up on the Settings View. */
+  readonly settings: () => void;
+  /** Start one Plugin's Plugin Server again, as `firstmate restart` does. */
+  readonly restart: (name: string) => void;
 };
 
 /** The Tray, and the way to tell it what the Host now says. */
@@ -39,21 +44,34 @@ export type HeldTray = {
 
 /** Put FirstMate in the notification area. */
 export function holdTray(needs: TrayNeeds): HeldTray {
-  const tray = new Tray(markPath('running'));
+  // Each mark is made once. Every redraw would otherwise build its image again.
+  const marks = {
+    running: nativeImage.createFromPath(markPath('running')),
+    stopped: nativeImage.createFromPath(markPath('stopped')),
+  };
+  const tray = new Tray(marks.running);
+  /** Start at logon, read once and again only after the Tray writes it. */
+  let logon = readLogon();
   /** What the Host last said, or nothing while it still starts. */
   let plugins: Plugins | undefined;
   /** What the menu was last built from. Building it again unchanged is churn. */
   let built = '';
 
   const draw = (): void => {
-    const logon = readLogon();
     const said = `${signature(plugins)}|${logon}`;
     if (said === built) return;
     built = said;
     const stopped = stoppedCount(plugins);
-    tray.setImage(markPath(stopped > 0 ? 'stopped' : 'running'));
+    tray.setImage(stopped > 0 ? marks.stopped : marks.running);
     tray.setToolTip(tooltip(stopped));
-    tray.setContextMenu(Menu.buildFromTemplate(menu(plugins, logon, needs, draw)));
+    tray.setContextMenu(
+      Menu.buildFromTemplate(
+        menu(plugins, logon, needs, (now) => {
+          logon = now;
+          draw();
+        }),
+      ),
+    );
   };
 
   // A click opens the window, which is the thing wanted nearly every time.
@@ -77,12 +95,13 @@ function menu(
   plugins: Plugins | undefined,
   logon: boolean,
   needs: TrayNeeds,
-  draw: () => void,
+  written: (logon: boolean) => void,
 ): MenuItemConstructorOptions[] {
   return [
     { label: 'Open FirstMate', click: () => needs.open('/') },
     { label: 'Plugins', submenu: pluginItems(plugins, needs) },
     { type: 'separator' },
+    { label: 'Settings…', click: () => needs.settings() },
     {
       label: 'Start at logon',
       type: 'checkbox',
@@ -90,7 +109,7 @@ function menu(
       click: (item) => {
         writeLogon(item.checked);
         needs.changed();
-        draw();
+        written(readLogon());
       },
     },
     { type: 'separator' },
@@ -107,7 +126,7 @@ function pluginItems(plugins: Plugins | undefined, needs: TrayNeeds): MenuItemCo
   if (plugins === undefined) return [{ label: 'Starting…', enabled: false }];
   if (plugins.kind === 'untold') return [{ label: 'The Host would not say', enabled: false }];
   if (plugins.plugins.length === 0) return [{ label: 'No Plugin is registered', enabled: false }];
-  return plugins.plugins.map((plugin) => ({
+  const items: MenuItemConstructorOptions[] = plugins.plugins.map((plugin) => ({
     label: pluginLabel(plugin),
     // A Plugin that ships no Plugin Page has no address to open, so it is
     // shown and not offered. A Stopped Plugin is still offered: the Host
@@ -115,10 +134,17 @@ function pluginItems(plugins: Plugins | undefined, needs: TrayNeeds): MenuItemCo
     enabled: plugin.hasPage,
     click: () => needs.open(pluginPath(plugin.name)),
   }));
+  // One Restart for each Stopped Plugin, last in the submenu.
+  const stopped = plugins.plugins.filter((plugin) => plugin.state === 'stopped');
+  if (stopped.length > 0) items.push({ type: 'separator' });
+  for (const plugin of stopped) {
+    items.push({ label: `Restart ${plugin.name}`, click: () => needs.restart(plugin.name) });
+  }
+  return items;
 }
 
 function pluginLabel(plugin: PluginSeen): string {
-  return plugin.state === 'running' ? plugin.name : `${plugin.name} — ${STATE_WORDS[plugin.state]}`;
+  return plugin.state === 'running' ? plugin.name : `${plugin.name}: ${STATE_WORDS[plugin.state]}`;
 }
 
 function stoppedCount(plugins: Plugins | undefined): number {

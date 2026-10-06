@@ -12,6 +12,9 @@ import { admitted, type HostAt } from './addresses.ts';
 /** How long the App waits for the Host it holds to answer. */
 const ASK_TIMEOUT_MS = 5_000;
 
+/** How long the App waits for a Plugin Server to start again. */
+const RESTART_TIMEOUT_MS = 30_000;
+
 /** What the Host says about one Plugin. */
 export type PluginSeen = {
   /** The Plugin Name, which is also its address. */
@@ -39,6 +42,24 @@ export async function askForPlugins(host: HostAt): Promise<Plugins> {
   const rows = said.plugins;
   if (!Array.isArray(rows)) return { kind: 'untold' };
   return { kind: 'told', plugins: rows.flatMap(onePlugin) };
+}
+
+/**
+ * Start one Plugin's Plugin Server again, through `POST /restart/<name>`, the
+ * address `firstmate restart` reaches. Resolves to a sentence when it failed,
+ * and to nothing when it worked. Node's fetch sends no Origin, as the Host
+ * wants of a terminal.
+ */
+export async function askToRestart(host: HostAt, name: string): Promise<string | undefined> {
+  try {
+    const answer = await fetch(admitted(host, `/restart/${encodeURIComponent(name)}`), {
+      method: 'POST',
+      signal: AbortSignal.timeout(RESTART_TIMEOUT_MS),
+    });
+    return answer.ok ? undefined : await answer.text();
+  } catch (fault: unknown) {
+    return `The Host did not answer the restart of ${name}: ${fault instanceof Error ? fault.message : String(fault)}`;
+  }
 }
 
 /** One Shortcut, as the Host says it: the keys, and the address they open. */
