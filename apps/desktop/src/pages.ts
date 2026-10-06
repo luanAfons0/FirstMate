@@ -2,11 +2,13 @@
  * The App's own pages: the strip and the switcher, and what every one of the
  * App's pages shares. The Settings View is `settings-view.ts`.
  *
- * The strip says where the window is as a breadcrumb, FirstMate and then the
- * Plugin that is open, and each part goes somewhere: FirstMate to the Index
- * Page, the last part to the switcher, which lists every Plugin in the Plugin
- * Order. Beside it are "open in browser" and the gear that opens the Settings
- * View. It is the 1.x strip, carried over.
+ * The strip is the window's title bar. It says where the window is as a
+ * breadcrumb, the anchor and FirstMate and then what is open, and each part
+ * goes somewhere: FirstMate to the Index Page, what is open to the switcher,
+ * which lists every Plugin in the Plugin Order. The space between them and
+ * the gear is where the window is dragged from. When any Plugin is Stopped, a
+ * pill says how many, and it opens the switcher too. The gear opens the
+ * Settings View. The window's own buttons are the system's, drawn beside it.
  *
  * Each page is one file with no assets of its own, written here and loaded as
  * a data address. The Host never serves one, and must never serve one: every
@@ -59,10 +61,13 @@ export type StripView = {
   readonly fault: string | undefined;
   /** Whether the Host is still starting, so there is no Plugin to list or open yet. */
   readonly starting: boolean;
+  /** How many Plugins are Stopped. */
+  readonly stopped: number;
 };
 
-/** How tall the strip is, in logical pixels. */
-export const STRIP_HEIGHT = 44;
+/** How tall the strip is, in logical pixels. It is the title bar, so the
+ *  window's own buttons are this tall too. */
+export const STRIP_HEIGHT = 40;
 
 /** How wide the switcher is, in logical pixels. */
 export const SWITCHER_WIDTH = 360;
@@ -97,25 +102,33 @@ export function dataAddress(html: string): string {
 /** The strip. */
 export function stripPage(view: StripView): Written {
   const atTheList = view.here.kind === 'list';
+  const switcher = view.switcher ? ASK.switcherClose : ASK.switcher;
   const crumbs = `<a class="crumb" href="#" data-ask="${ASK.pluginList}"\
 ${atTheList ? ' aria-disabled="true"' : ''} title="See the Plugin list">\
-${icon('house')} FirstMate</a>
+${icon('anchor', 'mark')}<span class="lbl">FirstMate</span></a>
 ${icon('caret-right', 'sep')}
-<a class="crumb last" href="#" data-ask="${view.switcher ? ASK.switcherClose : ASK.switcher}" \
+<a class="crumb here" href="#" data-ask="${switcher}" aria-haspopup="menu" \
 aria-expanded="${view.switcher}"${view.starting ? ' aria-disabled="true"' : ''} \
-title="Switch Plugin">${hereWords(view.here, view.starting)} \
-${icon('caret-down', 'caret')}</a>`;
+title="Switch Plugin">${hereWords(view.here, view.starting)}${icon('caret-down', 'caret')}</a>`;
+  const fault =
+    view.fault === undefined
+      ? ''
+      : `<span class="fault" role="status">${icon('warning-circle')}\
+<span>${escaped(view.fault)}</span></span>`;
+  const pill =
+    view.stopped === 0
+      ? ''
+      : `<a class="pill" href="#" data-ask="${switcher}" title="See which Plugins are Stopped">\
+<span class="dot stopped" aria-hidden="true"></span>${view.stopped}<span class="w"> Stopped</span></a>`;
   return written(
     'FirstMate',
     stripStyles(),
     `<nav class="bar">
 ${crumbs}
-${view.fault === undefined ? '' : `<span class="fault">${escaped(view.fault)}</span>`}
-<span class="gap"></span>
-<a class="button" href="#" data-ask="${ASK.openInBrowser}"\
-${view.starting ? ' aria-disabled="true"' : ''} \
-title="Open what is shown here in the system browser">open in browser</a>
-<a class="button gear" href="#" data-ask="${ASK.settings}" title="Settings" aria-label="Settings" \
+${fault}
+<span class="drag"></span>
+${pill}
+<a class="gear" href="#" data-ask="${ASK.settings}" title="Settings" aria-label="Settings" \
 aria-pressed="${view.here.kind === 'settings'}">${icon('gear-six')}</a>
 </nav>`,
     '',
@@ -124,13 +137,19 @@ aria-pressed="${view.here.kind === 'settings'}">${icon('gear-six')}</a>
 }
 
 /** The icons the strip draws. */
-const STRIP_ICONS: readonly IconName[] = ['house', 'caret-right', 'caret-down', 'gear-six'];
+const STRIP_ICONS: readonly IconName[] = [
+  'anchor',
+  'caret-right',
+  'caret-down',
+  'warning-circle',
+  'gear-six',
+];
 
 /** The last part of the breadcrumb: what is open, or that the Host still starts. */
 function hereWords(here: Here, starting: boolean): string {
   if (here.kind === 'plugin') return `<b>${escaped(here.name)}</b>`;
-  if (here.kind === 'settings') return '<b>Settings</b>';
-  return starting ? 'Starting…' : 'Plugins';
+  if (here.kind === 'settings') return '<span class="plain">Settings</span>';
+  return `<span class="plain">${starting ? 'Starting…' : 'Plugins'}</span>`;
 }
 
 /**
@@ -297,43 +316,52 @@ firstmate.shown((body) => {
 
 function stripStyles(): string {
   return `* { box-sizing: border-box; }
-  html, body { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); }
-  body {
-    color: var(--text); display: flex; flex-direction: column;
-    font: 13px/1 var(--sans);
-  }
+  html, body { margin: 0; height: 100vh; overflow: hidden; background: var(--chrome); }
+  body { color: var(--text); font: 13px/1 var(--sans); user-select: none; }
+  /* The strip is the title bar: the window is dragged from anywhere in it but
+     the parts that go somewhere. */
   .bar {
-    flex: none; height: 44px; display: flex; align-items: center; gap: 6px;
-    padding: 0 10px 0 8px; min-width: 0;
+    height: 40px; display: flex; align-items: center; gap: 2px; min-width: 0;
+    padding: 0 6px 0 8px; border-bottom: 1px solid var(--line);
+    -webkit-app-region: drag;
   }
-  a { color: inherit; text-decoration: none; }
+  a { color: inherit; text-decoration: none; -webkit-app-region: no-drag; }
   a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .crumb {
-    display: inline-flex; align-items: center; gap: 6px; min-width: 0;
-    padding: 6px 8px; border-radius: var(--radius-control); white-space: nowrap;
-    color: var(--muted);
+    display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 8px;
+    border-radius: var(--radius-control); white-space: nowrap; color: var(--muted); min-width: 0;
   }
-  .crumb svg.i { width: 14px; height: 14px; }
-  .crumb .caret { width: 12px; height: 12px; color: var(--faint); }
-  .crumb.last { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .crumb b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-  .crumb:hover, .crumb[aria-expanded='true'] { background: var(--hover); }
+  .crumb:hover, .crumb[aria-expanded='true'] { background: var(--hover); color: var(--ink); }
+  .crumb:active { background: var(--press); }
   .crumb[aria-disabled='true'] { pointer-events: none; }
+  .crumb .mark { width: 16px; height: 16px; color: var(--brand); }
+  .crumb.here { flex: 0 1 auto; overflow: hidden; color: var(--ink); }
+  .crumb.here b { font: 600 12.5px/1 var(--mono); overflow: hidden; text-overflow: ellipsis; }
+  .crumb.here .plain { font-weight: 600; }
+  .crumb .caret { width: 12px; height: 12px; color: var(--faint); transition: transform .18s var(--ease); }
+  .crumb[aria-expanded='true'] .caret { transform: rotate(180deg); }
   .sep { width: 12px; height: 12px; color: var(--faint); }
-  .gap { flex: 1; }
+  .drag { flex: 1; align-self: stretch; }
   .fault {
-    color: var(--stopped); min-width: 0; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; padding-left: 6px;
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-left: 8px;
+    color: var(--stopped); font-size: 12.5px; white-space: nowrap; overflow: hidden;
   }
-  .button {
-    display: inline-flex; align-items: center;
-    border: 1px solid var(--line-2); border-radius: var(--radius-control);
-    padding: 6px 10px; white-space: nowrap;
+  .fault svg.i { width: 14px; height: 14px; }
+  .fault span { overflow: hidden; text-overflow: ellipsis; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 8px;
+    border-radius: 999px; font-size: 12px; white-space: nowrap; flex: none;
+    background: var(--stopped-soft); color: var(--stopped);
   }
-  .button:hover { background: var(--hover); border-color: var(--faint); }
-  .button[aria-disabled='true'] { opacity: .5; pointer-events: none; }
-  .gear { padding: 5px 7px; }
-  .gear[aria-pressed='true'] { background: var(--press); border-color: var(--faint); }`;
+  .pill:hover { filter: brightness(1.15); }
+  .gear {
+    display: inline-flex; align-items: center; height: 28px; padding: 0 8px; flex: none;
+    border-radius: var(--radius-control); color: var(--muted);
+  }
+  .gear:hover { background: var(--hover); color: var(--ink); }
+  .gear:active, .gear[aria-pressed='true'] { background: var(--press); color: var(--ink); }
+  @media (prefers-reduced-motion: reduce) { .crumb .caret { transition: none; } }
+  @media (max-width: 520px) { .crumb .lbl, .pill .w { display: none; } }`;
 }
 
 function switcherStyles(): string {
