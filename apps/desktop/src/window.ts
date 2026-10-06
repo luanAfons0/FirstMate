@@ -35,6 +35,7 @@ import {
 import { ASK_CHANNEL, readAsked, type Asked } from './ask.ts';
 import type { Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
+import { APP_ID } from './notices.ts';
 import {
   dataAddress,
   STRIP_HEIGHT,
@@ -105,6 +106,18 @@ export function openWindow(
     icon: markPath('running'),
     show: false,
   });
+  // The taskbar button takes its icon from these details, not from the
+  // window's icon, so they name the App's own executable and its mark. Run
+  // from a clone, the executable is Electron's, and the button keeps it.
+  if (app.isPackaged) {
+    window.setAppDetails({
+      appId: APP_ID,
+      appIconPath: process.execPath,
+      appIconIndex: 0,
+      relaunchCommand: `"${process.execPath}"`,
+      relaunchDisplayName: TITLE,
+    });
+  }
 
   // Closing the window hides it. The Tray holds the App, and every Plugin
   // keeps running; Quit is what ends it, and only then does the window close.

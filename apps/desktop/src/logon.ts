@@ -10,14 +10,19 @@ import { app } from 'electron';
 import { AT_LOGON, LOGON_NAME } from '@firstmate/core/logon';
 
 /**
- * The logon entry, named as `setup` names it. Electron would name it after the
- * Application User Model ID, and then neither would find the other's entry.
+ * The logon entry, named as `setup` names it. Electron would write it under a
+ * name of its own, and then neither would find the other's entry.
  */
 const LOGON = { name: LOGON_NAME, path: process.execPath, args: [AT_LOGON] };
 
-/** Whether the App starts at logon. */
+/**
+ * Whether the App starts at logon. Electron reads its answer under a name of
+ * its own and takes no other, so the entry is found by its name among every
+ * entry that starts this executable. One turned off in Task Manager is off.
+ */
 export function readLogon(): boolean {
-  return app.getLoginItemSettings(LOGON).openAtLogin;
+  const { launchItems } = app.getLoginItemSettings({ path: LOGON.path, args: LOGON.args });
+  return launchItems.some((item) => item.name === LOGON_NAME && item.enabled);
 }
 
 /** Turn start at logon on or off. */

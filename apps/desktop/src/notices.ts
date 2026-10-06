@@ -17,7 +17,7 @@ import type { Notice } from '@firstmate/host/notices';
 import { markPath } from './marks.ts';
 
 /** The App's Application User Model ID: `appId` in `electron-builder.yml`. */
-const APP_ID = 'io.github.luanafons0.firstmate';
+export const APP_ID = 'io.github.luanafons0.firstmate';
 
 /**
  * How many shown Notices the App keeps a hold on. A notification the program
