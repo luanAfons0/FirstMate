@@ -88,15 +88,3 @@ export function leavesTheHost(host: HostAt, address: string): boolean {
   if (url === null || !OUTSIDE_PROTOCOLS.has(url.protocol)) return false;
   return url.origin !== originOf(host);
 }
-
-/**
- * What the system browser is given when the strip asks to open what the
- * window shows: that address, admitted. Anything not on the Host gives the
- * Index Page. The address is the one the view reports, and nothing is read
- * out of the page to find it (ADR-0008).
- */
-export function browserAddress(host: HostAt, shown: string | undefined): string {
-  const url = shown === undefined ? null : URL.parse(shown);
-  if (url === null || url.origin !== originOf(host)) return admitted(host, '/');
-  return admitted(host, `${url.pathname}${url.search}${url.hash}`);
-}

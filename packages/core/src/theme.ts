@@ -71,6 +71,16 @@ const LIGHT = `    --chrome: #eceef1;
 export const WINDOW_BACKGROUND = { dark: '#17181a', light: '#f8f8f7' } as const;
 
 /**
+ * The colours of the window's own buttons, dark and light: their ground is
+ * the strip's, as the tokens say `--chrome`, and their symbols are `--muted`.
+ * The system draws those buttons over the strip, so they take its colours.
+ */
+export const TITLE_BAR = {
+  dark: { color: '#121315', symbolColor: '#9a9ea6' },
+  light: { color: '#eceef1', symbolColor: '#5a606a' },
+} as const;
+
+/**
  * The style every page starts with: the tokens, the radii, the faces, the
  * three state shapes and the size of an icon. A page's own style comes after
  * it and uses its names.
