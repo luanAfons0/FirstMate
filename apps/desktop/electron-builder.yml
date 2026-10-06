@@ -1,0 +1,29 @@
+# How the App is packaged: one Windows program, and an installer for it
+# (ADR-0020).
+#
+# The installer is NSIS, one click, for this user alone: it writes under
+# %LOCALAPPDATA%\Programs and asks for no administrator. The betas ship
+# unsigned; the certificate is decided before 2.0.0 final.
+appId: io.github.luanafons0.firstmate
+productName: FirstMate
+directories:
+  output: dist
+  buildResources: build
+# The bundle electron-vite wrote is the whole App. The Host is inside it, and
+# the App has no dependency of its own to carry beside it.
+files:
+  - out/**
+  - package.json
+npmRebuild: false
+# A Plugin Server runs on the App's own executable, told to be Node by
+# ELECTRON_RUN_AS_NODE. The RunAsNode fuse is what lets it, so it is named
+# here, on, so that nobody turns it off as hardening without reading why.
+electronFuses:
+  runAsNode: true
+win:
+  target: nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: FirstMate-Setup-${version}.${ext}

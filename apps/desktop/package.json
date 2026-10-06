@@ -1,0 +1,22 @@
+{
+  "name": "@firstmate/desktop",
+  "version": "1.4.0",
+  "private": true,
+  "description": "The FirstMate App: the Host, the Tray and the window, in one Windows program.",
+  "author": "Luan Afonso",
+  "license": "MIT",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "build": "electron-vite build",
+    "package": "electron-vite build && electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "@firstmate/core": "workspace:*",
+    "@firstmate/host": "workspace:*",
+    "electron": "44.5.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "5.0.0",
+    "vite": "^7.3.6"
+  }
+}

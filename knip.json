@@ -9,6 +9,10 @@
     "apps/cli": {
       "project": ["src/**/*.ts"]
     },
+    "apps/desktop": {
+      "entry": ["src/main.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "packages/core": {
       "project": ["src/**/*.ts"]
     },

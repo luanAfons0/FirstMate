@@ -436,7 +436,12 @@ async function isFile(path: string): Promise<boolean> {
 function launch(path: string, plugin: HeldPlugin): ChildProcess {
   const options = {
     cwd: plugin.files,
-    env: { ...process.env, [NODE_VARIABLE]: process.execPath },
+    env: {
+      ...process.env,
+      [NODE_VARIABLE]: process.execPath,
+      // In the App, process.execPath is the App, which runs as Node only when told (ADR-0020).
+      ...(process.versions.electron === undefined ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
+    },
     stdio: ['pipe', 'pipe', 'inherit'],
   } satisfies SpawnOptions;
   if (plugin.runner.kind === 'wsl') {

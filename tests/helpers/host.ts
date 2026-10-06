@@ -20,6 +20,9 @@ const REPOSITORY = dirname(TESTS);
 /** How long a Host may take to write its runtime file before a test gives up. */
 const BOOT_TIMEOUT_MS = 10_000;
 
+/** The same, for the App, which starts a browser engine before the Host is up. */
+const APP_BOOT_TIMEOUT_MS = 60_000;
+
 export type Row = {
   readonly name: string;
   /** A directory under tests/fixtures, or an absolute path of its own. */
@@ -40,6 +43,12 @@ export type BootOptions = {
    * that is the only reason this option exists.
    */
   readonly built?: string;
+  /**
+   * Start the packaged App at this path, which `packageApp` wrote, rather
+   * than the Host's own entry point. The App holds the same Host, and proving
+   * that is the only reason this option exists.
+   */
+  readonly app?: string;
 };
 
 export type Booted = {
@@ -188,7 +197,8 @@ export async function bootHostIn(
       ? join(REPOSITORY, 'packages', 'host', 'src', 'main.ts')
       : join(built, 'main.js');
   const entry = options.viaCommandLine === true ? [cli, 'start'] : [main];
-  const child = spawn(process.execPath, entry, {
+  const [program, argv] = options.app === undefined ? [process.execPath, entry] : [options.app, []];
+  const child = spawn(program, argv, {
     cwd: REPOSITORY,
     env: { ...process.env, FIRSTMATE_HOME: home, FIRSTMATE_PORT: '0', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -207,6 +217,7 @@ export async function bootHostIn(
     home,
     () => exited,
     () => output,
+    options.app === undefined ? BOOT_TIMEOUT_MS : APP_BOOT_TIMEOUT_MS,
   );
   return {
     port: runtime.port,
@@ -234,19 +245,39 @@ export async function bootHostIn(
 export async function build(t: TestContext): Promise<string> {
   const out = await mkdtemp(join(tmpdir(), 'firstmate-build-'));
   atEnd(t, () => removeDirectory(out));
-  await new Promise<void>((done, fail) => {
-    const child = pnpm(['run', 'build', '--out-dir', out], {
-      cwd: join(REPOSITORY, 'apps', 'cli'),
-      stdio: ['ignore', 'ignore', 'pipe'],
-    });
+  await completes('The build', pnpm(['run', 'build', '--out-dir', out], inPackage('cli')));
+  return out;
+}
+
+/**
+ * Package the App as a release packages it, installer and all, into a
+ * directory of this test's own, and return that directory. It is removed when
+ * the test ends. The App's own `out/` is rewritten on the way, as every build
+ * of it does.
+ */
+export async function packageApp(t: TestContext): Promise<string> {
+  const out = await mkdtemp(join(tmpdir(), 'firstmate-app-'));
+  atEnd(t, () => removeDirectory(out));
+  const argv = ['run', 'package', `--config.directories.output=${out}`];
+  await completes('Packaging the App', pnpm(argv, inPackage('desktop')));
+  return out;
+}
+
+/** Run in one app's directory, and keep only what it says on failure. */
+function inPackage(app: string): SpawnOptions {
+  return { cwd: join(REPOSITORY, 'apps', app), stdio: ['ignore', 'ignore', 'pipe'] };
+}
+
+/** Resolve once a process exits 0, or fail with what it said on its way out. */
+function completes(what: string, child: ChildProcess): Promise<void> {
+  return new Promise((done, fail) => {
     let stderr = '';
     collectText(child.stderr, (chunk) => (stderr += chunk));
     child.once('error', fail);
     child.once('exit', (code) =>
-      code === 0 ? done() : fail(new Error(`The build exited ${code}.\n${stderr}`)),
+      code === 0 ? done() : fail(new Error(`${what} exited ${code}.\n${stderr}`)),
     );
   });
-  return out;
 }
 
 /**
@@ -282,9 +313,10 @@ async function waitForRuntimeFile(
   home: string,
   exited: () => number | null,
   output: () => string,
+  timeoutMs: number,
 ): Promise<{ port: number; token: string }> {
   const path = join(home, 'runtime.json');
-  const deadline = Date.now() + BOOT_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {
       const runtime = JSON.parse(await readFile(path, 'utf8')) as { port: number; token: string };
@@ -296,7 +328,7 @@ async function waitForRuntimeFile(
       throw new Error(`The Host exited before it listened.\n${output()}`);
     }
     if (Date.now() > deadline) {
-      throw new Error(`The Host wrote no runtime file in ${BOOT_TIMEOUT_MS} ms.\n${output()}`);
+      throw new Error(`The Host wrote no runtime file in ${timeoutMs} ms.\n${output()}`);
     }
     await new Promise((done) => setTimeout(done, 20));
   }

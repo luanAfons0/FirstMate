@@ -301,6 +301,30 @@ the Host that `node packages/host/src/main.ts` boots: the same environment
 variables move it, and it prints the same output. One command line does the whole job, so whoever
 installs FirstMate can run what they installed.
 
+## The App
+
+FirstMate 2.0 is an App: one Windows program that holds the Host and shows the
+Index Page in its window (ADR-0020). It is not released yet. Build it from a
+clone, on Windows:
+
+```sh
+pnpm install
+pnpm --filter @firstmate/desktop package
+```
+
+That writes `apps/desktop/dist/FirstMate-Setup-<version>.exe`, a one-click
+installer for you alone that needs no administrator, and the same App,
+uninstalled, in `apps/desktop/dist/win-unpacked/`. Both are unsigned, so
+Windows may warn before they run.
+
+The App's Host is the Host above: the same home, `%APPDATA%\FirstMate` unless
+`FIRSTMATE_HOME` moves it, the same port and the same runtime file, so the
+command line reaches it as it reaches any other. Only one App runs for one
+home; a second start shows the first window. When another program holds the
+port, the App says so and does not start. Closing the window quits the App,
+and Quit stops every Plugin Server. Each Plugin Server runs on the App's own
+executable as Node, so a Node Plugin needs no Node of its own.
+
 ## Configure it
 
 | Variable                | Default        | What it moves                                     |
@@ -633,3 +657,6 @@ private, and `apps/cli` is the package on npm. Node 24 runs TypeScript without a
 build step, so a clone never holds built output and nothing here compiles.
 Packing bundles `apps/cli`, with `core` and `host` inside it, on the way to npm
 and nowhere else (ADR-0017). `pnpm build` makes the same bundle by hand.
+`apps/desktop` is the App, and it is the one thing a clone builds: Electron
+cannot run a clone's TypeScript. On Windows, `node --test` packages it and
+starts the packaged program, so the suite takes about a minute longer there.

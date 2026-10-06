@@ -1,3 +1,13 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# pnpm runs no install script of a dependency it has not been told about, and
+# fails the install instead. Each one the App's tools bring is named here.
+# esbuild checks its own binary, which electron-vite and vite build with.
+# electron-winstaller is the Squirrel installer, and the App ships NSIS
+# (ADR-0020). Electron itself has no install script: it fetches its binary the
+# first time it runs, and the packaged App carries one of its own.
+allowBuilds:
+  electron-winstaller: false
+  esbuild: true
