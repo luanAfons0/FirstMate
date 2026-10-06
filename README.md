@@ -236,6 +236,21 @@ Each Place has its own Shelf: the default Place's is the Shelf below, and any ot
 Place, so `/p/<name>/` is the same address wherever the Plugin runs. A Place
 that holds a Plugin is not removed, and removing one touches nothing on disk.
 
+### Moving from 1.x
+
+```sh
+node apps/cli/src/cli.ts place add debian wsl Debian
+node apps/cli/src/cli.ts import debian
+```
+
+`import` reads the 1.x Registry and settings from `~/.firstmate` in that
+distribution and brings across every Plugin, its Grants, the Shortcuts, the
+Plugin Order and the Shelf. Each Plugin stays where its directory already is,
+in the `wsl` Place. A Plugin Name already in use is refused in one sentence, and
+the rest still come. When the 1.x Host runs there as a systemd service, `import`
+asks before it turns the service off, because the 1.x Host holds the port the
+App listens on.
+
 Each Plugin in `registry.json` names its Place. A row with no `place`, as 1.x
 wrote it, is in the default Place.
 
