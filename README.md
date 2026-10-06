@@ -493,7 +493,7 @@ To install by hand, download one from the
 sha256sum --check firstmate_<version>_amd64.deb.sha256
 ```
 
-The deb installs the App into `/opt/FirstMate`, puts `firstmate` on the path,
+The deb installs the App into `/opt/FirstMate`, puts `firstmate-app` on the path,
 and loads an AppArmor profile that lets the App use the Chromium sandbox on
 Ubuntu 24.04 and later:
 
@@ -528,7 +528,7 @@ sudo tee /etc/apparmor.d/firstmate-appimage > /dev/null <<'PROFILE'
 abi <abi/4.0>,
 include <tunables/global>
 
-profile firstmate-appimage /tmp/.mount_FirstM*/{AppRun,firstmate} flags=(unconfined) {
+profile firstmate-appimage /tmp/.mount_FirstM*/{AppRun,firstmate-app} flags=(unconfined) {
   userns,
   include if exists <local/firstmate-appimage>
 }

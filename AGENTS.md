@@ -33,7 +33,7 @@ Run every command from the repository root.
 | `pnpm build`                         | Bundle `apps/cli` into `apps/cli/dist/`. Packing does this; you do not. |
 | `pnpm --filter @firstmate/desktop package` | Build the App, and its installer, into `apps/desktop/dist/`. Windows or Linux. |
 | `apps\desktop\dist\win-unpacked\FirstMate.exe` | Run the packaged App without installing it. Set `FIRSTMATE_HOME` first. |
-| `apps/desktop/dist/linux-unpacked/firstmate` | The same on Linux. Set `FIRSTMATE_HOME` first. |
+| `apps/desktop/dist/linux-unpacked/firstmate-app` | The same on Linux. Set `FIRSTMATE_HOME` first. |
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows, Linux or WSL. |
