@@ -30,6 +30,10 @@ test('a Plugin Page file the Host cannot read is not found, and nothing else bre
     t.skip('root reads every file, so no file here is unreadable');
     return;
   }
+  if (process.platform === 'win32') {
+    t.skip('Windows keeps no mode bits, so chmod cannot make a file unreadable');
+    return;
+  }
   const plugin = await makeHome(t);
   await mkdir(join(plugin, 'web'));
   await writeFile(join(plugin, 'web', 'index.html'), '<p>here</p>\n');

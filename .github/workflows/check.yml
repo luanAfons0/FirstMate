@@ -2,9 +2,11 @@
 # types, the lint, the layout, the dead code and the tests. Each is its own
 # step, so a red run says which one failed.
 #
-# There is no build step, because Node 24 runs the TypeScript directly. There
-# is no matrix either: the Host runs in WSL Debian under systemd (ADR-0007),
-# so Linux is the only platform this project has honestly run on.
+# There is no build step, because Node 24 runs the TypeScript directly. The
+# whole job runs on Linux and on Windows, because the Host runs on both: a
+# Plugin Server starts from `mcp` on one and from `mcp.cmd` or `mcp.exe` on
+# the other (ADR-0019). Each runner is its own required check, by name, in the
+# repository's ruleset "main stays green".
 name: Check
 
 on:
@@ -14,8 +16,13 @@ on:
 
 jobs:
   check:
-    name: Types, lint, layout, dead code and tests
-    runs-on: ubuntu-latest
+    name: Types, lint, layout, dead code and tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One runner failing says nothing about the other, so both finish.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v7

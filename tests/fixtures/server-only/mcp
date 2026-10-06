@@ -7,6 +7,8 @@ const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 const result = (id, value) => reply({ jsonrpc: '2.0', id, result: value });
 
 process.stderr.write('server-only: the Plugin Server is up\n');
+// The Node the Host told it about, so that a test can read it off the output.
+process.stderr.write(`server-only: FIRSTMATE_NODE is ${process.env.FIRSTMATE_NODE}\n`);
 
 for await (const line of createInterface({ input: process.stdin })) {
   if (line.trim() === '') continue;

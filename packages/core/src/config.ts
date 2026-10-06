@@ -100,10 +100,15 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
 function readHome(env: NodeJS.ProcessEnv): string {
   const given = env[HOME_VARIABLE];
-  if (given === undefined || given === '') {
-    return resolve(homedir(), '.firstmate');
+  if (given !== undefined && given !== '') return resolve(given);
+  // Windows keeps a program's files under the roaming application data, and
+  // the Host follows it there. Linux keeps the 1.x home, because that is where
+  // a 1.x Host left its files (ADR-0019).
+  const appData = env.APPDATA;
+  if (process.platform === 'win32' && appData !== undefined && appData !== '') {
+    return resolve(appData, 'FirstMate');
   }
-  return resolve(given);
+  return resolve(homedir(), '.firstmate');
 }
 
 function readPort(env: NodeJS.ProcessEnv): number {

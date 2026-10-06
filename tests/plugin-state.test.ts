@@ -4,8 +4,10 @@
  * is given the directory and the output stream its author may rely on.
  */
 import assert from 'node:assert/strict';
+import { cp, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
-import { bootHost } from './helpers/host.ts';
+import { bootHost, fixture, makeHome } from './helpers/host.ts';
 
 const EVERY_FIXTURE = [
   { name: 'both', directory: 'both' },
@@ -66,6 +68,47 @@ test("a Plugin Server runs in its own Plugin's directory", async (t) => {
     /both: private\.txt says this file is outside the web directory/,
     'a Plugin Server reaches its own files by a relative path',
   );
+});
+
+test('every Plugin Server is told which Node runs a Node Plugin', async (t) => {
+  const host = await bootHost(t, [{ name: 'server-only', directory: 'server-only' }]);
+
+  await host.fetch('/');
+
+  // The Host's own Node, which the helper started it with: a Node Plugin needs
+  // no Node of its own on the operator's machine.
+  assert.ok(
+    host.output().includes(`server-only: FIRSTMATE_NODE is ${process.execPath}\n`),
+    `the Plugin Server read FIRSTMATE_NODE\n${host.output()}`,
+  );
+});
+
+test('a Plugin in a directory whose path holds spaces starts', async (t) => {
+  // On Windows the Plugin Server is a .cmd file, which cmd.exe starts and a
+  // space in its path would break, unless the Host gets the quoting right.
+  const plugin = join(await makeHome(t), 'a folder with spaces', 'the plugin');
+  await mkdir(plugin, { recursive: true });
+  await cp(fixture('server-only'), plugin, { recursive: true });
+  const host = await bootHost(t, [{ name: 'spaced', directory: plugin }]);
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.equal(stateOf(page, 'spaced'), 'Running', host.output());
+});
+
+test('an mcp that cannot run here leaves its Plugin Stopped, and says why', async (t) => {
+  const host = await bootHost(t, [{ name: 'unrunnable', directory: 'unrunnable' }]);
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.equal(stateOf(page, 'unrunnable'), 'Stopped');
+  // Linux runs the file when it may be executed. Windows runs no file by its
+  // first line, so a Plugin with the shell form alone cannot start there.
+  const why =
+    process.platform === 'win32'
+      ? /unrunnable is Stopped: .*mcp cannot run on Windows: it needs mcp\.cmd or mcp\.exe\./
+      : /unrunnable is Stopped: .*mcp is not executable\./;
+  assert.match(host.output(), why);
 });
 
 test('a Plugin Server that never answers the handshake is Stopped', async (t) => {

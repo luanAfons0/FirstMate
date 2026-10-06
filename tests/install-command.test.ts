@@ -14,7 +14,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHostIn, firstmate, fixture, makeHome } from './helpers/host.ts';
+import { bootHostIn, firstmate, fixture, makeHome, canStart } from './helpers/host.ts';
 
 async function registry(home: string): Promise<{
   plugins: { name: string; directory: string; grants: string[] }[];
@@ -44,7 +44,7 @@ test('a directory is copied into the Shelf, registered, and then served', async 
   assert.doesNotMatch(installed.stdout, /restart/);
 
   // The files landed, with the bit the Host needs to run the Plugin Server.
-  assert.ok((await stat(join(landed, 'mcp'))).mode & 0o111, 'mcp is still executable');
+  assert.ok(await canStart(landed), 'mcp is still executable');
   await readFile(join(landed, 'web', 'index.html'));
 
   assert.deepEqual(await registry(home), {
@@ -126,6 +126,10 @@ test('a fetch that fails leaves the Registry untouched and the Shelf clean', asy
     t.skip('root reads anything, so nothing here can fail');
     return;
   }
+  if (process.platform === 'win32') {
+    t.skip('Windows keeps no mode bits, so chmod cannot make a directory unreadable');
+    return;
+  }
   const home = await makeHome(t);
   const shelf = await directory(home, 'shelf');
   const source = join(home, 'broken');
@@ -165,7 +169,7 @@ test('the Shelf is checked again on every install, not trusted from the file', a
 
   // What was a directory yesterday is a symlink to the home today.
   await rm(shelf, { recursive: true });
-  await symlink(home, shelf);
+  await symlink(home, shelf, 'junction');
 
   const refused = await firstmate(home, ['install', fixture('both')]);
 

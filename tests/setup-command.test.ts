@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { hasGit, officialSources } from './helpers/git.ts';
 import { bootHostIn, firstmate, makeHome, until, type CommandResult } from './helpers/host.ts';
-import { binWith, machine } from './helpers/systemd.ts';
+import { binWith, machine, pathWith } from './helpers/systemd.ts';
 
 /**
  * One run of `setup` on a machine with no systemd: git is on `PATH`, and no
@@ -21,7 +21,7 @@ async function setupIn(
   input: string,
   env: NodeJS.ProcessEnv = {},
 ): Promise<CommandResult> {
-  return firstmate(home, ['setup'], { PATH: await binWith(t, ['git']), ...env }, input);
+  return firstmate(home, ['setup'], { PATH: await pathWith(t, ['git']), ...env }, input);
 }
 
 async function registry(
@@ -59,6 +59,9 @@ async function directory(home: string, name: string): Promise<string> {
 function answers(...lines: readonly string[]): string {
   return lines.map((line) => `${line}\n`).join('');
 }
+
+/** systemd is Linux only, so on Windows setup asks nothing about a service. */
+const LINUX_ONLY = process.platform === 'win32' && 'systemd is Linux only';
 
 test('Enter keeps the Shelf, and a run that changes nothing says nothing more', async (t) => {
   const home = await makeHome(t);
@@ -329,36 +332,44 @@ async function schedulerAndWorklog(home: string): Promise<void> {
   await firstmate(home, ['add', 'worklog', await directory(home, 'worklog')]);
 }
 
-test('with no systemd, setup says so in the words service uses, and goes on', async (t) => {
-  const home = await makeHome(t);
-  const alone = await firstmate(home, ['service', 'on'], { PATH: await binWith(t, []) });
+test(
+  'with no systemd, setup says so in the words service uses, and goes on',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const home = await makeHome(t);
+    const alone = await firstmate(home, ['service', 'on'], { PATH: await binWith(t, []) });
 
-  const run = await setupIn(t, home, answers('', ''));
+    const run = await setupIn(t, home, answers('', ''));
 
-  assert.equal(run.code, 0, run.stderr);
-  assert.ok(run.stdout.includes(alone.stderr), 'one sentence, in both places');
-  assert.doesNotMatch(run.stdout, /Run the Host as a systemd user service\?/);
-});
+    assert.equal(run.code, 0, run.stderr);
+    assert.ok(run.stdout.includes(alone.stderr), 'one sentence, in both places');
+    assert.doesNotMatch(run.stdout, /Run the Host as a systemd user service\?/);
+  },
+);
 
-test('yes to the service installs it as service on does, and needs no restart', async (t) => {
-  const m = await machine(t, INACTIVE);
-  const home = await makeHome(t);
-  await schedulerAndWorklog(home);
+test(
+  'yes to the service installs it as service on does, and needs no restart',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t, INACTIVE);
+    const home = await makeHome(t);
+    await schedulerAndWorklog(home);
 
-  const run = await setupIn(t, home, answers('', '', '1', '', 'y'), m.env);
+    const run = await setupIn(t, home, answers('', '', '1', '', 'y'), m.env);
 
-  assert.equal(run.code, 0, run.stderr);
-  assert.ok(run.stdout.includes(`installed ${m.unit}`), run.stdout);
-  assert.match(await readFile(m.unit, 'utf8'), /^ExecStart=/m);
-  const calls = await m.calls();
-  assert.ok(calls.includes('systemctl --user enable --now firstmate.service'), calls.join('\n'));
-  assert.ok(calls.includes('loginctl enable-linger mate'));
-  assert.match(run.stdout, / {2}the Host runs as a systemd user service\n/);
-  assert.doesNotMatch(run.stdout, /Restart the Host now/, 'a service that just started is fresh');
-  assert.doesNotMatch(run.stdout, /restart the Host to pick it up/);
-});
+    assert.equal(run.code, 0, run.stderr);
+    assert.ok(run.stdout.includes(`installed ${m.unit}`), run.stdout);
+    assert.match(await readFile(m.unit, 'utf8'), /^ExecStart=/m);
+    const calls = await m.calls();
+    assert.ok(calls.includes('systemctl --user enable --now firstmate.service'), calls.join('\n'));
+    assert.ok(calls.includes('loginctl enable-linger mate'));
+    assert.match(run.stdout, / {2}the Host runs as a systemd user service\n/);
+    assert.doesNotMatch(run.stdout, /Restart the Host now/, 'a service that just started is fresh');
+    assert.doesNotMatch(run.stdout, /restart the Host to pick it up/);
+  },
+);
 
-test('no to the service installs nothing', async (t) => {
+test('no to the service installs nothing', { skip: LINUX_ONLY }, async (t) => {
   const m = await machine(t, INACTIVE);
   const home = await makeHome(t);
 

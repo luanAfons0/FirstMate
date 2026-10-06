@@ -18,6 +18,9 @@ import { firstmate, makeHome, type CommandResult } from './helpers/host.ts';
 import { machine, type Machine } from './helpers/systemd.ts';
 
 const REPOSITORY = dirname(dirname(fileURLToPath(import.meta.url)));
+
+/** systemd is Linux only, so on Windows there is no service to prove. */
+const LINUX_ONLY = process.platform === 'win32' && 'systemd is Linux only';
 /** The root of the running program: the command line's own package. */
 const PROGRAM = join(REPOSITORY, 'apps', 'cli');
 const NO_SYSTEMD =
@@ -27,39 +30,46 @@ function service(m: Machine, what: string, env: NodeJS.ProcessEnv = {}): Promise
   return firstmate(m.home, ['service', what], { ...m.env, ...env });
 }
 
-test('service on writes the unit, enables the service and turns lingering on', async (t) => {
-  const m = await machine(t);
+test(
+  'service on writes the unit, enables the service and turns lingering on',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t);
 
-  const on = await service(m, 'on');
+    const on = await service(m, 'on');
 
-  assert.equal(on.code, 0, on.stderr);
-  assert.equal(on.stderr, '');
-  assert.match(on.stdout, new RegExp(`installed ${m.unit}`));
-  assert.deepEqual((await m.calls()).slice(1), [
-    'systemctl --user daemon-reload',
-    'systemctl --user enable --now firstmate.service',
-    'loginctl enable-linger mate',
-  ]);
+    assert.equal(on.code, 0, on.stderr);
+    assert.equal(on.stderr, '');
+    assert.match(on.stdout, new RegExp(`installed ${m.unit}`));
+    assert.deepEqual((await m.calls()).slice(1), [
+      'systemctl --user daemon-reload',
+      'systemctl --user enable --now firstmate.service',
+      'loginctl enable-linger mate',
+    ]);
 
-  const unit = await readFile(m.unit, 'utf8');
-  // The Node that ran the command, by its absolute path, because the service's
-  // PATH has no nvm; and the Host entry point beside the running command line.
-  assert.match(unit, new RegExp(`^ExecStart="${process.execPath}" "${PROGRAM}/src/main.ts"$`, 'm'));
-  assert.match(unit, new RegExp(`^WorkingDirectory=${PROGRAM}$`, 'm'));
-  for (const line of [
-    'Restart=on-failure',
-    'StartLimitIntervalSec=60',
-    'StartLimitBurst=3',
-    'StandardOutput=journal',
-    'KillSignal=SIGTERM',
-    'TimeoutStopSec=15',
-    'WantedBy=default.target',
-  ]) {
-    assert.match(unit, new RegExp(`^${line}$`, 'm'), line);
-  }
-});
+    const unit = await readFile(m.unit, 'utf8');
+    // The Node that ran the command, by its absolute path, because the service's
+    // PATH has no nvm; and the Host entry point beside the running command line.
+    assert.match(
+      unit,
+      new RegExp(`^ExecStart="${process.execPath}" "${PROGRAM}/src/main.ts"$`, 'm'),
+    );
+    assert.match(unit, new RegExp(`^WorkingDirectory=${PROGRAM}$`, 'm'));
+    for (const line of [
+      'Restart=on-failure',
+      'StartLimitIntervalSec=60',
+      'StartLimitBurst=3',
+      'StandardOutput=journal',
+      'KillSignal=SIGTERM',
+      'TimeoutStopSec=15',
+      'WantedBy=default.target',
+    ]) {
+      assert.match(unit, new RegExp(`^${line}$`, 'm'), line);
+    }
+  },
+);
 
-test('service on asks first whether a user manager answers', async (t) => {
+test('service on asks first whether a user manager answers', { skip: LINUX_ONLY }, async (t) => {
   const m = await machine(t);
 
   await service(m, 'on');
@@ -67,39 +77,51 @@ test('service on asks first whether a user manager answers', async (t) => {
   assert.equal((await m.calls())[0], 'systemctl --user show-environment');
 });
 
-test('service on a second time succeeds and writes the unit again', async (t) => {
-  const m = await machine(t);
-  assert.equal((await service(m, 'on')).code, 0);
-  await writeFile(m.unit, 'stale\n');
+test(
+  'service on a second time succeeds and writes the unit again',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t);
+    assert.equal((await service(m, 'on')).code, 0);
+    await writeFile(m.unit, 'stale\n');
 
-  const again = await service(m, 'on');
+    const again = await service(m, 'on');
 
-  assert.equal(again.code, 0, again.stderr);
-  assert.match(await readFile(m.unit, 'utf8'), /^ExecStart=/m);
-});
+    assert.equal(again.code, 0, again.stderr);
+    assert.match(await readFile(m.unit, 'utf8'), /^ExecStart=/m);
+  },
+);
 
-test('the unit lands under ~/.config when XDG_CONFIG_HOME is not set', async (t) => {
-  const m = await machine(t);
+test(
+  'the unit lands under ~/.config when XDG_CONFIG_HOME is not set',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t);
 
-  const on = await service(m, 'on', { XDG_CONFIG_HOME: '', HOME: m.home });
+    const on = await service(m, 'on', { XDG_CONFIG_HOME: '', HOME: m.home });
 
-  assert.equal(on.code, 0, on.stderr);
-  await readFile(join(m.home, '.config', 'systemd', 'user', 'firstmate.service'), 'utf8');
-});
+    assert.equal(on.code, 0, on.stderr);
+    await readFile(join(m.home, '.config', 'systemd', 'user', 'firstmate.service'), 'utf8');
+  },
+);
 
-test('a lingering refusal is a warning that gives the sudo command', async (t) => {
-  const m = await machine(t, {
-    loginctl: [{ when: 'enable-linger', code: 1, says: 'Access denied' }],
-  });
+test(
+  'a lingering refusal is a warning that gives the sudo command',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t, {
+      loginctl: [{ when: 'enable-linger', code: 1, says: 'Access denied' }],
+    });
 
-  const on = await service(m, 'on');
+    const on = await service(m, 'on');
 
-  assert.equal(on.code, 0, on.stderr);
-  assert.match(on.stderr, /could not enable lingering\. Run: sudo loginctl enable-linger mate/);
-  await readFile(m.unit, 'utf8');
-});
+    assert.equal(on.code, 0, on.stderr);
+    assert.match(on.stderr, /could not enable lingering\. Run: sudo loginctl enable-linger mate/);
+    await readFile(m.unit, 'utf8');
+  },
+);
 
-test('any other failure names the command and what it said', async (t) => {
+test('any other failure names the command and what it said', { skip: LINUX_ONLY }, async (t) => {
   const m = await machine(t, {
     systemctl: [{ when: '--user enable', code: 1, says: 'Unit is masked.' }],
   });
@@ -112,23 +134,27 @@ test('any other failure names the command and what it said', async (t) => {
   assert.ok(!(await m.calls()).some((call) => call.startsWith('loginctl')), 'it stopped there');
 });
 
-test('service off stops the service, removes the unit and leaves lingering on', async (t) => {
-  const m = await machine(t);
-  assert.equal((await service(m, 'on')).code, 0);
-  const before = (await m.calls()).length;
+test(
+  'service off stops the service, removes the unit and leaves lingering on',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t);
+    assert.equal((await service(m, 'on')).code, 0);
+    const before = (await m.calls()).length;
 
-  const off = await service(m, 'off');
+    const off = await service(m, 'off');
 
-  assert.equal(off.code, 0, off.stderr);
-  assert.match(off.stdout, new RegExp(`removed ${m.unit}`));
-  assert.deepEqual((await m.calls()).slice(before + 1), [
-    'systemctl --user disable --now firstmate.service',
-    'systemctl --user daemon-reload',
-  ]);
-  assert.deepEqual(await readdir(dirname(m.unit)), [], 'exactly the unit is gone');
-});
+    assert.equal(off.code, 0, off.stderr);
+    assert.match(off.stdout, new RegExp(`removed ${m.unit}`));
+    assert.deepEqual((await m.calls()).slice(before + 1), [
+      'systemctl --user disable --now firstmate.service',
+      'systemctl --user daemon-reload',
+    ]);
+    assert.deepEqual(await readdir(dirname(m.unit)), [], 'exactly the unit is gone');
+  },
+);
 
-test('service off with no service says so and succeeds', async (t) => {
+test('service off with no service says so and succeeds', { skip: LINUX_ONLY }, async (t) => {
   const m = await machine(t);
 
   const off = await service(m, 'off');
@@ -163,7 +189,7 @@ for (const what of ['on', 'off']) {
   });
 }
 
-test('service takes on or off, and nothing else', async (t) => {
+test('service takes on or off, and nothing else', { skip: LINUX_ONLY }, async (t) => {
   const m = await machine(t);
 
   for (const argv of [['service'], ['service', 'up'], ['service', 'on', 'now']]) {
@@ -174,7 +200,7 @@ test('service takes on or off, and nothing else', async (t) => {
   assert.deepEqual(await m.calls(), []);
 });
 
-test('--help lists service', async (t) => {
+test('--help lists service', { skip: LINUX_ONLY }, async (t) => {
   const home = await makeHome(t);
 
   const help = await firstmate(home, ['--help']);
@@ -199,7 +225,7 @@ async function olderNode(): Promise<string | undefined> {
   return undefined;
 }
 
-test('service on refuses a Node older than 24', async (t) => {
+test('service on refuses a Node older than 24', { skip: LINUX_ONLY }, async (t) => {
   const node = await olderNode();
   if (node === undefined) return t.skip('no Node older than 24 that strips types');
   const m = await machine(t);
@@ -228,28 +254,36 @@ function logonCommand(script: string): string {
   return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File \\\\wsl.localhost\\Debian${path}`;
 }
 
-test('inside WSL, service on prints the command that installs the logon task', async (t) => {
-  const m = await machine(t);
+test(
+  'inside WSL, service on prints the command that installs the logon task',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t);
 
-  const on = await service(m, 'on', { WSL_DISTRO_NAME: 'Debian' });
+    const on = await service(m, 'on', { WSL_DISTRO_NAME: 'Debian' });
 
-  assert.equal(on.code, 0, on.stderr);
-  assert.ok(on.stdout.includes(`\n${logonCommand('install-logon-task.ps1')}\n`), on.stdout);
-  // The script it names is really there, beside the running program.
-  await readFile(join(PROGRAM, 'windows', 'install-logon-task.ps1'), 'utf8');
-});
+    assert.equal(on.code, 0, on.stderr);
+    assert.ok(on.stdout.includes(`\n${logonCommand('install-logon-task.ps1')}\n`), on.stdout);
+    // The script it names is really there, beside the running program.
+    await readFile(join(PROGRAM, 'windows', 'install-logon-task.ps1'), 'utf8');
+  },
+);
 
-test('inside WSL, service off prints the command that removes the logon task', async (t) => {
-  const m = await machine(t);
-  assert.equal((await service(m, 'on')).code, 0);
+test(
+  'inside WSL, service off prints the command that removes the logon task',
+  { skip: LINUX_ONLY },
+  async (t) => {
+    const m = await machine(t);
+    assert.equal((await service(m, 'on')).code, 0);
 
-  const off = await service(m, 'off', { WSL_DISTRO_NAME: 'Debian' });
+    const off = await service(m, 'off', { WSL_DISTRO_NAME: 'Debian' });
 
-  assert.equal(off.code, 0, off.stderr);
-  assert.ok(off.stdout.includes(`\n${logonCommand('uninstall-logon-task.ps1')}\n`), off.stdout);
-});
+    assert.equal(off.code, 0, off.stderr);
+    assert.ok(off.stdout.includes(`\n${logonCommand('uninstall-logon-task.ps1')}\n`), off.stdout);
+  },
+);
 
-test('outside WSL, neither says anything about Windows', async (t) => {
+test('outside WSL, neither says anything about Windows', { skip: LINUX_ONLY }, async (t) => {
   const m = await machine(t);
 
   const on = await service(m, 'on');

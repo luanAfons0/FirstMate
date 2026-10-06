@@ -196,8 +196,15 @@ test('a removed Plugin Server that will not end is killed before the command end
   const removed = await firstmate(host.home, ['remove', 'stubborn']);
 
   assert.equal(removed.code, 0, removed.stderr);
-  assert.match(host.output(), /stubborn: SIGTERM, and staying/);
-  assert.match(host.output(), /the Plugin named stubborn is Stopped: SIGKILL/);
+  if (process.platform === 'win32') {
+    // Windows has no signal that asks, so the Host closes stdin, waits, and
+    // then ends the whole tree (ADR-0019).
+    assert.doesNotMatch(host.output(), /stubborn: SIGTERM/);
+    assert.match(host.output(), /the Plugin named stubborn is Stopped: exit 1\./);
+  } else {
+    assert.match(host.output(), /stubborn: SIGTERM, and staying/);
+    assert.match(host.output(), /the Plugin named stubborn is Stopped: SIGKILL/);
+  }
 });
 
 test('a command run while the Host starts is picked up once it has started', async (t) => {

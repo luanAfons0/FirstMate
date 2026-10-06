@@ -32,7 +32,7 @@ test('a Shelf is remembered, and what is remembered is the real path', async (t)
   const home = await makeHome(t);
   const real = await directory(home, 'plugins');
   const byAnotherName = join(home, 'by-another-name');
-  await symlink(real, byAnotherName);
+  await symlink(real, byAnotherName, 'junction');
 
   const moved = await firstmate(home, ['shelf', byAnotherName]);
 
@@ -112,7 +112,10 @@ test('the settings file is written whole, and kept to this user alone', async (t
   await firstmate(home, ['shelf', chosen]);
 
   const written = await stat(join(home, 'settings.json'));
-  assert.equal(written.mode & 0o777, 0o600, 'as private as the Registry');
+  // Windows keeps no mode bits: there the file lives in the user's own profile.
+  if (process.platform !== 'win32') {
+    assert.equal(written.mode & 0o777, 0o600, 'as private as the Registry');
+  }
   assert.equal(
     await readFile(join(home, 'settings.json'), 'utf8'),
     `${JSON.stringify({ shelf: chosen }, null, 2)}\n`,
@@ -136,7 +139,7 @@ test('a symlink leading to the Host home directory is refused', async (t) => {
   const home = await makeHome(t);
   const elsewhere = await makeHome(t);
   const looksHarmless = join(elsewhere, 'looks-harmless');
-  await symlink(home, looksHarmless);
+  await symlink(home, looksHarmless, 'junction');
 
   const refused = await firstmate(home, ['shelf', looksHarmless]);
 
@@ -170,6 +173,10 @@ test('a path that is a file, and a path that is not there, each say so', async (
 });
 
 test('a Windows path is refused with the WSL path it names', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('on Windows a Windows path is the right answer');
+    return;
+  }
   const home = await makeHome(t);
 
   const drive = await firstmate(home, ['shelf', 'C:\\Users\\me\\Plugins']);
@@ -185,6 +192,10 @@ test('a Windows path is refused with the WSL path it names', async (t) => {
 test('a directory this user cannot write to is refused', async (t) => {
   if (process.getuid?.() === 0) {
     t.skip('root writes anywhere, so there is nothing here to refuse');
+    return;
+  }
+  if (process.platform === 'win32') {
+    t.skip('Windows keeps no mode bits, so chmod cannot shut a directory');
     return;
   }
   const home = await makeHome(t);

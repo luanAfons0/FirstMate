@@ -8,7 +8,7 @@ import { firstmate, fixture, makeHome } from './helpers/host.ts';
 test('a source that is a symlink to a directory is copied, not linked', async (t) => {
   const home = await makeHome(t);
   const link = join(home, 'linked');
-  await symlink(fixture('both'), link);
+  await symlink(fixture('both'), link, 'junction');
 
   const installed = await firstmate(home, ['install', link]);
 
@@ -24,7 +24,7 @@ test('a symlink in the Shelf that points nowhere still blocks the name', async (
   const home = await makeHome(t);
   const shelf = join(home, 'shelf');
   await mkdir(shelf);
-  await symlink(join(home, 'nothing-here'), join(shelf, 'both'));
+  await symlink(join(home, 'nothing-here'), join(shelf, 'both'), 'junction');
 
   const refused = await firstmate(home, ['install', fixture('both')]);
 

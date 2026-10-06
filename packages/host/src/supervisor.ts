@@ -4,6 +4,7 @@
  *
  * At start, every Registry row whose directory holds an executable named `mcp`
  * is spawned and kept until the Plugin leaves the Registry or the Host stops.
+ * On Windows the executable is `mcp.exe` or `mcp.cmd` instead (ADR-0019).
  * A reload starts the Plugins added and stops the ones removed, and leaves
  * every other one alone. A Plugin Server that exits leaves its Plugin Stopped
  * and is never started again on the Host's own account: a broken Plugin must
@@ -11,7 +12,7 @@
  * It does not go quietly all the same: the Host puts a Notice on the queue, so
  * that the operator learns of it without opening the Index Page (ADR-0014).
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -23,6 +24,22 @@ import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */
 const SERVER_FILE = 'mcp';
+
+/**
+ * What a Plugin ships its Plugin Server as on Windows, in the order the Host
+ * looks. Windows runs no file by its first line, so the form says how it runs
+ * (ADR-0019).
+ */
+const WINDOWS_SERVER_FILES = ['mcp.exe', 'mcp.cmd'] as const;
+
+/** Whether the Host runs on Windows, where a Plugin Server starts another way. */
+const ON_WINDOWS = process.platform === 'win32';
+
+/**
+ * The Node every Plugin Server is told about, so that a Node Plugin needs no
+ * Node of its own: the one that runs the Host (ADR-0019).
+ */
+const NODE_VARIABLE = 'FIRSTMATE_NODE';
 
 /**
  * How long a Plugin Server the operator restarts has to end before the Host
@@ -62,7 +79,11 @@ export type Supervisor = {
    * again. Nothing when the Host holds no Plugin of that name.
    */
   restart(name: string): Promise<Restarted | undefined>;
-  stopAll(): void;
+  /**
+   * Ask every Plugin Server to end, and resolve once each has ended or been
+   * killed, so that none outlives the Host that started it.
+   */
+  stopAll(): Promise<void>;
 };
 
 /** What became of a Plugin the operator restarted. */
@@ -149,7 +170,7 @@ export async function superviseAll(
   const spawned = (run: Run): void => {
     live.add(run);
     void run.ended.then(() => live.delete(run));
-    if (stopping) quit(run);
+    if (stopping) void quit(run);
   };
 
   // A Plugin that leaves is stopped, and ended, before anything new starts:
@@ -218,28 +239,49 @@ export async function superviseAll(
     serverOf,
     hold,
     restart,
-    stopAll() {
+    async stopAll() {
       stopping = true;
-      for (const run of live) quit(run);
+      await Promise.all([...live].map(quit));
     },
   };
 }
 
-/** Ask a run's process to end, as the Host stops: its end is no news. */
-function quit(run: Run): void {
+/** End a run's process as the Host stops: its end is no news. */
+function quit(run: Run): Promise<void> {
   run.quiet = true;
-  run.server?.stop();
-  run.child?.kill('SIGTERM');
+  return end(run);
 }
 
-/** Ask a run's process to end, and kill it if it will not in time. */
+/**
+ * Ask a run's process to end, and kill it if it will not in time.
+ *
+ * Closing its stdin is how MCP over stdio asks a server to end, and on Windows
+ * it is the only way to ask: a signal there kills at once. So Windows gets the
+ * same grace, and then the whole tree goes, because a Plugin Server started
+ * from `mcp.cmd` is cmd.exe with the real program under it (ADR-0019).
+ */
 async function end(run: Run): Promise<void> {
   run.server?.stop();
-  run.child?.kill('SIGTERM');
+  if (!ON_WINDOWS) run.child?.kill('SIGTERM');
   if (!(await ended(run))) {
-    run.child?.kill('SIGKILL');
+    killHard(run.child);
     await run.ended;
   }
+}
+
+/** Kill a process that would not end, and on Windows every process under it. */
+function killHard(child: ChildProcess | null): void {
+  if (child === null) return;
+  if (!ON_WINDOWS || child.pid === undefined) {
+    child.kill('SIGKILL');
+    return;
+  }
+  const taskkill = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+  // taskkill missing, or the tree already gone: the process itself still goes.
+  taskkill.once('error', () => child.kill('SIGKILL'));
+  taskkill.once('exit', (code) => {
+    if (code !== 0) child.kill('SIGKILL');
+  });
 }
 
 /** Whether a run's process ends within the grace the Host gives it. */
@@ -263,36 +305,24 @@ async function startOne(
     why: null,
     quiet: false,
   };
-  const path = join(plugin.directory, SERVER_FILE);
   const say = onceOnly(plugin.name, (why) => {
     run.why = why;
     if (!run.quiet) notices.fromHost(`${plugin.name} is Stopped`, why);
   });
 
-  const found = await stat(path).catch(() => null);
-  if (found === null || !found.isFile()) {
-    // No `mcp` file: this Plugin ships no Plugin Server, which is allowed and
-    // is not a failure.
+  const file = await serverFile(plugin.directory);
+  if (file.found === 'none') {
+    // No Plugin Server file: this Plugin ships no Plugin Server, which is
+    // allowed and is not a failure.
     run.shipsNone = true;
     return run;
   }
-  const runnable = await access(path, constants.X_OK).then(
-    () => true,
-    () => false,
-  );
-  if (!runnable) {
-    say(`${path} is not executable`);
+  if (file.found === 'unrunnable') {
+    say(file.why);
     return run;
   }
 
-  const child = spawn(path, [], {
-    // A Plugin Server runs in its own Plugin's directory, so that it reaches
-    // its own files by the relative paths its author already wrote.
-    cwd: plugin.directory,
-    // stdin and stdout carry MCP. stderr is the Plugin Server's own output and
-    // goes straight to the Host's, which under systemd is the journal.
-    stdio: ['pipe', 'pipe', 'inherit'],
-  });
+  const child = launch(file.path, plugin.directory);
   // The calling Plugin Name is this pipe's, closed over here and never taken
   // from anything the Plugin Server says.
   const server = speak(child, plugin.name, answering);
@@ -309,15 +339,12 @@ async function startOne(
   try {
     await handshake(server, handshakeMs);
   } catch (cause) {
-    if (server.alive()) {
-      say(cause instanceof Error ? cause.message : String(cause));
-      server.stop();
-    } else {
-      // The pipe broke first, so the process is gone or going. Its exit says
-      // why better than the broken pipe does: "exit 3" is what the operator
-      // can act on. The kill is for a process that closed its end and lives.
-      child.kill('SIGTERM');
-    }
+    // When the pipe broke first, the process is gone or going, and its exit
+    // says why better than the broken pipe does: "exit 3" is what the
+    // operator can act on. Either way it is ended, because a process that
+    // will not answer, or that closed its end, may still live.
+    if (server.alive()) say(cause instanceof Error ? cause.message : String(cause));
+    void end(run);
     // A Plugin Server that never finished the handshake is one the Host
     // cannot forward a call to, so the Plugin is Stopped from the start.
     return run;
@@ -325,6 +352,66 @@ async function startOne(
   console.log(`FirstMate: the Plugin Server of ${plugin.name} is running.`);
   run.server = server;
   return run;
+}
+
+/** What a Plugin directory holds to start a Plugin Server from. */
+type ServerFile =
+  /** Nothing: the Plugin ships no Plugin Server. */
+  | { readonly found: 'none' }
+  /** A file the Host cannot start, and why. */
+  | { readonly found: 'unrunnable'; readonly why: string }
+  /** A file the Host can start. */
+  | { readonly found: 'runnable'; readonly path: string };
+
+/** Find the file a Plugin ships its Plugin Server as, on the platform the Host runs on. */
+async function serverFile(directory: string): Promise<ServerFile> {
+  const shell = join(directory, SERVER_FILE);
+  if (ON_WINDOWS) {
+    for (const name of WINDOWS_SERVER_FILES) {
+      const path = join(directory, name);
+      if (await isFile(path)) return { found: 'runnable', path };
+    }
+    // An `mcp` alone is a Plugin Server written for Linux. It is a Plugin
+    // Server all the same, so the Plugin is Stopped, not shipping none.
+    return (await isFile(shell))
+      ? { found: 'unrunnable', why: `${shell} cannot run on Windows: it needs mcp.cmd or mcp.exe` }
+      : { found: 'none' };
+  }
+  if (!(await isFile(shell))) return { found: 'none' };
+  const runnable = await access(shell, constants.X_OK).then(
+    () => true,
+    () => false,
+  );
+  return runnable
+    ? { found: 'runnable', path: shell }
+    : { found: 'unrunnable', why: `${shell} is not executable` };
+}
+
+async function isFile(path: string): Promise<boolean> {
+  const found = await stat(path).catch(() => null);
+  return found?.isFile() === true;
+}
+
+/**
+ * Spawn a Plugin Server.
+ *
+ * It runs in its own Plugin's directory, so that it reaches its own files by
+ * the relative paths its author already wrote. stdin and stdout carry MCP.
+ * stderr is the Plugin Server's own output and goes straight to the Host's,
+ * which under systemd is the journal.
+ */
+function launch(path: string, directory: string): ChildProcess {
+  const options = {
+    cwd: directory,
+    env: { ...process.env, [NODE_VARIABLE]: process.execPath },
+    stdio: ['pipe', 'pipe', 'inherit'],
+  } satisfies SpawnOptions;
+  if (!path.endsWith('.cmd')) return spawn(path, [], options);
+  // Node starts a `.cmd` file only through cmd.exe, and only when asked to
+  // (CVE-2024-27980). cmd.exe reads a command line by rules of its own, so it
+  // is handed no path to read: from the Plugin's own directory, `.\mcp.cmd`
+  // holds no space and nothing cmd.exe treats as special (ADR-0019).
+  return spawn('.\\mcp.cmd', [], { ...options, shell: true });
 }
 
 /**

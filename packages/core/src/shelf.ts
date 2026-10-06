@@ -111,7 +111,9 @@ function lexical(given: string): string {
   if (/\p{Cc}/u.test(trimmed)) {
     throw refuse('invalid', 'A Shelf may not hold a control character.');
   }
-  const inside = wslPathOf(trimmed);
+  // On Windows a Windows path is the right answer. Elsewhere it was pasted
+  // from Windows, and it names a path this machine reaches by another name.
+  const inside = process.platform === 'win32' ? undefined : wslPathOf(trimmed);
   if (inside !== undefined) {
     throw refuse('invalid', `${trimmed} is a Windows path. Inside WSL it is ${inside}.`);
   }

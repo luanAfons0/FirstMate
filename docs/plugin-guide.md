@@ -98,6 +98,15 @@ for the life of the Host.
   afternoon. Run `chmod +x mcp`.
 - **The shebang chooses the language.** The Host runs the file; it does not
   care what is in it. Python, Node, a shell script, a compiled binary.
+- **On Windows, ship `mcp.cmd` or `mcp.exe` beside it.** Windows reads no
+  shebang and has no executable bit, so there the Host runs `mcp.exe`, or
+  else `mcp.cmd`, and a Plugin with only `mcp` is **Stopped**
+  ([ADR-0019](adr/0019-a-plugin-starts-on-windows-from-mcp-cmd-or-mcp-exe.md)).
+  For a Node Plugin, `mcp.cmd` is one line:
+  `@"%FIRSTMATE_NODE%" "%~dp0mcp" %*`.
+- **`FIRSTMATE_NODE` names a Node you may use.** Every Plugin Server
+  receives it, on every platform: the Node that runs the Host. A Node
+  Plugin needs no Node of its own.
 - **It is started in your Plugin's directory.** Your working directory is
   the Plugin directory, not `web/` and not the Host's. You can open your
   own files by a relative path.
@@ -114,7 +123,8 @@ for the life of the Host.
   your Plugin is **Stopped** — a Plugin Server the Host cannot talk to is
   no use to a Plugin Page.
 - **Closing stdin is how you are asked to stop.** The Host closes it and
-  then sends `SIGTERM`.
+  then sends `SIGTERM`. Windows has no such signal: there the Host closes
+  stdin, waits five seconds, and then ends your whole process tree.
 
 ## Calling your own tools
 
@@ -315,6 +325,7 @@ None of this is enforced. All of it is what the first Plugin learned.
 - [ ] The directory is at an absolute path you are happy to leave it at.
 - [ ] The name is lower-case letters, digits and single hyphens.
 - [ ] `chmod +x mcp` — check this first when the Plugin is Stopped.
+- [ ] `mcp.cmd` or `mcp.exe` beside it, if it runs on Windows.
 - [ ] `./mcp` runs from the Plugin directory without an import error.
 - [ ] It answers `initialize` within ten seconds.
 - [ ] Nothing but JSON-RPC goes to stdout. Diagnostics go to stderr.

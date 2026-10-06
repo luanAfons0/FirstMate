@@ -7,11 +7,11 @@
  * is not there.
  */
 import assert from 'node:assert/strict';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { bareRepositoryOf, hasGit } from './helpers/git.ts';
-import { bootHostIn, firstmate, makeHome } from './helpers/host.ts';
+import { bootHostIn, firstmate, makeHome, canStart } from './helpers/host.ts';
 
 test('a git URL is cloned into the Shelf, registered, and then served', async (t) => {
   if (!(await hasGit())) {
@@ -29,7 +29,7 @@ test('a git URL is cloned into the Shelf, registered, and then served', async (t
   assert.ok(installed.stdout.includes(`installed both at ${landed}`), installed.stdout);
   assert.doesNotMatch(installed.stdout, /restart/);
 
-  assert.ok((await stat(join(landed, 'mcp'))).mode & 0o111, 'mcp is still executable');
+  assert.ok(await canStart(landed), 'mcp is still executable');
   await readFile(join(landed, 'web', 'index.html'));
 
   const host = await bootHostIn(t, home);

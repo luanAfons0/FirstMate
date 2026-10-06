@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { firstmate, makeHome } from './helpers/host.ts';
+import { firstmate, makeHome, canStart } from './helpers/host.ts';
 import { hasGit, officialSources } from './helpers/git.ts';
 
 async function registry(home: string): Promise<{
@@ -34,7 +34,7 @@ test('an Official Plugin is installed by its name alone', async (t) => {
   assert.equal(installed.code, 0, installed.stderr);
   const landed = join(home, 'shelf', 'worklog');
   assert.ok(installed.stdout.includes(`installed worklog at ${landed}`), installed.stdout);
-  assert.ok((await stat(join(landed, 'mcp'))).mode & 0o111, 'mcp is still executable');
+  assert.ok(await canStart(landed), 'mcp is still executable');
   assert.deepEqual(await registry(home), {
     plugins: [{ name: 'worklog', directory: landed, grants: [] }],
   });
