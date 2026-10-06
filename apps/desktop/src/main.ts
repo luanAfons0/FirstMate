@@ -7,6 +7,11 @@
  * every test reach it the same way. Quit stops the Host through the same
  * `stop()` a signal reaches, so no Plugin Server outlives the App.
  *
+ * The window and the Tray show as soon as Electron is ready, before the Host
+ * has started every Plugin Server, and the Index Page loads when the Host is
+ * ready. The Host itself starts as it always did. A Host that does not start,
+ * such as on a port that is taken, still ends the App with one sentence.
+ *
  * Only one App runs for one home. A second start shows the first window and
  * ends; it never starts a second Host.
  *
@@ -77,38 +82,47 @@ function main(): void {
   });
   stopOnQuit(host);
 
-  Promise.all([host, app.whenReady()]).then(
-    ([running]) => {
-      // The Index Page and each Plugin Page are whole pages, so the window
-      // adds no menu of its own above them (ADR-0008).
-      Menu.setApplicationMenu(null);
+  // The window, the strip and the Tray show as soon as Electron is ready,
+  // while the Host still starts every Plugin Server. The rest needs the Host.
+  const made = app.whenReady().then(() => {
+    // The Index Page and each Plugin Page are whole pages, so the window
+    // adds no menu of its own above them (ADR-0008).
+    Menu.setApplicationMenu(null);
+    const notices = showNotices((path) => shown?.open(path));
+    // Started at logon, the App begins in the Tray with the window put away.
+    const window = openWindow(() => refresh(), process.argv.includes(AT_LOGON), {
+      home: config.home,
+      // A change made while the Host starts waits for it to be ready.
+      reload: () => host.then((running) => running.reload()),
+    });
+    shown = window;
+    tray = holdTray({
+      open: (path) => window.open(path),
+      reveal: () => window.reveal(),
+      changed: () => refresh(),
+    });
+    notify = (notice) => notices.show(notice);
+    for (const notice of early.splice(0)) notices.show(notice);
+    return { window, notices };
+  });
+
+  Promise.all([host, made]).then(
+    ([running, { window, notices }]) => {
       refresh = () => {
         void askForPlugins(running).then((plugins) => {
           shown?.told(plugins);
           tray?.told(plugins);
         });
       };
-      const notices = showNotices((path) => shown?.open(path));
-      // Every permission is settled before the first page can ask for one.
+      // Every permission is settled before the first page of the Host loads.
+      // Only the App's own pages are loaded before it, and they ask for none.
       guardPermissions({
         host: running,
         home: config.home,
         window: () => shown?.window,
         say: (sentence) => notices.say(sentence),
       });
-      // Started at logon, the App begins in the Tray with the window put away.
-      const window = openWindow(running, refresh, process.argv.includes(AT_LOGON), {
-        home: config.home,
-        reload: () => running.reload(),
-      });
-      shown = window;
-      tray = holdTray({
-        open: (path) => window.open(path),
-        reveal: () => window.reveal(),
-        changed: () => refresh(),
-      });
-      notify = (notice) => notices.show(notice);
-      for (const notice of early.splice(0)) notices.show(notice);
+      window.ready(running);
       const popup = makePopup({
         host: running,
         admitted: () => window.admitted(),
@@ -132,7 +146,8 @@ function main(): void {
     },
     (fault: unknown) => {
       // The Host did not start, and it has already ended what it started.
-      // The App says why in one sentence and does not start either.
+      // The App says why in one sentence and does not start either, even
+      // when its window already shows.
       say(fault instanceof Error ? fault.message : String(fault));
       app.exit(1);
     },
