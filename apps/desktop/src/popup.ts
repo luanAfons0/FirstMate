@@ -15,7 +15,7 @@
  * background is the theme's, following the system. The Plugin Page inside
  * draws any border of its own: the App frames nothing (ADR-0008).
  */
-import { WINDOW_BACKGROUND } from '@firstmate/core/theme';
+import { windowBackground } from '@firstmate/core/theme';
 import { app, BrowserWindow, nativeTheme } from 'electron';
 import { leavesTheHost, onHost, type HostAt } from './addresses.ts';
 import { markPath } from './marks.ts';
@@ -49,11 +49,6 @@ export type PopupNeeds = {
   /** Give a link off the Host to the operator's browser. */
   readonly toBrowser: (address: string) => void;
 };
-
-/** The theme's background for the system's light or dark. */
-function background(): string {
-  return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light;
-}
 
 /** Make the Popup. Its window waits for the first Shortcut. */
 export function makePopup(needs: PopupNeeds): Popup {
@@ -92,12 +87,14 @@ export function makePopup(needs: PopupNeeds): Popup {
       maximizable: false,
       show: false,
       icon: markPath('running'),
-      backgroundColor: background(),
+      backgroundColor: windowBackground(nativeTheme.shouldUseDarkColors),
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
     });
     made = window;
     const page = window.webContents;
-    nativeTheme.on('updated', () => window.setBackgroundColor(background()));
+    nativeTheme.on('updated', () =>
+      window.setBackgroundColor(windowBackground(nativeTheme.shouldUseDarkColors)),
+    );
 
     page.on('will-navigate', (event, url) => {
       // A link to the web is not the page saying it is finished.

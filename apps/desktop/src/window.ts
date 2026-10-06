@@ -33,7 +33,7 @@
  * cookie.
  */
 import { fileURLToPath } from 'node:url';
-import { TITLE_BAR, WINDOW_BACKGROUND } from '@firstmate/core/theme';
+import { titleBarColours, windowBackground } from '@firstmate/core/theme';
 import {
   app,
   BaseWindow,
@@ -141,7 +141,7 @@ export function openWindow(
     height: HEIGHT,
     minWidth: 480,
     minHeight: 320,
-    backgroundColor: background(),
+    backgroundColor: windowBackground(nativeTheme.shouldUseDarkColors),
     ...(STRIP_IS_TITLE_BAR
       ? { titleBarStyle: 'hidden' as const, titleBarOverlay: titleBar() }
       : {}),
@@ -149,7 +149,7 @@ export function openWindow(
     show: false,
   });
   const followTheme = (): void => {
-    window.setBackgroundColor(background());
+    window.setBackgroundColor(windowBackground(nativeTheme.shouldUseDarkColors));
     if (STRIP_IS_TITLE_BAR) window.setTitleBarOverlay(titleBar());
   };
   nativeTheme.on('updated', followTheme);
@@ -560,15 +560,9 @@ export function openWindow(
   };
 }
 
-/** The theme's background for the system's light or dark. */
-function background(): string {
-  return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light;
-}
-
 /** The window's own buttons, as tall as the strip and in its colours. */
 function titleBar(): { color: string; symbolColor: string; height: number } {
-  const colours = nativeTheme.shouldUseDarkColors ? TITLE_BAR.dark : TITLE_BAR.light;
-  return { ...colours, height: STRIP_HEIGHT };
+  return { ...titleBarColours(nativeTheme.shouldUseDarkColors), height: STRIP_HEIGHT };
 }
 
 /**
