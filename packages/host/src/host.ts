@@ -7,7 +7,6 @@
  * it, and it is the one seam this project is tested through.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { existsSync } from 'node:fs';
 import { BIND_ADDRESS } from '@firstmate/core/config';
 import { indexPage } from './index-page.ts';
 import type { NoticesAfter } from './notices.ts';
@@ -39,6 +38,8 @@ export type HostOptions = {
   readonly stateOf: (name: string) => PluginState;
   /** The Plugin Server of a Plugin, while it is running. */
   readonly serverOf: (name: string) => PluginServer | null;
+  /** Whether the Plugin ships a Plugin Page, as the Supervisor last looked. */
+  readonly hasPage: (name: string) => boolean;
   /**
    * The Shortcuts as the settings file holds them now. They are read on every
    * request rather than at startup, so that `bind` takes effect with no
@@ -242,7 +243,7 @@ async function handle(
   }
 
   if (!readOnly(response, method)) return;
-  await sendPluginPage(response, plugin, rest, method === 'HEAD');
+  await sendPluginPage(response, plugin, options.hasPage(plugin.name), rest, method === 'HEAD');
 }
 
 /**
@@ -284,7 +285,7 @@ function pluginViews(response: ServerResponse, options: HostOptions): PluginView
   if (order === null) return null;
   return inPluginOrder(options.plugins(), order).map((plugin) => ({
     name: plugin.name,
-    hasPage: existsSync(webRoot(plugin.files)),
+    hasPage: options.hasPage(plugin.name),
     state: options.stateOf(plugin.name),
   }));
 }
@@ -315,6 +316,7 @@ function shortcutView(shortcut: Shortcut): {
 async function sendPluginPage(
   response: ServerResponse,
   plugin: HeldPlugin,
+  hasPage: boolean,
   rest: string | undefined,
   headOnly: boolean,
 ): Promise<void> {
@@ -324,15 +326,14 @@ async function sendPluginPage(
     response.writeHead(308, { location: `/p/${encodeURIComponent(plugin.name)}/` }).end();
     return;
   }
-  // A Plugin in a `wsl` Place is read through its Place's root (ADR-0021).
-  const root = webRoot(plugin.files);
-  if (!existsSync(root)) {
+  if (!hasPage) {
     sendText(response, 404, `The Plugin named ${plugin.name} ships no Plugin Page.`);
     return;
   }
+  // A Plugin in a `wsl` Place is read through its Place's root (ADR-0021).
   const result = await serveStatic(
     response,
-    root,
+    webRoot(plugin.files),
     rest,
     (path) => `/p/${encodeURIComponent(plugin.name)}${path}`,
     headOnly,
