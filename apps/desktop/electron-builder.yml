@@ -59,9 +59,10 @@ linux:
     - deb
   icon: build/icon.png
   category: Utility
-  # The program, and the deb's package, are named in lower case, as Linux
-  # names a command.
-  executableName: firstmate
+  # The program is named firstmate-app, so that the deb's link in /usr/bin does
+  # not take the name of the npm command line, firstmate. The deb's package
+  # keeps the name firstmate, and both are in lower case, as Linux names a command.
+  executableName: firstmate-app
   # The desktop entry is named after desktopName in package.json, which is
   # the app ID Electron gives its window under Wayland, so the desktop links
   # the window to the entry and shows the FirstMate mark on it.
