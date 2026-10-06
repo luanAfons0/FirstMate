@@ -1,6 +1,7 @@
 /**
  * The Settings View: a side list of its sections, the Places with their
- * Shelves, start at logon, the Shortcuts, and the App's version.
+ * Shelves, the Plugin Order, start at logon, the Shortcuts, and the App's
+ * version.
  *
  * It is one of the App's own pages (`pages.ts`): written here, loaded once as
  * a data address and then sent each new body, never served by the Host, so no
@@ -18,11 +19,20 @@
  * `wsl` Place can be (ADR-0021): elsewhere the one Place is this machine.
  * Whether it is open is the page's own state, which it sets again after
  * every body, as it does which section of the side list is current.
+ *
+ * The Plugin Order is the rows `/plugins.json` gave, each with its position
+ * and its state. A drag, Alt+↑ or Alt+↓, or a row's up or down button sends
+ * one ask: the Plugin Name and its new position. The page never moves a row
+ * itself; it shows the order the Host gives back, so a refused move leaves
+ * the rows where they are kept (ADR-0016). The row that moved keeps the
+ * focus, so the keys can move it again.
  */
 import { canHoldWslPlace } from '@firstmate/core/places';
+import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { type IconName, icon } from '@firstmate/core/theme';
 import { logonAsk, placeRemoveAsk, shelfChooseAsk, TYPED } from './ask.ts';
 import { escaped, written, type Written } from './pages.ts';
+import type { PluginSeen, Plugins } from './host-lists.ts';
 import type { Field, PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
 
 /** One section of the Settings View, as the side list names it. */
@@ -31,6 +41,7 @@ type Section = { readonly id: string; readonly icon: IconName; readonly words: s
 /** The sections, in the order the page shows them and the side list names them. */
 const SECTIONS: readonly Section[] = [
   { id: 'places', icon: 'hard-drives', words: 'Places' },
+  { id: 'order', icon: 'list-numbers', words: 'Plugin Order' },
   { id: 'logon', icon: 'power', words: 'Start at logon' },
   { id: 'shortcuts', icon: 'keyboard', words: 'Shortcuts' },
 ];
@@ -45,6 +56,9 @@ const ICONS: readonly IconName[] = [
   'circle-notch',
   'check-circle',
   'warning-circle',
+  'dots-six-vertical',
+  'caret-up',
+  'caret-down',
 ];
 
 /** The Settings View. */
@@ -56,10 +70,10 @@ export function settingsPage(shown: SettingsShown): Written {
 <p>${escaped(shown.saved.why)}</p></div></section>`
       : `${outcomeLine(shown)}
 ${placesSection(shown.saved.places, shown)}
+${orderSection(shown.plugins, shown.busy)}
 ${logonSection(shown.logon, shown.busy)}
 ${shortcutsSection(shown.saved.shortcuts)}
-<p class="foot">Plugins, Grants and the Plugin Order change from a terminal:
-<code>firstmate --help</code>.</p>`;
+<p class="foot">Plugins and Grants change from a terminal: <code>firstmate --help</code>.</p>`;
   return written(
     'Settings',
     styles(),
@@ -185,6 +199,39 @@ autocomplete="off" spellcheck="false" aria-label="The Shelf of ${name}"${shelf.o
 </div>`;
 }
 
+function orderSection(plugins: Plugins, busy: boolean): string {
+  const rows =
+    plugins.kind === 'untold'
+      ? '<p class="none">The Host would not say which Plugins there are.</p>'
+      : plugins.plugins.length === 0
+        ? '<p class="none">No Plugin is registered.</p>'
+        : `<ol class="group${busy ? ' order-busy' : ''}" aria-label="Plugin Order">
+${plugins.plugins.map((plugin, at, all) => orderRow(plugin, at + 1, all.length, busy)).join('\n')}
+</ol>`;
+  return `<section id="order">
+<h2>Plugin Order</h2>
+<p class="hint">The Index Page, the switcher and the Tray show the Plugins in this order. Drag a
+row, or press <kbd>Alt</kbd>+<kbd>↑</kbd> or <kbd>Alt</kbd>+<kbd>↓</kbd>. A new Plugin goes to the
+bottom.</p>
+${rows}
+</section>`;
+}
+
+/** One row of the Plugin Order. Running needs no word: the solid dot says it. */
+function orderRow(plugin: PluginSeen, position: number, count: number, busy: boolean): string {
+  const name = escaped(plugin.name);
+  const state = plugin.state === 'running' ? '' : STATE_WORDS[plugin.state];
+  const button = (by: -1 | 1, where: string, end: boolean) =>
+    `<button type="button" class="icon-btn" data-move="${by}" tabindex="-1" \
+aria-label="Move ${name} ${where}"${disabled(busy || end)}>${icon(by < 0 ? 'caret-up' : 'caret-down')}</button>`;
+  return `<li class="order-row" data-key="order:${name}" data-name="${name}" data-at="${position}" \
+draggable="${!busy}" tabindex="0" aria-label="${name}, number ${position} of ${count}">\
+${icon('dots-six-vertical', 'grip')}<span class="pos">${position}</span>\
+<span class="dot ${plugin.state}" aria-hidden="true"></span><span class="name">${name}</span>\
+<span class="state ${plugin.state}">${state}</span><span class="moves">\
+${button(-1, 'up', position === 1)}${button(1, 'down', position === count)}</span></li>`;
+}
+
 function logonSection(logon: boolean, busy: boolean): string {
   return `<section id="logon">
 <h2>Start at logon</h2>
@@ -232,6 +279,11 @@ function disabled(busy: boolean): string {
  * local Place, is left out. The form is kept until the page has shown its
  * change worked on and then ended, and it is emptied only when it was done;
  * Add a Place then closes. The side list scrolls to its section in one click.
+ *
+ * A move in the Plugin Order sends the Plugin Name and the position it asks
+ * for, and nothing while a change is still being made. Once the page has
+ * shown that move worked on and then ended, the row of that Plugin takes the
+ * focus again, wherever the new body put it.
  */
 function script(): string {
   return `let asking;
@@ -255,6 +307,17 @@ const showCurrent = () => {
     else link.removeAttribute('aria-current');
   }
 };
+const busyNow = () => document.querySelector('main[aria-busy]') !== null;
+const orderRows = () => Array.from(document.querySelectorAll('.order-row'));
+const rowOf = (event) => (event.target instanceof Element ? event.target.closest('.order-row') : null);
+let moving;
+const move = (row, position) => {
+  if (busyNow() || position < 1 || position > orderRows().length) return;
+  if (position === Number(row.dataset.at)) return;
+  moving = { name: row.dataset.name, seen: false };
+  const parts = ['${TYPED.pluginMove}', row.dataset.name, String(position)];
+  firstmate.ask(parts.map((part, at) => at === 0 ? part : encodeURIComponent(part)).join('/'));
+};
 const openAdding = (open) => {
   adding = open;
   const form = addForm();
@@ -274,6 +337,14 @@ whenShown(() => {
   }
   asking = undefined;
 });
+whenShown(() => {
+  if (moving === undefined) return;
+  if (busyNow()) { moving.seen = true; return; }
+  if (!moving.seen) return;
+  const row = orderRows().find((one) => one.dataset.name === moving.name);
+  moving = undefined;
+  if (row && document.activeElement !== row) row.focus();
+});
 whenShown(showAdding);
 whenShown(showKind);
 whenShown(() => {
@@ -285,6 +356,13 @@ addEventListener('click', (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const add = target?.closest('[data-add]');
   if (add) { event.preventDefault(); openAdding(add.dataset.add === 'open'); return; }
+  const step = target?.closest('[data-move]');
+  if (step) {
+    event.preventDefault();
+    const row = step.closest('.order-row');
+    move(row, Number(row.dataset.at) + Number(step.dataset.move));
+    return;
+  }
   const link = target?.closest('.side a[data-to]');
   if (!link) return;
   event.preventDefault();
@@ -294,6 +372,48 @@ addEventListener('click', (event) => {
 });
 addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && adding && addForm()?.contains(event.target)) openAdding(false);
+  const row = rowOf(event);
+  if (!row || !event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+  event.preventDefault();
+  move(row, Number(row.dataset.at) + (event.key === 'ArrowUp' ? -1 : 1));
+});
+let dragged;
+const clearDrop = () => {
+  for (const row of document.querySelectorAll('.drop-before, .drop-after')) {
+    row.classList.remove('drop-before', 'drop-after');
+  }
+};
+addEventListener('dragstart', (event) => {
+  const row = rowOf(event);
+  if (!row || busyNow()) return;
+  dragged = row;
+  row.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', row.dataset.name);
+});
+addEventListener('dragover', (event) => {
+  const row = rowOf(event);
+  if (!row || !dragged) return;
+  event.preventDefault();
+  clearDrop();
+  if (row === dragged) return;
+  const box = row.getBoundingClientRect();
+  row.classList.add(event.clientY < box.top + box.height / 2 ? 'drop-before' : 'drop-after');
+});
+addEventListener('drop', (event) => {
+  const row = rowOf(event);
+  if (!row || !dragged) return;
+  event.preventDefault();
+  const after = row.classList.contains('drop-after');
+  clearDrop();
+  if (row === dragged) return;
+  const rest = orderRows().filter((one) => one !== dragged);
+  move(dragged, rest.indexOf(row) + (after ? 2 : 1));
+});
+addEventListener('dragend', () => {
+  dragged?.classList.remove('dragging');
+  dragged = undefined;
+  clearDrop();
 });
 addEventListener('submit', (event) => {
   event.preventDefault();
@@ -427,6 +547,43 @@ function styles(): string {
     border: 1px solid var(--line-2); border-bottom-width: 2px; background: var(--bg);
     font-size: 11px; line-height: 15px; color: var(--text);
   }
+  ol.group { list-style: none; margin: 0; padding: 0; }
+  .order-row {
+    display: grid; grid-template-columns: 16px 20px 8px minmax(0, 1fr) auto 60px; align-items: center;
+    gap: 10px; padding: 6px 8px 6px 10px; cursor: grab; outline: 0; position: relative;
+  }
+  .order-row:hover { background: var(--hover); }
+  .order-row:first-child { border-radius: var(--radius-panel) var(--radius-panel) 0 0; }
+  .order-row:last-child { border-radius: 0 0 var(--radius-panel) var(--radius-panel); }
+  .order-row:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+  .order-row .grip { width: 16px; height: 16px; color: var(--faint); }
+  .order-row .pos {
+    font: 12px/1 var(--mono); color: var(--faint); text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .order-row .name {
+    font: 600 12.5px/1.2 var(--mono); color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .order-row .state { font-size: 11.5px; color: var(--faint); }
+  .order-row .state.stopped { color: var(--stopped); }
+  .order-row .moves { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; }
+  .order-row:hover .moves, .order-row:focus-within .moves { opacity: 1; }
+  @media (hover: none) { .order-row .moves { opacity: 1; } }
+  .icon-btn {
+    width: 26px; height: 26px; border: 0; border-radius: var(--radius-control); background: none;
+    color: var(--muted); display: grid; place-items: center; cursor: pointer;
+  }
+  .icon-btn:hover { background: var(--press); color: var(--ink); }
+  .icon-btn:disabled { opacity: .3; pointer-events: none; }
+  .icon-btn svg.i { width: 14px; height: 14px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .icon-btn { transition: transform .12s ease-out; }
+    .icon-btn:active { transform: scale(.94); }
+  }
+  .order-row.dragging { opacity: .45; }
+  .order-row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+  .order-row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+  .order-busy .order-row { cursor: default; opacity: .6; pointer-events: none; }
   .none { margin: 0; padding: 14px 12px; color: var(--muted); font-size: 12.5px; }
   .cmd {
     display: flex; align-items: center; gap: 8px; margin: 10px 0 0; padding: 8px 10px;

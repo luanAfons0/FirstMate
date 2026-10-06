@@ -52,6 +52,8 @@ export type Asked =
   | { readonly kind: 'shelf'; readonly place: string; readonly directory: string }
   /** Ask the operator for a folder, and move a Place's Shelf there. */
   | { readonly kind: 'shelf-choose'; readonly place: string }
+  /** Move one Plugin to a position in the Plugin Order, counted from 1 at the top. */
+  | { readonly kind: 'plugin-move'; readonly name: string; readonly position: string }
   /** Nothing the App knows. Nothing happens. */
   | { readonly kind: 'nothing' };
 
@@ -86,10 +88,11 @@ export function shelfChooseAsk(place: string): string {
 
 /**
  * The first words of an ask whose last part the page fills in from what the
- * operator typed: `place-add/<name>/<kind>[/<distribution>]` and
- * `shelf/<place>/<directory>`. The page joins each part encoded.
+ * operator typed or did: `place-add/<name>/<kind>[/<distribution>]`,
+ * `shelf/<place>/<directory>` and `plugin-move/<name>/<position>`. The page
+ * joins each part encoded.
  */
-export const TYPED = { placeAdd: 'place-add', shelf: 'shelf' } as const;
+export const TYPED = { placeAdd: 'place-add', shelf: 'shelf', pluginMove: 'plugin-move' } as const;
 
 /** Words, with every part encoded, so that a slash in a part stays inside it. */
 function said(kind: string, ...parts: readonly string[]): string {
@@ -125,6 +128,7 @@ export function readAsked(said: unknown): Asked {
   } else if (third === undefined) {
     if (kind === 'place-add') return { kind, name: first, placeKind: second };
     if (kind === 'shelf') return { kind, place: first, directory: second };
+    if (kind === 'plugin-move') return { kind, name: first, position: second };
   } else if (kind === 'place-add') {
     return { kind, name: first, placeKind: second, distribution: third };
   }
