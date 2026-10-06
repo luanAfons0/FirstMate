@@ -4,12 +4,15 @@
  * The App is the one program a person installs on Windows or Linux
  * (ADR-0020, ADR-0026). It starts the Host as `node packages/host/src/main.ts`
  * does, with the same home, the same port and the same runtime file, so that
- * the command line and every test reach it the same way. Quit stops the Host through the same
- * `stop()` a signal reaches, so no Plugin Server outlives the App.
+ * the command line and every test reach it the same way. Quit stops the Host
+ * through the same `stop()` a signal reaches, so no Plugin Server outlives
+ * the App.
  *
  * The window and the Tray show as soon as Electron is ready, before the Host
  * has started every Plugin Server, and the Index Page loads when the Host is
- * ready. The Host itself starts as it always did. A Host that does not start,
+ * ready. An App started at logon shows only the Tray, and loads no page at
+ * all, the strip's neither, until the window first shows or a Popup opens.
+ * The Host itself starts as it always did. A Host that does not start,
  * such as on a port that is taken, still ends the App with one sentence.
  *
  * Only one App runs for one home. A second start shows the first window and
