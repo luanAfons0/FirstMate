@@ -35,6 +35,8 @@ export type StripView = {
   readonly switcher: boolean;
   /** What went wrong with the last thing asked for, until the next one. */
   readonly fault: string | undefined;
+  /** Whether the Host is still starting, so there is no Plugin to list or open yet. */
+  readonly starting: boolean;
 };
 
 /** How tall the strip is, in logical pixels. */
@@ -78,7 +80,8 @@ ${atTheList ? ' aria-disabled="true"' : ''} title="See the Plugin list">\
 <span aria-hidden="true">⌂</span> FirstMate</a>
 <span class="sep" aria-hidden="true">›</span>
 <a class="crumb last" href="#" data-ask="${view.switcher ? ASK.switcherClose : ASK.switcher}" \
-aria-expanded="${view.switcher}" title="Switch Plugin">${hereWords(view.here)} \
+aria-expanded="${view.switcher}"${view.starting ? ' aria-disabled="true"' : ''} \
+title="Switch Plugin">${hereWords(view.here, view.starting)} \
 <span aria-hidden="true">▾</span></a>`;
   return page(
     'FirstMate',
@@ -87,7 +90,8 @@ aria-expanded="${view.switcher}" title="Switch Plugin">${hereWords(view.here)} \
 ${crumbs}
 ${view.fault === undefined ? '' : `<span class="fault">${escaped(view.fault)}</span>`}
 <span class="gap"></span>
-<a class="button" href="#" data-ask="${ASK.openInBrowser}" \
+<a class="button" href="#" data-ask="${ASK.openInBrowser}"\
+${view.starting ? ' aria-disabled="true"' : ''} \
 title="Open what is shown here in the system browser">open in browser</a>
 <a class="button gear" href="#" data-ask="${ASK.settings}" title="Settings" aria-label="Settings" \
 aria-pressed="${view.here.kind === 'settings'}">⚙</a>
@@ -96,10 +100,11 @@ aria-pressed="${view.here.kind === 'settings'}">⚙</a>
   );
 }
 
-/** The last part of the breadcrumb: what is open. */
-function hereWords(here: Here): string {
+/** The last part of the breadcrumb: what is open, or that the Host still starts. */
+function hereWords(here: Here, starting: boolean): string {
   if (here.kind === 'plugin') return `<b>${escaped(here.name)}</b>`;
-  return here.kind === 'settings' ? '<b>Settings</b>' : 'Plugins';
+  if (here.kind === 'settings') return '<b>Settings</b>';
+  return starting ? 'Starting…' : 'Plugins';
 }
 
 /**
@@ -213,6 +218,7 @@ function stripStyles(): string {
     border: 1px solid #34363b; border-radius: 6px; padding: 6px 10px; white-space: nowrap;
   }
   .button:hover { background: #24262a; border-color: #4a4d54; }
+  .button[aria-disabled='true'] { opacity: .5; pointer-events: none; }
   .gear { font-size: 15px; line-height: 13px; padding: 6px 8px; }
   .gear[aria-pressed='true'] { background: #2b2e33; border-color: #4a4d54; }`;
 }
