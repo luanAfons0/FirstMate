@@ -148,6 +148,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    terminal and the App alike.
   plugin-state.ts  what the Host says about a Plugin Server, in one set of
                    words for the Index Page, the App and the terminal.
+  theme.ts         the one look of every page: the colours, dark and light,
+                   the radii, the state shapes, and the icons as one sprite.
   logon.ts         the App's logon entry, which the App and setup both write.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
