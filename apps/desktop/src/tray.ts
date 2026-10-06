@@ -8,9 +8,10 @@
  * off, and quits. Quit is the one way the App
  * ends: closing the window only hides it, and every Plugin keeps running.
  *
- * Start at logon is Windows's own entry for the App (`logon.ts`), and it is off
- * until the operator turns it on. The App it starts begins in the
- * Tray, with the window put away, because nobody asked to see it.
+ * Start at logon is the system's own entry for the App (`logon.ts`): the Run
+ * value on Windows, the autostart entry on Linux. It is off until the
+ * operator turns it on. The App it starts begins in the Tray, with the window
+ * put away, because nobody asked to see it.
  *
  * The Tray shows before the Host is ready, and its Plugins say "Starting…"
  * until the Host first names them.
@@ -50,28 +51,26 @@ export function holdTray(needs: TrayNeeds): HeldTray {
     stopped: nativeImage.createFromPath(markPath('stopped')),
   };
   const tray = new Tray(marks.running);
-  /** Start at logon, read once and again only after the Tray writes it. */
-  let logon = readLogon();
   /** What the Host last said, or nothing while it still starts. */
   let plugins: Plugins | undefined;
   /** What the menu was last built from. Building it again unchanged is churn. */
   let built = '';
 
   const draw = (): void => {
+    // Start at logon is read again on each draw, because the Settings View
+    // and `setup` write it too, and a menu that kept its first answer would
+    // go wrong. A draw follows an answer from the Host, never a keystroke,
+    // and the read is one small file or one registry value. On Linux the menu
+    // is handed to the desktop ahead of time, so no moment of its opening
+    // comes to read it in.
+    const logon = readLogon();
     const said = `${signature(plugins)}|${logon}`;
     if (said === built) return;
     built = said;
     const stopped = stoppedCount(plugins);
     tray.setImage(stopped > 0 ? marks.stopped : marks.running);
     tray.setToolTip(tooltip(stopped));
-    tray.setContextMenu(
-      Menu.buildFromTemplate(
-        menu(plugins, logon, needs, (now) => {
-          logon = now;
-          draw();
-        }),
-      ),
-    );
+    tray.setContextMenu(Menu.buildFromTemplate(menu(plugins, logon, needs, draw)));
   };
 
   // A click opens the window, which is the thing wanted nearly every time.
@@ -95,7 +94,7 @@ function menu(
   plugins: Plugins | undefined,
   logon: boolean,
   needs: TrayNeeds,
-  written: (logon: boolean) => void,
+  written: () => void,
 ): MenuItemConstructorOptions[] {
   return [
     { label: 'Open FirstMate', click: () => needs.open('/') },
@@ -109,7 +108,7 @@ function menu(
       click: (item) => {
         writeLogon(item.checked);
         needs.changed();
-        written(readLogon());
+        written();
       },
     },
     { type: 'separator' },
