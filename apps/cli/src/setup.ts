@@ -23,10 +23,11 @@ import {
   listPlaces,
   moveShelf,
 } from '@firstmate/core/commands';
+import { cancel, intro, note, outro } from '@clack/prompts';
 import { readConfig } from '@firstmate/core/config';
 import { holdsOneX } from '@firstmate/core/import-1x';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
-import { openPrompt, type Prompt } from './prompt.ts';
+import { onTerminal, openPrompt, type Prompt } from './prompt.ts';
 import { readRegistry } from '@firstmate/core/registry';
 import { appHere, logonIsOn, turnLogonOn } from './install-app.ts';
 import { bringAcross } from './one-x.ts';
@@ -46,10 +47,19 @@ type Changes = {
 /** Run the conversation, and give back the exit code. */
 export async function setup(): Promise<number> {
   const changes: Changes = { done: [], failed: false };
+  // On a terminal setup opens with a title and closes with a summary in the
+  // same frame as its questions; a pipe gets the plain lines (ADR-0025).
+  const framed = onTerminal();
+  if (framed) intro('firstmate setup');
   const prompt = openPrompt(() => {
-    process.stdout.write('\n');
-    summarise(changes);
-    console.error('firstmate: setup stopped. The steps it finished are kept.');
+    if (framed) {
+      summarise(changes, framed);
+      cancel('setup stopped. The steps it finished are kept.');
+    } else {
+      process.stdout.write('\n');
+      summarise(changes, framed);
+      console.error('firstmate: setup stopped. The steps it finished are kept.');
+    }
     process.exit(130);
   });
   try {
@@ -63,7 +73,8 @@ export async function setup(): Promise<number> {
     await reload(changes);
   } finally {
     prompt.close();
-    summarise(changes);
+    summarise(changes, framed);
+    if (framed) outro(changes.failed ? 'setup finished, and a step failed.' : 'setup is done.');
   }
   return changes.failed ? 1 : 0;
 }
@@ -150,25 +161,18 @@ async function askImport(prompt: Prompt, changes: Changes): Promise<void> {
  */
 async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
   const registered = new Set(readRegistry(readConfig().home).map((row) => row.name));
-  const offered = OFFICIAL_PLUGINS.filter((plugin) => !registered.has(plugin.name));
-  const width = Math.max(...OFFICIAL_PLUGINS.map((plugin) => plugin.name.length));
-
-  console.log('The Official Plugins:');
-  for (const plugin of OFFICIAL_PLUGINS) {
-    const at = offered.indexOf(plugin);
-    const number = at < 0 ? '   ' : `${String(at + 1).padStart(2)}.`;
-    const installed = at < 0 ? ' (installed)' : '';
-    console.log(`  ${number} ${plugin.name.padEnd(width)}  ${plugin.description}${installed}`);
-  }
-  if (offered.length === 0) return;
-
-  const chosen = await prompt.choose(
-    'Which should be installed? Type their numbers, or press Enter for none:',
-    offered.length,
-    true,
-  );
+  const chosen = await prompt.choose({
+    heading: 'The Official Plugins:',
+    question: 'Which should be installed?',
+    choices: OFFICIAL_PLUGINS.map((plugin) => ({
+      label: plugin.name,
+      hint: plugin.description,
+      ...(registered.has(plugin.name) ? { taken: 'installed' } : {}),
+    })),
+    takes: 'many',
+  });
   for (const at of chosen) {
-    const plugin = offered[at];
+    const plugin = OFFICIAL_PLUGINS[at];
     if (plugin === undefined) continue;
     // Only a Place the Plugin runs in is offered, so that nothing is fetched
     // where it would only go Stopped.
@@ -208,15 +212,13 @@ async function askPlace(
   places: readonly { readonly name: string }[],
 ): Promise<string | undefined> {
   if (places.length < 2) return places[0]?.name;
-  console.log(`The Places ${plugin} can run in:`);
-  for (const [at, place] of places.entries()) {
-    console.log(`  ${String(at + 1).padStart(2)}. ${place.name}`);
-  }
-  for (;;) {
-    const [at] = await prompt.choose(`Which should ${plugin} go in?`, places.length, false);
-    const place = at === undefined ? undefined : places[at];
-    if (place !== undefined) return place.name;
-  }
+  const [at] = await prompt.choose({
+    heading: `The Places ${plugin} can run in:`,
+    question: `Which should ${plugin} go in?`,
+    choices: places.map((place) => ({ label: place.name })),
+    takes: 'one',
+  });
+  return at === undefined ? undefined : places[at]?.name;
 }
 
 /**
@@ -233,22 +235,18 @@ async function askGrants(prompt: Prompt, changes: Changes): Promise<void> {
     if (row === undefined) continue;
     const others = rows.filter((candidate) => candidate !== row).map((other) => other.name);
     if (others.length === 0) continue;
-    const offered = others.filter((name) => !row.grants.includes(name));
 
-    console.log(`The Plugins ${row.name} may call:`);
-    for (const name of others) {
-      const at = offered.indexOf(name);
-      console.log(at < 0 ? `      ${name} (granted)` : `  ${String(at + 1).padStart(2)}. ${name}`);
-    }
-    if (offered.length === 0) continue;
-
-    const chosen = await prompt.choose(
-      `Which may ${row.name} call? Type their numbers, or press Enter for none:`,
-      offered.length,
-      true,
-    );
+    const chosen = await prompt.choose({
+      heading: `The Plugins ${row.name} may call:`,
+      question: `Which may ${row.name} call?`,
+      choices: others.map((name) => ({
+        label: name,
+        ...(row.grants.includes(name) ? { taken: 'granted' } : {}),
+      })),
+      takes: 'many',
+    });
     for (const at of chosen) {
-      const to = offered[at];
+      const to = others[at];
       if (to === undefined) continue;
       givePermission(home, row.name, to);
       console.log(`firstmate: granted ${row.name} the right to call ${to}'s tools.`);
@@ -291,15 +289,12 @@ async function askShortcuts(prompt: Prompt, changes: Changes): Promise<void> {
       continue;
     }
 
-    console.log(`The Plugins ${keys} can open:`);
-    for (const [at, name] of plugins.entries()) {
-      console.log(`  ${String(at + 1).padStart(2)}. ${name}`);
-    }
-    const [at] = await prompt.choose(
-      `Which should ${keys} open? Type its number, or press Enter for none:`,
-      plugins.length,
-      false,
-    );
+    const [at] = await prompt.choose({
+      heading: `The Plugins ${keys} can open:`,
+      question: `Which should ${keys} open?`,
+      choices: plugins.map((name) => ({ label: name })),
+      takes: 'one or none',
+    });
     const plugin = at === undefined ? undefined : plugins[at];
     if (plugin === undefined) continue;
 
@@ -363,11 +358,19 @@ async function reload(changes: Changes): Promise<void> {
   }
 }
 
-/** Say what changed, and nothing when nothing did. */
-function summarise(changes: Changes): void {
+/**
+ * Say what changed, and nothing when nothing did: in a note on a terminal,
+ * and in plain lines anywhere else.
+ */
+function summarise(changes: Changes, framed: boolean): void {
   if (changes.done.length === 0) return;
+  const done = changes.done.splice(0);
+  if (framed) {
+    note(done.join('\n'), 'setup changed');
+    return;
+  }
   console.log('firstmate: setup changed:');
-  for (const change of changes.done.splice(0)) console.log(`  ${change}`);
+  for (const change of done) console.log(`  ${change}`);
 }
 
 /** What went wrong, as the sentence it carries. */

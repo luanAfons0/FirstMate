@@ -22,3 +22,5 @@ Have `setup` turn start at logon on through the App. The App may not be running 
 `firstmate start`, `firstmate service` and `journalctl` are gone; `firstmate logs` reads the Host's log instead (ADR-0022). A 1.x operator moves with `firstmate import` (ADR-0021), which also offers to turn the 1.x service off. The 2.0.0 release notes say so.
 
 ADR-0011's one dependency, the window library, no longer exists, and that ADR is superseded by ADR-0020 already.
+
+Note: the bundle now carries `@clack/prompts`, a devDependency, for the questions `setup` asks on a terminal. The package still depends on nothing (ADR-0025).

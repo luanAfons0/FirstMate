@@ -12,7 +12,8 @@
  *
  * One entry, `src/cli.ts`: the npm package is the command line alone, and the
  * Host and the window live in the App (ADR-0024). The bundle carries no window
- * library and no dependency, so a package install pulls nothing else.
+ * library. It carries `@clack/prompts`, a devDependency, inside it, as it
+ * carries `core`, so a package install pulls nothing else (ADR-0025).
  */
 import { defineConfig } from 'tsdown';
 
