@@ -15,7 +15,7 @@ This guide has two halves, and the split is the point of it.
 
 **What the Host enforces** is behaviour you can observe. Get it wrong and
 the Host tells you: a status code, a state on the Index Page, a line in the
-journal. Every statement in that half is checked by a test.
+log. Every statement in that half is checked by a test.
 
 **What the project advises** is taste. It is what worked for the first
 Plugin. Disagree with any of it and nothing breaks.
@@ -94,7 +94,7 @@ for the life of the Host.
 
 - **It must be a file, and it must carry the executable bit.** An `mcp`
   that cannot be run leaves your Plugin **Stopped**, with one line in the
-  journal and no other symptom. This is the mistake that costs an
+  log and no other symptom. This is the mistake that costs an
   afternoon. Run `chmod +x mcp`.
 - **The shebang chooses the language.** The Host runs the file; it does not
   care what is in it. Python, Node, a shell script, a compiled binary.
@@ -111,11 +111,11 @@ for the life of the Host.
   the Plugin directory, not `web/` and not the Host's. You can open your
   own files by a relative path.
 - **stdin and stdout carry MCP, and nothing else.** One JSON-RPC message
-  per line. A line on stdout that is not JSON is reported in the journal
+  per line. A line on stdout that is not JSON is reported in the log
   and dropped, so a stray `print` breaks the transport. Send your
-  diagnostics to **stderr**, which goes straight to the Host's own output —
-  under systemd, the journal. Read it with
-  `journalctl --user -u firstmate -f`.
+  diagnostics to **stderr**, which the Host writes as its own output and
+  keeps in its log. Read it with `firstmate logs -f`
+  ([ADR-0022](adr/0022-the-host-keeps-one-log.md)).
 - **It must answer the handshake.** The Host sends `initialize` with
   `protocolVersion` `2025-06-18` and waits `FIRSTMATE_HANDSHAKE_MS`
   milliseconds, ten seconds by default. Answer it and the Host sends
@@ -318,7 +318,7 @@ None of this is enforced. All of it is what the first Plugin learned.
 - **Do not read the Host's runtime file, and do not print the token.**
   Nothing in `$FIRSTMATE_HOME` is yours.
 - **Say nothing when nothing is wrong.** Your stderr is the operator's
-  journal, shared with the Host and every other Plugin. Earn each line.
+  log, shared with the Host and every other Plugin. Earn each line.
 
 ## Before you register it
 
@@ -341,7 +341,7 @@ systemctl --user restart firstmate
 ```
 
 Open the Index Page. If it says `Stopped`, the reason is in
-`journalctl --user -u firstmate -f`.
+`firstmate logs`.
 
 ## Two worked examples
 

@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that says a great deal on stderr, so that a test can
+// prove the Host's log never grows past its cap. How much it says is
+// CHATTER_BYTES, which reaches it through the Host's own environment.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+
+const line = `chatter: ${'x'.repeat(1013)}\n`;
+const lines = Math.ceil(Number(process.env.CHATTER_BYTES ?? '0') / line.length);
+
+createInterface({ input: process.stdin }).on('line', (text) => {
+  if (text.trim() === '') return;
+  const message = JSON.parse(text);
+  if (message.method !== 'initialize') return;
+  reply({
+    jsonrpc: '2.0',
+    id: message.id,
+    result: {
+      protocolVersion: '2025-06-18',
+      capabilities: { tools: {} },
+      serverInfo: { name: 'chatter', version: '1.0.0' },
+    },
+  });
+  for (let at = 0; at < lines; at += 1) process.stderr.write(line);
+  process.stderr.write('chatter: done\n');
+});

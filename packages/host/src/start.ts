@@ -14,6 +14,7 @@
 import { randomBytes } from 'node:crypto';
 import { BIND_ADDRESS, readConfig, type Config } from '@firstmate/core/config';
 import { startHost } from './host.ts';
+import { keepLog } from './log.ts';
 import { openNotices } from './notices.ts';
 import { readPlugins } from '@firstmate/core/plugin-places';
 import { registryPath } from '@firstmate/core/registry';
@@ -40,6 +41,8 @@ export async function start(config: Config = readConfig()): Promise<RunningHost>
   // The token lives in memory and in the runtime file, and is minted fresh
   // every start, so yesterday's address is worth nothing today.
   const token = randomBytes(32).toString('hex');
+  // Kept from here, so the log holds every Plugin Server's start as well.
+  keepLog(config.home, token);
 
   // One queue of Notices for the run. It lives in memory and dies with it.
   const notices = openNotices(config.noticeMs);
