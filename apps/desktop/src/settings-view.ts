@@ -12,6 +12,7 @@
  * (`settings.ts`). The page checks nothing itself: `core` refuses what is
  * wrong, in the sentence a terminal would see, and the page shows it.
  */
+import { canHoldWslPlace } from '@firstmate/core/places';
 import { logonAsk, placeRemoveAsk, shelfChooseAsk, TYPED } from './ask.ts';
 import { escaped, written, type Written } from './pages.ts';
 import type { PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
@@ -57,14 +58,25 @@ ${rows}
 <label>Name <input name="name" required placeholder="debian"
 autocomplete="off" spellcheck="false"></label>
 <label>Kind <select name="kind">
-<option value="wsl">wsl: a WSL distribution</option>
-<option value="local">local: this machine</option>
+${kindOptions()}
 </select></label>
-<label class="for-wsl">Distribution <input name="distribution" placeholder="Debian"
-autocomplete="off" spellcheck="false"></label>
+${distributionField()}
 <button${disabled(busy)}>Add</button>
 </form>
 </section>`;
+}
+
+/** The kinds a Place can be here: `wsl` is offered only where `wsl.exe` runs (ADR-0021). */
+function kindOptions(): string {
+  const local = '<option value="local">local: this machine</option>';
+  if (!canHoldWslPlace()) return local;
+  return `<option value="wsl">wsl: a WSL distribution</option>\n${local}`;
+}
+
+function distributionField(): string {
+  if (!canHoldWslPlace()) return '';
+  return `<label class="for-wsl">Distribution <input name="distribution" placeholder="Debian"
+autocomplete="off" spellcheck="false"></label>`;
 }
 
 function placeRow(place: PlaceShown, busy: boolean): string {
@@ -100,7 +112,7 @@ function logonSection(logon: boolean, busy: boolean): string {
   return `<section>
 <h2>Start at logon</h2>
 <label class="check"><input type="checkbox" data-ask="${escaped(logonAsk(!logon))}"\
-${logon ? ' checked' : ''}${disabled(busy)}> Start FirstMate when you log on to Windows.
+${logon ? ' checked' : ''}${disabled(busy)}> Start FirstMate when you log on.
 It begins in the Tray, with the window put away.</label>
 </section>`;
 }

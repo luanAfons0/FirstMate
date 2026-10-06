@@ -15,6 +15,7 @@ import { refuse } from './refusal.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import {
   allPlaces,
+  canHoldWslPlace,
   DEFAULT_PLACE,
   defaultShelfOf,
   filesOf,
@@ -83,6 +84,9 @@ export async function addPlace(
       'invalid',
       `${kind} is not a kind of Place. The kinds are ${PLACE_KINDS.join(', ')}.`,
     );
+  }
+  if (kind === 'wsl' && !canHoldWslPlace()) {
+    throw refuse('invalid', 'a wsl Place runs on Windows only, and this machine is not Windows.');
   }
   if (allPlaces(readSettings(home).places).some((place) => place.name === name)) {
     throw refuse('taken', `a Place named ${name} is there already.`);

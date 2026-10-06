@@ -26,11 +26,12 @@ async function setupIn(
   env: NodeJS.ProcessEnv = {},
   shelfAnswers = 1,
 ): Promise<CommandResult> {
-  // On Windows setup also asks for WSL distributions to add, after the Shelf,
-  // and Enter there adds none. Inside WSL a test that wants it says so.
+  // Where a wsl Place can run, on Windows or with a fake wsl.exe, setup also
+  // asks for WSL distributions to add, after the Shelf, and Enter there adds
+  // none. A test that wants one says so.
   const lines = input.split('\n');
   const asked =
-    process.platform === 'win32'
+    process.platform === 'win32' || env['FIRSTMATE_FAKE_WSL'] === '1'
       ? [...lines.slice(0, shelfAnswers), '', ...lines.slice(shelfAnswers)]
       : lines;
   const user = { HOME: join(home, 'user'), XDG_CONFIG_HOME: '' };
@@ -382,25 +383,35 @@ async function schedulerAndWorklog(home: string): Promise<void> {
   await firstmate(home, ['add', 'worklog', await directory(home, 'worklog')]);
 }
 
-test('inside WSL, setup adds a distribution as a Place', { skip: NO_FAKE_WSL }, async (t) => {
-  const home = await makeHome(t);
-  const wsl = await fakeWsl(t, ['Debian']);
+test(
+  'where a wsl Place can run, setup adds a distribution as a Place',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    const home = await makeHome(t);
+    const wsl = await fakeWsl(t, ['Debian']);
 
-  const run = await setupIn(t, home, answers('', 'Nope', 'Debian', '', ''), {
-    ...wsl.env,
-    WSL_DISTRO_NAME: 'Debian',
-  });
+    // Not setupIn: this test types its own answer to the distribution question.
+    const run = await firstmate(
+      home,
+      ['setup'],
+      { PATH: await pathWith(t, ['git']), ...wsl.env },
+      answers('', 'Nope', 'Debian', '', ''),
+    );
 
-  assert.equal(run.code, 0, run.stderr);
-  assert.match(run.stdout, /The Places:\n {2}local {2}\(local\)\n/);
-  assert.match(run.stderr, /the distribution Nope did not answer/, 'a refusal asks again');
-  assert.match(run.stdout, /added the wsl Place debian/);
-  const places = JSON.parse(await readFile(join(home, 'settings.json'), 'utf8')).places;
-  assert.deepEqual(
-    places.map((place: { name: string; distribution: string }) => [place.name, place.distribution]),
-    [['debian', 'Debian']],
-  );
-});
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(run.stdout, /The Places:\n {2}local {2}\(local\)\n/);
+    assert.match(run.stderr, /the distribution Nope did not answer/, 'a refusal asks again');
+    assert.match(run.stdout, /added the wsl Place debian/);
+    const places = JSON.parse(await readFile(join(home, 'settings.json'), 'utf8')).places;
+    assert.deepEqual(
+      places.map((place: { name: string; distribution: string }) => [
+        place.name,
+        place.distribution,
+      ]),
+      [['debian', 'Debian']],
+    );
+  },
+);
 
 test(
   'setup offers to import a 1.x install, and imports it on yes',
@@ -442,12 +453,12 @@ test(
     windows.install(windows.version);
     const env = { ...windows.env, PATH: `${windows.env['PATH']}:${process.env['PATH']}` };
 
-    const no = await setupIn(t, home, answers('', '', '', 'n'), env);
+    const no = await setupIn(t, home, answers('', '', 'n'), env);
     assert.equal(no.code, 0, no.stderr);
     assert.match(no.stdout, /Start FirstMate at logon\? \[y\/N\]/);
     assert.ok(!(await windows.calls()).some((call) => call.startsWith('reg.exe add')));
 
-    const yes = await setupIn(t, home, answers('', '', '', 'y'), env);
+    const yes = await setupIn(t, home, answers('', '', 'y'), env);
     assert.equal(yes.code, 0, yes.stderr);
     assert.match(yes.stdout, / {2}FirstMate starts at logon\n/);
     const added = (await windows.calls()).find((call) => call.startsWith('reg.exe add'));
@@ -553,3 +564,16 @@ test('setup never asks to restart the Host', async (t) => {
   assert.match(run.stdout, /bound Ctrl\+Alt\+A/);
   assert.doesNotMatch(run.stdout, /Restart the Host now/);
 });
+
+test(
+  'inside WSL on Linux, setup offers no distribution, for a wsl Place runs on Windows only',
+  { skip: process.platform === 'win32' && 'Windows offers one' },
+  async (t) => {
+    const home = await makeHome(t);
+
+    const run = await setupIn(t, home, answers('', ''), { WSL_DISTRO_NAME: 'Debian' });
+
+    assert.equal(run.code, 0, run.stderr);
+    assert.doesNotMatch(run.stdout, /The Places:/);
+  },
+);
