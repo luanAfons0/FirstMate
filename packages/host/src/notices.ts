@@ -1,6 +1,8 @@
 /**
- * The Notices: short messages the Tray shows in a Windows pop-up, held by the
- * Host for a short time until the Tray reads them (ADR-0014).
+ * The Notices: short messages the App shows in a Windows pop-up (ADR-0014).
+ * The App holds the Host, so it hears each one as the queue takes it. The
+ * queue also holds them for a short time at `/notices.json`, for any other
+ * reader.
  *
  * A Plugin Server sends one on the pipe the Host owns, so the sender's Plugin
  * Name comes from the connection and never from what the Plugin says. The Host
@@ -35,7 +37,7 @@ const NOTICE_GAP_MS = 5_000;
 const HOST_NAME = 'FirstMate';
 
 /** One Notice, as the Tray reads it. */
-type Notice = {
+export type Notice = {
   /** Its place on the queue. It only goes up while the Host runs. */
   readonly sequence: number;
   /** `<sender>: <title>`, so that the sender is always named first. */

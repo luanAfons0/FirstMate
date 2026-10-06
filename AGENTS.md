@@ -191,6 +191,7 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/addresses.ts the Host's addresses, and which owner each belongs to.
   src/host-lists.ts what /plugins.json says, as the App reads it.
   src/tray.ts      the Tray: the marks, the menu, and start at logon.
+  src/notices.ts   Notices, as Windows notifications under the App's own ID.
   src/marks.ts     where the running and stopped marks are.
   resources/icons/ the marks, packed with the App.
   electron.vite.config.ts the build: the main process, with core and host

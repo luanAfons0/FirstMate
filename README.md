@@ -394,6 +394,11 @@ menu opens the Index Page or any Plugin, turns **Start at logon** on and off,
 and quits. Start at logon is off until you turn it on; the App it starts
 begins in the Tray, with the window put away.
 
+A Notice shows as a Windows notification under FirstMate's name and mark, and
+a click on it opens the sender's address in the window. Windows takes that
+name from the installer's Start menu entry, so the unpacked App's Notices are
+filed under Electron.
+
 ## Configure it
 
 | Variable                | Default        | What it moves                                     |

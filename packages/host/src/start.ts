@@ -15,7 +15,7 @@ import { randomBytes } from 'node:crypto';
 import { BIND_ADDRESS, readConfig, type Config } from '@firstmate/core/config';
 import { startHost } from './host.ts';
 import { keepLog } from './log.ts';
-import { openNotices } from './notices.ts';
+import { openNotices, type Notice } from './notices.ts';
 import { readPlugins } from '@firstmate/core/plugin-places';
 import { registryPath } from '@firstmate/core/registry';
 import { removeRuntimeFile, runtimePath, writeRuntimeFile } from '@firstmate/core/runtime';
@@ -40,6 +40,8 @@ export type RunningHost = {
  * App uses it to keep the Tray right without asking the Host on a timer.
  */
 export type HostHooks = {
+  /** Called with each Notice the Host takes, from a Plugin Server or its own. */
+  readonly onNotice?: (notice: Notice) => void;
   /**
    * Called after anything that can change what `/plugins.json` says: a
    * reload, a restart, and every Notice, because a Notice is how the Host
@@ -70,7 +72,10 @@ export async function start(
   keepLog(config.home, token);
 
   // One queue of Notices for the run. It lives in memory and dies with it.
-  const notices = openNotices(config.noticeMs, Date.now, () => tell(hooks.onChange));
+  const notices = openNotices(config.noticeMs, Date.now, (notice) => {
+    tell(() => hooks.onNotice?.(notice));
+    tell(hooks.onChange);
+  });
 
   // Every Plugin Server starts before the first request can reach one.
   const supervisor = await superviseAll(

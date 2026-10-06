@@ -50,3 +50,12 @@ would lose the Notices sent before the Tray noticed the restart.
 A Plugin sets the title, the body and the click path, and nothing else.
 Buttons would need a way back from the Tray to the Plugin Server, and that is a
 larger design.
+
+## Amended: the App hears each Notice in-process (2.0)
+
+FirstMate 2.0 is an App that holds the Host in its own main process (ADR-0020), so the Tray no longer needs the poll. `start()` takes an `onNotice` hook, and the queue calls it with each Notice it takes. The App shows the Notice at once as a Windows notification through Electron's `Notification`, under its own Application User Model ID, which is the `appId` the installer gives its Start menu entry. So a Notice says FirstMate and wears the mark, and no PowerShell helper is needed. A click opens the Notice's address in the window, as before. Windows names an app's notifications from its Start menu entry, so the installed App's Notices say FirstMate; an App that was never installed has no entry, and Windows files its Notices under Electron.
+
+Two consequences above no longer apply to the App: the poll's delay, and the rule about the latest sequence number a Tray takes when it starts. The App starts the Host, so it hears every Notice of the run from the first, and a Notice the Host takes while the App is still starting waits until the App can show it.
+
+`/notices.json` stays as it is. It is read-only, it is how the tests watch the queue, and removing it would make nothing safer, because the queue holds only what a Plugin Server or the Host already said. The Host still promises nothing about delivery.
+

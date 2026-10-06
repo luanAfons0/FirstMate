@@ -11,15 +11,17 @@
  * ends; it never starts a second Host.
  *
  * This file only wires the parts together. The window and its views are
- * `window.ts`, and the Tray is `tray.ts`. Closing the window hides it; Quit,
+ * `window.ts`, the Tray is `tray.ts`, and Notices are `notices.ts`. Closing the window hides it; Quit,
  * from the Tray, ends the App.
  */
 import { join } from 'node:path';
 import { app, dialog, Menu } from 'electron';
 import { readConfig, type Config } from '@firstmate/core/config';
 import { AT_LOGON } from '@firstmate/core/logon';
+import type { Notice } from '@firstmate/host/notices';
 import { start, type RunningHost } from '@firstmate/host/start';
 import { askForPlugins } from './host-lists.ts';
+import { nameTheApp, showNotices } from './notices.ts';
 import { holdTray, type HeldTray } from './tray.ts';
 import { openWindow, type Shown } from './window.ts';
 
@@ -46,10 +48,18 @@ function main(): void {
   let tray: HeldTray | undefined;
   app.on('second-instance', () => shown?.reveal());
 
+  nameTheApp();
+
   // What the Host says about its Plugins is asked again whenever it may have
   // changed, and the window and the Tray are both told the answer.
   let refresh = (): void => {};
-  const host = start(config, { onChange: () => refresh() });
+  // A Notice the Host takes while it starts, such as a Plugin that would not
+  // start, waits until the App can show it.
+  const early: Notice[] = [];
+  let notify = (notice: Notice): void => {
+    early.push(notice);
+  };
+  const host = start(config, { onChange: () => refresh(), onNotice: (notice) => notify(notice) });
   stopOnQuit(host);
 
   Promise.all([host, app.whenReady()]).then(
@@ -67,6 +77,9 @@ function main(): void {
       const window = openWindow(running, refresh, process.argv.includes(AT_LOGON));
       shown = window;
       tray = holdTray({ open: (path) => window.open(path), reveal: () => window.reveal() });
+      const notices = showNotices((path) => window.open(path));
+      notify = (notice) => notices.show(notice);
+      for (const notice of early.splice(0)) notices.show(notice);
       refresh();
     },
     (fault: unknown) => {
