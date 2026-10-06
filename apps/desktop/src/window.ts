@@ -63,6 +63,7 @@ import {
   STRIP_HEIGHT,
   stripPage,
   SWITCHER_LEFT,
+  SWITCHER_ROOM,
   SWITCHER_WIDTH,
   switcherHeight,
   switcherPage,
@@ -213,6 +214,8 @@ export function openWindow(
   const strip = appView();
   const settings = appView();
   const switcher = appView();
+  // Clear round the panel, so its round corners and its shadow show.
+  switcher.setBackgroundColor('#00000000');
   window.contentView.addChildView(strip);
   window.contentView.addChildView(settings);
   window.contentView.addChildView(switcher);
@@ -244,11 +247,20 @@ export function openWindow(
     }
     settings.setBounds(below);
     settings.setVisible(setting);
-    switcher.setBounds({
-      x: SWITCHER_LEFT,
-      y: STRIP_HEIGHT,
+    // The view is the panel and the clear room round it for its shadow.
+    const room = SWITCHER_ROOM;
+    const panel = {
       width: Math.max(Math.min(SWITCHER_WIDTH, width - 2 * SWITCHER_LEFT), 0),
-      height: Math.max(Math.min(switcherHeight(plugins), height - STRIP_HEIGHT - SWITCHER_LEFT), 0),
+      height: Math.max(
+        Math.min(switcherHeight(plugins), height - STRIP_HEIGHT - room.above - SWITCHER_LEFT),
+        0,
+      ),
+    };
+    switcher.setBounds({
+      x: SWITCHER_LEFT - room.side,
+      y: STRIP_HEIGHT,
+      width: panel.width + 2 * room.side,
+      height: room.above + panel.height + room.below,
     });
     switcher.setVisible(switching);
   };
