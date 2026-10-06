@@ -10,9 +10,11 @@ directories:
   output: dist
   buildResources: build
 # The bundle electron-vite wrote is the whole App. The Host is inside it, and
-# the App has no dependency of its own to carry beside it.
+# the App has no dependency of its own to carry beside it. The marks the Tray
+# and the window wear travel beside it, in resources/icons.
 files:
   - out/**
+  - resources/**
   - package.json
 npmRebuild: false
 # A Plugin Server runs on the App's own executable, told to be Node by

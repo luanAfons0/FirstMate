@@ -18,6 +18,14 @@ A view belongs to one owner: a Plugin, for everything under `/p/<name>/`, or the
 
 The strip, the switcher and the Settings View are the App's own views. Their pages are written by the App and loaded as data addresses, never served by the Host, for the reason ADR-0008 gives. They ask the main process for things through a preload that only they carry, and the main process also checks which view sent each message. In 1.x the strip asked by trying to navigate, because the webview library's message channel took the program down; Electron's IPC has no such fault, and a preload no Plugin Page carries is the narrower door.
 
+## The Tray
+
+The Tray is the App's notification-area icon. Closing the window only hides it, so the Tray is what holds the App, and Quit in its menu is the one way the App ends. The icon wears the stopped mark while any Plugin is Stopped.
+
+The 1.x Tray polled the Host every few seconds to learn that. The App holds the Host, so `start()` takes hooks instead: `onChange` is called after a reload, after a restart, and with every Notice, because a Notice is how the Host says that a Plugin went Stopped. The App then asks `/plugins.json` over loopback, as a browser would, so the Host keeps one surface.
+
+Start at logon is Windows's own entry for the App, written through Electron and off until the operator turns it on. The App it starts begins in the Tray with the window put away, because nobody asked to see it.
+
 One App runs for one home. A second start shows the first window and ends, so there is never a second Host. Electron's own data, and with it the single-instance lock, lives in `app` under the home: a test that moves the home moves the lock, and never meets the App the operator runs. When the port is taken, the App says so in one sentence and does not start.
 
 ## How a Plugin Server runs

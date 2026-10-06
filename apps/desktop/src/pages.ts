@@ -172,6 +172,7 @@ export function settingsPage(): string {
 <dt>Grants</dt><dd><code>firstmate grant &lt;from&gt; &lt;to&gt;</code>,
 <code>firstmate revoke &lt;from&gt; &lt;to&gt;</code></dd>
 </dl>
+<p>Start at logon is in the menu of FirstMate's icon in the notification area.</p>
 </main>`,
     '',
   );
