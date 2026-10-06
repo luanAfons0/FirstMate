@@ -491,6 +491,11 @@ export function openWindow(
       void change(asked, { ...settingsNeeds, window: () => window, readBack }).then((said) => {
         busy = false;
         outcome = said;
+        // An Index Page already loaded shows the new Plugin Order at once.
+        const index = contents.get(INDEX);
+        if (asked.kind === 'plugin-move' && said?.done === true && host !== undefined && index) {
+          loadContent(index, '/', host);
+        }
         refresh();
         redraw();
       });
