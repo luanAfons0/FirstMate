@@ -71,7 +71,7 @@ export async function fakeWindows(t: TestContext, release: Release = 'good'): Pr
     temp: windows ? join(root, 'Temp') : 'C:\\Users\\mate\\AppData\\Local\\Temp',
     installTo: windows
       ? join(root, 'Programs', 'FirstMate')
-      : 'C:\\Users\\mate\\AppData\\Local\\Programs\\@firstmatedesktop',
+      : 'C:\\Users\\mate\\AppData\\Local\\Programs\\FirstMate',
   };
   await writeFile(join(root, 'machine.json'), JSON.stringify(machine, null, 2));
   const temp = here(root, machine.temp);
