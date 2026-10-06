@@ -150,7 +150,7 @@ export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<
   try {
     await runInstaller(installer, version);
   } finally {
-    await rm(installer, { force: true });
+    await removeTemp(installer);
   }
 
   const now = await installedApp(windows);
@@ -197,6 +197,21 @@ async function reachWindows(env: NodeJS.ProcessEnv): Promise<Windows> {
   return { temp: { windows: temp, here: await here(temp) }, here };
 }
 
+/**
+ * Remove a file this command put in the temp folder. Windows can hold a file
+ * a moment after the program that used it ends, while Defender scans an
+ * installer, so the removal tries again for a few seconds. A file it still
+ * cannot remove is left in the temp folder: it was only ever a copy, and
+ * failing a command that did its work over it would be wrong.
+ */
+async function removeTemp(path: string): Promise<void> {
+  // Node tries again only when told the removal is recursive, which for one
+  // file changes nothing else.
+  await rm(path, { force: true, recursive: true, maxRetries: 10, retryDelay: 300 }).catch(
+    () => undefined,
+  );
+}
+
 /** The App as the registry records it, or nothing when it is not installed. */
 async function installedApp(windows: Windows): Promise<Installed | undefined> {
   const version = (await readKey(windows, UNINSTALL_KEY))?.get('DisplayVersion');
@@ -224,7 +239,7 @@ async function readKey(
   try {
     text = (await readFile(file)).toString('utf16le');
   } finally {
-    await rm(file, { force: true });
+    await removeTemp(file);
   }
   const values = new Map<string, string>();
   for (const [, field = '', value = ''] of text.matchAll(/^"([^"]+)"="((?:[^"\\]|\\.)*)"\r?$/gm)) {
