@@ -37,8 +37,8 @@ node packages/host/src/main.ts
 ```
 
 Node 24 or newer, and nothing else. The Host imports nothing outside Node, and
-a clone needs no build step. The one runtime dependency draws the FirstMate
-window, and only `firstmate desktop` loads it (ADR-0011).
+a clone needs no build step. The FirstMate window is the App, which
+`firstmate desktop` installs ([The App](#the-app)).
 
 ## Set it up
 
@@ -335,8 +335,26 @@ FirstMate 2.0 is an App: one Windows program that holds the Host and shows the
 Index Page in its window (ADR-0020). Each release carries its installer,
 `FirstMate-Setup-<version>.exe`, and that file's SHA-256 on the
 [GitHub Release](https://github.com/luanAfons0/FirstMate/releases) of its tag,
-with the same version as the command line on npm (ADR-0022). Build it yourself
-from a clone, on Windows:
+with the same version as the command line on npm (ADR-0022). Install it from a
+terminal on Windows, or inside WSL:
+
+```sh
+npx @luan-afonso/firstmate desktop
+```
+
+`firstmate desktop` downloads the installer of its own version and its
+checksum, and refuses an installer whose SHA-256 does not match: it says so in
+one sentence and runs nothing. Then it installs the App silently, for you
+alone, with no administrator, and opens it. When that version is installed
+already, or a newer one the App updated itself to, it only opens it. It
+downloads when you run it, never when the package is installed. From WSL it
+saves the installer in the Windows temp folder and runs it, and the App,
+through WSL's interop with Windows. Anywhere else it says the App runs on
+Windows. It reads which version is installed where the installer records it
+for Windows: the App's uninstall key in `HKCU`. `FIRSTMATE_RELEASES_URL` moves
+where it downloads from.
+
+Build it yourself from a clone, on Windows:
 
 ```sh
 pnpm install
@@ -366,6 +384,7 @@ executable as Node, so a Node Plugin needs no Node of its own.
 | `FIRSTMATE_MAX_CALL_MS` | `600000`       | The longest a Tool Bus call may ask the Host to wait. |
 | `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for the Tray to read. |
 | `FIRSTMATE_SHELF`       | `~/.firstmate/shelf` | The Shelf: where a fetched Plugin lands. |
+| `FIRSTMATE_RELEASES_URL`| `https://github.com/luanAfons0/FirstMate/releases/download` | Where `firstmate desktop` downloads the App from: `<url>/v<version>/FirstMate-Setup-<version>.exe` and its `.sha256`. |
 
 A `_MS` variable is a whole number of milliseconds, from 1 to 2147483647 (about
 24 days, the longest wait a Node timer holds). The Host refuses to start on any
@@ -563,13 +582,15 @@ removes it. Run it once, from Windows.
 
 ## Open it from Windows
 
+This is the 1.x window. In 2.0, `firstmate desktop` installs the App instead
+([The App](#the-app)), and no command opens this window any more.
+
 The Tray is FirstMate's Windows program. It runs on Windows, where the desktop
 is, while the Host and every Plugin Server stay in WSL Debian. The two talk over
 loopback, which WSL already forwards, so nothing new carries traffic between
 them.
 
-`firstmate desktop` opens a window of FirstMate's own and shows the Index Page
-in it. A Plugin Page is then a page of FirstMate's own rather than a tab among
+The window is FirstMate's own, and it shows the Index Page. A Plugin Page is then a page of FirstMate's own rather than a tab among
 thirty others. A narrow strip above the page says where you are, as a
 breadcrumb: *FirstMate › worklog*. *FirstMate* goes back to the Plugin list.
 The last part opens the switcher over the page, which lists every Plugin in
@@ -581,14 +602,7 @@ gives the address the window shows, Plugin Page or Index Page, to your system
 browser with this run's token on it, so the page loads with no token to paste.
 That address may stay in the browser's history; the token in it works only on
 `127.0.0.1` and only until the Host restarts. One Plugin Page is open at a time, so
-leaving one and coming back loads it again. It works out which distribution
-holds the Host and where the Host keeps its home directory, so there is no
-address to type and no token to paste; say them yourself when it cannot:
-
-```sh
-firstmate desktop
-firstmate desktop --distribution Debian --home /home/<user>/.firstmate
-```
+leaving one and coming back loads it again.
 
 The gear at the right of the strip opens the Settings View in place of the page,
 and the gear again, or Esc, puts it away with the page as you left it. It lists
@@ -645,12 +659,6 @@ package, are in [`docs/deploy.md`](docs/deploy.md).
 
 A browser still works. The address still opens, and a Plugin Page is still a
 whole page that anything can load. The window is another door, not the only one.
-
-The window belongs on Windows, where the desktop is, and it refuses with a
-sentence saying so anywhere else. It is the one part of FirstMate that has a
-dependency, and that dependency is imported only when this command runs, so
-every other command works on a machine where its native binary will not load
-(ADR-0011).
 
 ## The first Plugin
 

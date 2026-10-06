@@ -9,6 +9,10 @@
  * other command.
  *
  * `tests/helpers/no-webview.ts` is that machine, made on purpose.
+ *
+ * In 2.0 `firstmate desktop` installs the App instead, and no command loads
+ * the library (`install-app.test.ts`). These tests hold until #145 takes the
+ * library and the 1.x window out of the package.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -16,9 +20,6 @@ import { bootHostIn, firstmate, fixture, makeHome } from './helpers/host.ts';
 
 /** A process where the webview library cannot be resolved at all. */
 const NO_WEBVIEW = { NODE_OPTIONS: '--import=./tests/helpers/no-webview.ts' };
-
-/** A Linux process with nowhere to draw: no display of either kind. */
-const NO_DISPLAY = { DISPLAY: '', WAYLAND_DISPLAY: '' };
 
 test('every other command works where the webview library will not load', async (t) => {
   const home = await makeHome(t);
@@ -49,29 +50,4 @@ test('the Host starts where the webview library will not load', async (t) => {
   const host = await bootHostIn(t, home, NO_WEBVIEW, { viaCommandLine: true });
 
   assert.equal((await host.fetch('/')).status, 200);
-});
-
-test('the window says where it belongs where there is no desktop', async (t) => {
-  if (process.platform === 'win32' || process.platform === 'darwin') {
-    t.skip('this machine has a desktop');
-    return;
-  }
-  const home = await makeHome(t);
-
-  const run = await firstmate(home, ['desktop'], NO_DISPLAY);
-
-  assert.equal(run.code, 1);
-  assert.match(run.stderr, /needs a desktop/);
-  assert.match(run.stderr, /Windows/, 'the sentence says where it belongs');
-  assert.equal(run.stdout, '', 'a refusal is not news');
-});
-
-test('the window refuses an option it does not take', async (t) => {
-  const home = await makeHome(t);
-
-  const run = await firstmate(home, ['desktop', '--port', '4747']);
-
-  assert.equal(run.code, 2, 'the operator was wrong, not the machine');
-  assert.match(run.stderr, /--distribution/);
-  assert.match(run.stderr, /--home/);
 });

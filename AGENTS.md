@@ -36,7 +36,7 @@ Run every command from the repository root.
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts start`              | The same Host, from the command line.           |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
-| `node apps/cli/src/cli.ts desktop`            | The FirstMate window. Windows only.             |
+| `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows or WSL. |
 | `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `--help` alone also lists the exit codes. |
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
@@ -67,6 +67,11 @@ fetched Plugin lands in). Tests use all six. The Shelf is the one setting that d
 from the environment alone: the variable beats the settings file, which beats
 the default (ADR-0012).
 
+One more moves the command line alone: `FIRSTMATE_RELEASES_URL` (default
+`https://github.com/luanAfons0/FirstMate/releases/download`), where
+`firstmate desktop` downloads the App from. Its tests point it at a server of
+their own.
+
 `pnpm check` must pass before you call work done: types, lint, format,
 knip and every test.
 
@@ -87,10 +92,10 @@ knip and every test.
   runs in the Host or ships in the package.
 - **One runtime dependency, and the Host uses none of it.** The Host speaks MCP
   over stdio with about 140 lines of its own JSON-RPC (`packages/host/src/mcp.ts`) rather than
-  take a dependency. Keep it that way. The desktop program draws its window with
-  `@webviewjs/webview`; `apps/cli/src/desktop.ts` imports it when the desktop subcommand
-  runs and never when a module loads, so every other command works on a machine
-  where the native binary will not load (ADR-0011). `install` runs the `git`
+  take a dependency. Keep it that way. The 1.x window draws with
+  `@webviewjs/webview`, in `apps/cli/src/desktop.ts`. No command imports it
+  since `firstmate desktop` installs the App, and #145 removes both; until then
+  `knip.json` names it an entry (ADR-0011). `install` runs the `git`
   binary to clone a Plugin: an external tool the command line assumes, not a
   package dependency, and the Host still calls nothing outside Node.
 - **Electron 44**, in `apps/desktop`, for the App: its main process holds the
@@ -173,6 +178,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate. In 1.x it carries
   src/prompt.ts    ask for text, yes or no, or numbers, over node:readline.
   src/running-host.ts the running Host, as the terminal reaches it: over
                    loopback, with the token from the runtime file.
+  src/install-app.ts firstmate desktop: download the App of this version from
+                   its GitHub Release, check its SHA-256, install it, open it.
   src/desktop-state.ts the part that decides: where the Host is, and whether
                    it is there. Imports nothing native, owns no window.
   src/desktop.ts   the part that shows: the window, and the one dependency.

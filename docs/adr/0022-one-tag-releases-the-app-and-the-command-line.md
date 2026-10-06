@@ -30,7 +30,23 @@ Every Release carries `latest.yml`, a beta's too. `electron-builder` would name 
 
 A prerelease part names `beta` or `alpha`. `electron-updater` reads any other word, `next` among them, as a channel of its own, and a beta App would never be offered the stable version.
 
+## How `firstmate desktop` installs the App
+
+`firstmate desktop` reads its own version from its package's manifest and installs that App. It fetches the checksum, then the installer, from the Release of that version, or from `FIRSTMATE_RELEASES_URL` in its place. An installer whose SHA-256 differs is refused before it is written anywhere, so nothing runs. The installer runs with `/S`, silent and for this user alone, and the App is then opened on its own.
+
+Whether the App is installed, and which version, is read where the installer records it for Windows: the uninstall key `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<guid>`, whose `DisplayVersion` is the version, and `HKCU\Software\<guid>`, whose `InstallLocation` is the folder. `electron-builder.yml` pins the GUID, which is what electron-builder derives from the `appId`. The folder is not guessed: electron-builder names it after the package, `@firstmatedesktop`, inside a folder Windows lets a person move. `reg.exe export` reads the keys, because it writes UTF-16; `reg.exe query` writes the console's code page, and garbles a user name that is not ASCII.
+
+The same version is only opened, and so is a newer one. The App updates itself, so it is often ahead of a command line installed long ago, and installing the older one would take it back.
+
+From WSL it reaches Windows through interop: `cmd.exe` names the Windows temp folder, `wslpath` turns Windows paths into paths there, and `reg.exe`, the installer and the App run as the Windows programs they are. On Linux outside WSL, and on macOS, it says in one sentence that the App runs on Windows.
+
+No command loads the 1.x window since, so ADR-0017's line about its library as a dynamic import no longer holds. The library and the window stay in the package, unused, until the package becomes the command line alone.
+
 ## Considered Options
+
+The App's folder, `%LOCALAPPDATA%\Programs\@firstmatedesktop`, as the record of an install. It needs no registry, but its name comes from the package's name, its parent can be moved, and nothing in it says which version it holds.
+
+`reg.exe query` for the registry, or PowerShell. The first garbles names that are not ASCII. The second is the kind of helper 2.0 takes out.
 
 A checksum file for every asset, `SHA256SUMS`. It is what larger projects carry, but the command line wants one hash, and one file named after the installer says which hash it is.
 
