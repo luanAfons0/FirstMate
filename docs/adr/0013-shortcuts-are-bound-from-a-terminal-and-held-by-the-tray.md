@@ -37,3 +37,12 @@ A key that Windows refuses, because another program already holds it, is said
 in a Windows notification. It is never dropped in silence.
 
 The Tray picks up a new or changed Shortcut with no restart.
+
+## Amended: the App holds the Shortcuts (2.0)
+
+FirstMate 2.0 is an App (ADR-0020), and the App holds the Shortcuts, with Electron's `globalShortcut` in place of the PowerShell helper. That is still `RegisterHotKey` underneath, so the App gets the combinations that were bound and sees no other key. They are still bound from a terminal and nowhere else.
+
+The App reads `/shortcuts.json` when it starts and again after every reload, so `bind` and `unbind` take effect at once. Core's normal form becomes Electron's key format by two names: `Ctrl` is `Control` and `Win` is `Super`; every other key is written the same in both. Electron answers false, with no error, for keys another program holds. The App says so in a Notice from FirstMate, once: it asks for those keys again only after they are unbound and bound again, so a taken key is not one more Notice on every reload.
+
+The Popup is a window of the App's own with no frame, on top of every other window, with no taskbar button, no preload and the sandbox on. It hides as before, and Esc now hides it while it has the focus, rather than through a key held for all of Windows while it is shown.
+

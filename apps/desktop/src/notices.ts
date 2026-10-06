@@ -30,6 +30,11 @@ const HELD = 20;
 export type NoticeShower = {
   /** Show one Notice from the Host. */
   show(notice: Notice): void;
+  /**
+   * Say one sentence of the App's own, such as a key it could not take. It
+   * is shown as a Notice from FirstMate, and a click on it opens nothing.
+   */
+  say(sentence: string): void;
 };
 
 /**
@@ -51,27 +56,30 @@ export function showNotices(open: (path: string) => void): NoticeShower {
     }
   };
 
+  const pop = (title: string, body: string, address: string | undefined): void => {
+    if (!Notification.isSupported()) {
+      console.error(`FirstMate: Windows cannot show this Notice: ${title}: ${body}`);
+      return;
+    }
+    const shown = new Notification({ title, body, icon: markPath('running') });
+    shown.on('click', () => {
+      held.delete(shown);
+      if (address !== undefined) open(address);
+    });
+    shown.on('failed', (_event, error) => {
+      held.delete(shown);
+      console.error(`FirstMate: Windows would not show a Notice: ${error}`);
+    });
+    keep(shown);
+    shown.show();
+  };
+
   return {
-    show(notice) {
-      if (!Notification.isSupported()) {
-        console.error(`FirstMate: Windows cannot show this Notice: ${notice.title}`);
-        return;
-      }
-      const shown = new Notification({
-        title: notice.title,
-        body: notice.body,
-        icon: markPath('running'),
-      });
-      shown.on('click', () => {
-        held.delete(shown);
-        open(notice.address);
-      });
-      shown.on('failed', (_event, error) => {
-        held.delete(shown);
-        console.error(`FirstMate: Windows would not show a Notice: ${error}`);
-      });
-      keep(shown);
-      shown.show();
+    show: (notice) => pop(notice.title, notice.body, notice.address),
+    say(sentence) {
+      // The line in the log is where the operator can read it again.
+      console.error(`FirstMate: ${sentence}`);
+      pop('FirstMate', sentence, undefined);
     },
   };
 }

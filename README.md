@@ -399,6 +399,13 @@ a click on it opens the sender's address in the window. Windows takes that
 name from the installer's Start menu entry, so the unpacked App's Notices are
 filed under Electron.
 
+The App holds every Shortcut you `bind`, and picks up a `bind` or `unbind` at
+once. Pressing one opens its address in the Popup: a small window with no
+frame, on top of the others. It hides when it loses focus, on Esc, on its own
+Shortcut again, and when its page goes to any address other than its own.
+Keys another program already holds are named in a Notice, never dropped in
+silence.
+
 ## Configure it
 
 | Variable                | Default        | What it moves                                     |

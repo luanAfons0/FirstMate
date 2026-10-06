@@ -70,6 +70,13 @@ export type Shown = {
   reveal(): void;
   /** What the Host now says about its Plugins. */
   told(plugins: Plugins): void;
+  /**
+   * Resolves once the window's first load has traded the token for the
+   * cookie, so that another window may load the Host's pages with no token.
+   */
+  admitted(): Promise<void>;
+  /** Give a link off the Host to the operator's browser, and say so if it fails. */
+  toBrowser(address: string): void;
 };
 
 /**
@@ -337,6 +344,8 @@ export function openWindow(host: HostAt, refresh: () => void, hidden: boolean): 
       reveal();
     },
     reveal,
+    admitted: () => admission ?? Promise.resolve(),
+    toBrowser,
     told: (now) => {
       plugins = now;
       if (now.kind === 'told') {
