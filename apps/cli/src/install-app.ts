@@ -144,7 +144,7 @@ export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<
   const expected = await publishedChecksum(`${url}.sha256`, version);
   console.log(`firstmate: downloading FirstMate ${version} from ${url}`);
   const bytes = await download(url, version, `downloading FirstMate ${version}`);
-  const check = startWait('checking the SHA-256');
+  const check = await startWait('checking the SHA-256');
   if (createHash('sha256').update(bytes).digest('hex') !== expected) {
     check.failed();
     throw refuse(
@@ -277,7 +277,7 @@ async function download(url: string, version: string, doing?: string): Promise<B
   }
 
   const length = Number(response.headers.get('content-length'));
-  const wait = startWait(doing, Number.isSafeInteger(length) ? length : undefined);
+  const wait = await startWait(doing, Number.isSafeInteger(length) ? length : undefined);
   const chunks: Uint8Array[] = [];
   try {
     for await (const chunk of response.body) {

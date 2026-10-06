@@ -42,7 +42,7 @@ export type HostOptions = {
   /**
    * The Shortcuts as the settings file holds them now. They are read on every
    * request rather than at startup, so that `bind` takes effect with no
-   * restart of the Host or the Tray (ADR-0013).
+   * restart of the Host or the App (ADR-0013).
    */
   readonly shortcuts: () => readonly Shortcut[];
   /**
@@ -66,14 +66,14 @@ export type HostOptions = {
 const RPC_PATH = '/rpc';
 
 /**
- * What the Index Page lists, as JSON. The Tray is a Windows process and cannot
+ * What the Index Page lists, as JSON. The App and any other reader cannot
  * read a page meant for a person, so the Host says the same thing twice: once
- * in HTML and once here (ADR-0007).
+ * in HTML and once here.
  */
 const PLUGINS_PATH = '/plugins.json';
 
 /**
- * The Shortcuts, for the Tray, which holds them in Windows. It is read-only,
+ * The Shortcuts, for the App, which holds them in Windows. It is read-only,
  * now and later: every Plugin Page shares this origin, so an address that
  * wrote a Shortcut would let any Plugin take a key in all of Windows
  * (ADR-0012, ADR-0013).
@@ -276,7 +276,7 @@ function readOnly(response: ServerResponse, method: string): boolean {
 
 /**
  * Every Plugin the Host knows, in the Plugin Order, as the Index Page and the
- * Tray both see it. Null when the settings file cannot be read, and then the
+ * App both see it. Null when the settings file cannot be read, and then the
  * answer has already been sent.
  */
 function pluginViews(response: ServerResponse, options: HostOptions): PluginView[] | null {
@@ -303,7 +303,7 @@ function fromSettings<T>(response: ServerResponse, read: () => T): T | null {
   }
 }
 
-/** One Shortcut, as the Tray needs it: the keys, and the address they open. */
+/** One Shortcut, as the App needs it: the keys, and the address they open. */
 function shortcutView(shortcut: Shortcut): {
   readonly keys: string;
   readonly plugin: string;

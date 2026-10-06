@@ -264,7 +264,7 @@ firstmate restart <name>
 
 `status` says whether the Host runs, and the state of each Plugin in the Plugin
 Order: Running, Stopped, or no Plugin Server. It asks the running Host itself,
-over loopback, with the port and the token from `runtime.json`, as the Tray
+over loopback, with the port and the token from `runtime.json`, as the App
 does. With no Host it says `no Host runs.` and ends with exit code `6`. A
 `runtime.json` that a crashed Host left behind names a port nothing answers on,
 and that reads as no Host too.
@@ -315,8 +315,8 @@ of a command's name, the line guesses that name: `firstmate: no such command:
 lsit. Did you mean list?` It runs nothing, and ends with `2`.
 
 `firstmate --version`, or `-v`, prints `firstmate <version>`, the version of
-the package, and ends with `0`. The short help has no room for it, so
-`firstmate help` lists it.
+the package, and ends with `0`. The short help names it on its last line but
+one.
 
 `firstmate help` lists the help topics, and `firstmate help <topic>` says one:
 
@@ -412,7 +412,7 @@ menu opens the Index Page or any Plugin, turns **Start at logon** on and off,
 and quits. Start at logon is off until you turn it on; the App it starts
 begins in the Tray, with the window put away.
 
-A Notice shows as a Windows notification under FirstMate's name and mark, and
+A Notice shows as a Windows pop-up under FirstMate's name and mark, and
 a click on it opens the sender's address in the window. Windows takes that
 name from the installer's Start menu entry, so the unpacked App's Notices are
 filed under Electron.
@@ -484,7 +484,7 @@ registers it.
 ## Shortcuts
 
 A Shortcut is a key combination for all of Windows, bound to one address of one
-Plugin. The Tray holds it, and pressing it opens that address in a Popup: a
+Plugin. The App holds it, and pressing it opens that address in a Popup: a
 small window with no frame, on top of every other window.
 
 ```sh
@@ -545,9 +545,9 @@ address on the Host changes it
 | Address              | What it serves                                     |
 | -------------------- | -------------------------------------------------- |
 | `/`                  | The Index Page: every Plugin, its state, the Shelf. |
-| `/plugins.json`      | The same list, for the Tray. Nothing is written.   |
-| `/shortcuts.json`    | Every Shortcut and the address it opens, for the Tray. Nothing is written. |
-| `/notices.json?after=<n>` | The Notices after `n`, for the Tray. Nothing is written. |
+| `/plugins.json`      | The same list, for the App. Nothing is written.    |
+| `/shortcuts.json`    | Every Shortcut and the address it opens, for the App. Nothing is written. |
+| `/notices.json?after=<n>` | The Notices after `n`, for any reader. The App hears them with no poll. Nothing is written. |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
 | `POST /reload`       | Read the Registry and the settings again. A terminal only. |

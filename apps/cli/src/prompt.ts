@@ -14,14 +14,6 @@
  * question is answered, the question throws `ENDED_EARLY` at once rather than
  * waiting for a line that will never come.
  */
-import {
-  confirm as clackConfirm,
-  isCancel,
-  multiselect,
-  note,
-  select,
-  text as clackText,
-} from '@clack/prompts';
 import { createInterface } from 'node:readline';
 import { refusalPrefix } from './terminal.ts';
 
@@ -65,9 +57,14 @@ export type Prompt = {
   close(): void;
 };
 
-/** Whether a person is at a terminal: stdin and stdout are both a TTY. */
+/**
+ * Whether a person is at a terminal that can draw: stdin and stdout are both a
+ * TTY, and TERM is not `dumb`, which says the cursor cannot move.
+ */
 export function onTerminal(): boolean {
-  return process.stdin.isTTY === true && process.stdout.isTTY === true;
+  return (
+    process.stdin.isTTY === true && process.stdout.isTTY === true && process.env['TERM'] !== 'dumb'
+  );
 }
 
 /**
@@ -80,13 +77,17 @@ export function openPrompt(interrupted: () => void): Prompt {
 
 /**
  * The terminal form. Ctrl-C inside a question is a key clack reports as a
- * cancel; between questions it is a signal. Both stop at once.
+ * cancel; between questions it is a signal. Both stop at once. Clack is
+ * loaded here and nowhere sooner, so a command that asks nothing loads none
+ * of it (ADR-0025).
  */
 function clackPrompt(interrupted: () => void): Prompt {
   process.once('SIGINT', interrupted);
+  const loading = import('@clack/prompts');
 
   /** The answer, or a stop at once when the question was cancelled. */
-  function answered<T>(value: T): Exclude<T, symbol> {
+  async function answered<T>(value: T): Promise<Exclude<T, symbol>> {
+    const { isCancel } = await loading;
     if (isCancel(value)) {
       interrupted();
       throw new Error('setup stopped.');
@@ -95,17 +96,23 @@ function clackPrompt(interrupted: () => void): Prompt {
   }
 
   return {
-    text: async (question, fallback) =>
-      answered(
-        await clackText(
+    text: async (question, fallback) => {
+      const { text } = await loading;
+      const typed = await answered(
+        await text(
           fallback === ''
             ? { message: question }
             : { message: question, placeholder: fallback, defaultValue: fallback },
         ),
-      ).trim() || fallback,
-    confirm: async (question, fallback) =>
-      answered(await clackConfirm({ message: question, initialValue: fallback })),
+      );
+      return typed.trim() || fallback;
+    },
+    confirm: async (question, fallback) => {
+      const { confirm } = await loading;
+      return answered(await confirm({ message: question, initialValue: fallback }));
+    },
     choose: async ({ heading, question, choices, takes }) => {
+      const { multiselect, note, select } = await loading;
       if (choices.every((choice) => choice.taken !== undefined)) {
         note(choices.map((choice) => `${choice.label} (${choice.taken})`).join('\n'), heading);
         return [];
@@ -122,7 +129,7 @@ function clackPrompt(interrupted: () => void): Prompt {
         return answered(await multiselect({ message: question, options, required: false }));
       }
       const none = { value: -1, label: 'none' };
-      const chosen = answered(
+      const chosen = await answered(
         await select({
           message: question,
           options: takes === 'one' ? options : [...options, none],

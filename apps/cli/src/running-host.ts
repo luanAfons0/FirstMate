@@ -1,6 +1,6 @@
 /**
  * The running Host, as the command line reaches it: over loopback, with the
- * port and the token from the runtime file, as the Tray reaches it.
+ * port and the token from the runtime file.
  *
  * The runtime file says where a Host listened, not that one still listens
  * there. A Host that crashed leaves its file behind, and the port it names
@@ -70,7 +70,7 @@ export async function restartPlugin(home: string, name: string): Promise<Restart
 
 /**
  * One request to the running Host, or nothing when no Host runs. The token
- * goes in the address, as the Tray sends it, and no Origin goes with it:
+ * goes in the address, and no Origin goes with it:
  * the command line is not a browser, and does not act like one.
  */
 async function askHost(

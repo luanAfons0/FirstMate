@@ -2,8 +2,9 @@
  * The runtime file: the port the Host actually listened on and the token it
  * minted at startup.
  *
- * The Tray is a Windows process and the Host is a Linux process, so the two
- * find each other through this file and through no configuration (ADR-0007).
+ * The App holds the Host in its own process, but the command line and every
+ * test do not, so they find the Host through this file and through no
+ * configuration.
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,7 +44,7 @@ export function runtimePath(home: string): string {
 /**
  * Write the runtime file, replacing whatever the last run left. It holds a
  * token, so it is written for this user alone and is never half written: a
- * Tray reading it always sees one whole run or the one before it.
+ * reader always sees one whole run or the one before it.
  */
 export function writeRuntimeFile(home: string, runtime: Runtime): void {
   mkdirSync(home, { recursive: true, mode: 0o700 });

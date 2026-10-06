@@ -2,8 +2,8 @@
  * Start the Host, and stop it again.
  *
  * The Host reads its Registry, starts every Plugin Server, listens on
- * loopback, and writes the port and the token where the Tray and the command
- * line find them. It reads the Registry again when the command line asks it
+ * loopback, and writes the port and the token where the command line and
+ * every test find them. It reads the Registry again when the command line asks it
  * to reload.
  *
  * This is a function and not a side effect of an import, because two programs
@@ -43,7 +43,8 @@ export type RunningHost = {
 
 /**
  * What the program that holds the Host hears from it, in its own process. The
- * App uses it to keep the Tray right without asking the Host on a timer.
+ * App uses it to keep the Tray and its Notices right without asking the Host
+ * on a timer.
  */
 export type HostHooks = {
   /** Called with each Notice the Host takes, from a Plugin Server or its own. */
@@ -143,8 +144,8 @@ export async function start(
     // one it read. A terminal and the Host that disagree is worth seeing.
     console.log(`FirstMate: the Shelf is ${config.shelf}`);
 
-    // Written last, because the runtime file is how the Tray and every test
-    // know the Host is up. Whoever finds it then finds everything said above.
+    // Written last, because the runtime file is how the command line and every
+    // test know the Host is up. Whoever finds it then finds everything said above.
     writeRuntimeFile(config.home, { port: host.port, token });
   } catch (fault) {
     await stop();
