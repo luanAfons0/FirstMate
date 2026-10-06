@@ -23,6 +23,7 @@ import {
   text as clackText,
 } from '@clack/prompts';
 import { createInterface } from 'node:readline';
+import { refusalPrefix } from './terminal.ts';
 
 /** The sentence `setup` stops with when its input ends too early. */
 const ENDED_EARLY = 'setup ended before it had every answer.';
@@ -176,7 +177,7 @@ function linePrompt(interrupted: () => void): Prompt {
     for (;;) {
       const got = read(await answer(question));
       if (typeof got !== 'string') return got;
-      console.error(`firstmate: ${got}`);
+      console.error(`${refusalPrefix()} ${got}`);
     }
   }
 

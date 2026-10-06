@@ -10,6 +10,7 @@ import { importOneX, type Imported } from '@firstmate/core/import-1x';
 import type { Place } from '@firstmate/core/places';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { oneXServiceIn, stopOneXService } from '@firstmate/core/wsl';
+import { refusalPrefix } from './terminal.ts';
 
 /** Ask the operator yes or no, with yes as the answer Enter gives. */
 type Confirm = (question: string) => Promise<boolean>;
@@ -32,7 +33,7 @@ export async function bringAcross(home: string, place: Place, confirm: Confirm):
   if (imported.shelf !== undefined) {
     console.log(`firstmate: the Shelf of ${place.name} is now ${imported.shelf}`);
   }
-  for (const sentence of imported.refused) console.error(`firstmate: ${sentence}`);
+  for (const sentence of imported.refused) console.error(`${refusalPrefix()} ${sentence}`);
 
   if (place.kind === 'wsl' && (await oneXServiceIn(place.distribution))) {
     const { distribution } = place;

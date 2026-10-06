@@ -28,6 +28,7 @@ import { readConfig } from '@firstmate/core/config';
 import { holdsOneX } from '@firstmate/core/import-1x';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import { onTerminal, openPrompt, type Prompt } from './prompt.ts';
+import { refusalPrefix } from './terminal.ts';
 import { readRegistry } from '@firstmate/core/registry';
 import { appHere, logonIsOn, turnLogonOn } from './install-app.ts';
 import { bringAcross } from './one-x.ts';
@@ -58,7 +59,7 @@ export async function setup(): Promise<number> {
     } else {
       process.stdout.write('\n');
       summarise(changes, framed);
-      console.error('firstmate: setup stopped. The steps it finished are kept.');
+      console.error(`${refusalPrefix()} setup stopped. The steps it finished are kept.`);
     }
     process.exit(130);
   });
@@ -98,7 +99,7 @@ async function askShelf(prompt: Prompt, changes: Changes): Promise<void> {
       if (moved.shelf !== shelf) changes.done.push(`the Shelf is now ${moved.shelf}`);
       return;
     } catch (fault) {
-      console.error(`firstmate: ${sentence(fault)}`);
+      console.error(`${refusalPrefix()} ${sentence(fault)}`);
     }
   }
 }
@@ -128,7 +129,7 @@ async function askPlaces(prompt: Prompt, changes: Changes): Promise<void> {
       console.log(`firstmate: added the wsl Place ${place.name}`);
       changes.done.push(`added the wsl Place ${place.name}`);
     } catch (fault) {
-      console.error(`firstmate: ${sentence(fault)}`);
+      console.error(`${refusalPrefix()} ${sentence(fault)}`);
     }
   }
 }
@@ -148,7 +149,7 @@ async function askImport(prompt: Prompt, changes: Changes): Promise<void> {
       changes.done.push(`imported ${imported.plugins.length} Plugin(s) from ${place.name}`);
       if (imported.refused.length > 0) changes.failed = true;
     } catch (fault) {
-      console.error(`firstmate: ${sentence(fault)}`);
+      console.error(`${refusalPrefix()} ${sentence(fault)}`);
       changes.failed = true;
     }
   }
@@ -182,7 +183,7 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
     const place = await askPlace(prompt, plugin.name, places);
     if (place === undefined) {
       console.error(
-        `firstmate: ${plugin.name} runs in a ${plugin.places.join(' or ')} Place, and there ` +
+        `${refusalPrefix()} ${plugin.name} runs in a ${plugin.places.join(' or ')} Place, and there ` +
           'is none. Add one, then run setup again.',
       );
       changes.failed = true;
@@ -196,7 +197,7 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
       console.log(`firstmate: installed ${row.name} at ${row.directory}, in ${row.place}`);
       changes.done.push(`installed ${row.name}`);
     } catch (fault) {
-      console.error(`firstmate: could not install ${plugin.name}: ${sentence(fault)}`);
+      console.error(`${refusalPrefix()} could not install ${plugin.name}: ${sentence(fault)}`);
       changes.failed = true;
     }
   }
@@ -285,7 +286,7 @@ async function askShortcuts(prompt: Prompt, changes: Changes): Promise<void> {
       keys = checkKeys(typed);
       checkKeysFree(home, keys);
     } catch (fault) {
-      console.error(`firstmate: ${sentence(fault)}`);
+      console.error(`${refusalPrefix()} ${sentence(fault)}`);
       continue;
     }
 
@@ -314,7 +315,7 @@ async function askPath(prompt: Prompt, plugin: string): Promise<string> {
       checkShortcutPath(path, plugin);
       return path;
     } catch (fault) {
-      console.error(`firstmate: ${sentence(fault)}`);
+      console.error(`${refusalPrefix()} ${sentence(fault)}`);
     }
   }
 }
@@ -337,7 +338,7 @@ async function askLogon(prompt: Prompt, changes: Changes): Promise<void> {
     await turnLogonOn(here.installed);
     changes.done.push('FirstMate starts at logon');
   } catch (fault) {
-    console.error(`firstmate: ${sentence(fault)}`);
+    console.error(`${refusalPrefix()} ${sentence(fault)}`);
     changes.failed = true;
   }
 }
@@ -353,7 +354,7 @@ async function reload(changes: Changes): Promise<void> {
   try {
     await reloadHost(readConfig().home);
   } catch (fault) {
-    console.error(`firstmate: ${sentence(fault)}`);
+    console.error(`${refusalPrefix()} ${sentence(fault)}`);
     changes.failed = true;
   }
 }
