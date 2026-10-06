@@ -51,7 +51,7 @@ Run every command from the repository root.
 | `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
 Six environment variables move the Host: `FIRSTMATE_HOME` (default
-`~/.firstmate`), `FIRSTMATE_PORT` (default `4747`; zero asks the system for a
+`~/.firstmate`, and `%APPDATA%\FirstMate` on Windows), `FIRSTMATE_PORT` (default `4747`; zero asks the system for a
 free port), `FIRSTMATE_HANDSHAKE_MS` (default `10000`, how long a Plugin
 Server has to answer the handshake), `FIRSTMATE_MAX_CALL_MS` (default
 `600000`, the longest a Tool Bus call may ask the Host to wait),
@@ -128,7 +128,8 @@ packages/host/src/  the Host. Every file is one job.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
   index-page.ts    the Index Page, one file with no assets of its own.
   supervisor.ts    start every Plugin Server, hold the truth about each, and
-                   start or stop only what a reload added or removed.
+                   start or stop only what a reload added or removed. On
+                   Windows it starts mcp.exe or mcp.cmd (ADR-0019).
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
@@ -244,7 +245,10 @@ and drives it over HTTP, exactly as a browser does.
   helper's `build`, and boots it through the same helper with `built`.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
-  `notifier`. Add a fixture rather than a mock.
+  `notifier`. Add a fixture rather than a mock. A fixture with an `mcp`
+  carries its Windows form, `mcp.cmd`, beside it (ADR-0019).
+- The suite runs on Linux and on Windows, in CI. A test that only makes sense
+  on one skips on the other and says why, as `desktop-command.test.ts` does.
 - A test name is a sentence about behaviour:
   `'a request that leaves the web directory does not'`.
 

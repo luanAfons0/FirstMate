@@ -42,10 +42,12 @@ test('a Stopped Plugin that is fixed comes back Running', async (t) => {
   const plugin = join(home, 'mending');
   await mkdir(plugin);
   await copyFile(join(fixture('quitter'), 'mcp'), join(plugin, 'mcp'));
+  await copyFile(join(fixture('quitter'), 'mcp.cmd'), join(plugin, 'mcp.cmd'));
   const host = await bootHost(t, [{ name: 'mending', directory: plugin }]);
   assert.equal(await stateOf(host, 'mending'), 'stopped');
 
   await copyFile(join(fixture('server-only'), 'mcp'), join(plugin, 'mcp'));
+  await copyFile(join(fixture('server-only'), 'mcp.cmd'), join(plugin, 'mcp.cmd'));
   const restarted = await firstmate(host.home, ['restart', 'mending']);
 
   assert.equal(restarted.code, 0, restarted.stderr);

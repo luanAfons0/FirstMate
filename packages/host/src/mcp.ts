@@ -64,7 +64,7 @@ export type PluginServer = {
   call(message: JsonRpcMessage, timeoutMs?: number): Promise<JsonRpcMessage>;
   /** Send one message that has no answer. */
   notify(message: JsonRpcMessage): void;
-  /** Ask the process to end. */
+  /** Ask the process to end, by closing its stdin. The Supervisor decides what comes after. */
   stop(): void;
 };
 
@@ -183,9 +183,9 @@ export function speak(
     },
     stop() {
       if (!alive) return;
-      // Closing stdin is how an MCP server over stdio is asked to end.
+      // Closing stdin is how an MCP server over stdio is asked to end. A signal
+      // is the Supervisor's to send, because on Windows a signal is a kill.
       stdin.end();
-      child.kill('SIGTERM');
     },
   };
 }

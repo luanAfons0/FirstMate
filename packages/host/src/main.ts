@@ -59,8 +59,8 @@ async function main(): Promise<void> {
     notices: (after) => notices.after(after),
     reload,
     restart: (name) => supervisor.restart(name),
-  }).catch((fault: unknown) => {
-    supervisor.stopAll();
+  }).catch(async (fault: unknown) => {
+    await supervisor.stopAll();
     throw fault;
   });
   try {
@@ -125,8 +125,7 @@ function safely<T>(read: () => T): T | undefined {
 async function stop(host: Host, supervisor: Supervisor, home: string): Promise<void> {
   // The runtime file describes a run. This one is over, so it goes with it.
   removeRuntimeFile(home);
-  supervisor.stopAll();
-  await host.close();
+  await Promise.all([supervisor.stopAll(), host.close()]);
 }
 
 main().catch((fault: unknown) => {

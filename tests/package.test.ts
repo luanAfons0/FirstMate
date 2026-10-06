@@ -12,11 +12,11 @@
  * `core` and `host` reach it only inside the bundle.
  */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { pnpm } from './helpers/host.ts';
 
 const REPOSITORY = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -26,15 +26,15 @@ const PACKAGE = join(REPOSITORY, 'apps', 'cli');
 /** Every path packing would write, as pnpm itself reports them. */
 function pack(): Promise<readonly string[]> {
   return new Promise((done, fail) => {
-    const child = spawn('pnpm', ['pack', '--dry-run', '--json'], {
+    const child = pnpm(['pack', '--dry-run', '--json'], {
       cwd: PACKAGE,
       env: { ...process.env, npm_config_loglevel: 'silent' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
     let stderr = '';
-    child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
-    child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+    child.stdout?.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
     child.once('error', fail);
     child.once('exit', (code) => {
       if (code !== 0) return fail(new Error(`pnpm pack exited ${code}\n${stderr}`));

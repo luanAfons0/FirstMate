@@ -9,7 +9,7 @@
  */
 import { chmod, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import type { TestContext } from 'node:test';
 import { makeHome } from './host.ts';
 
@@ -74,6 +74,33 @@ export async function binWith(t: TestContext, tools: readonly string[]): Promise
     if (found !== undefined) await symlink(found, join(bin, tool));
   }
   return bin;
+}
+
+/**
+ * A `PATH` that holds these real tools and nothing else a test did not ask
+ * for. Windows will not link a file without a privilege, and finds a tool by
+ * its extension, so there it names the directory each tool is in.
+ */
+export async function pathWith(t: TestContext, tools: readonly string[]): Promise<string> {
+  if (process.platform !== 'win32') return binWith(t, tools);
+  const extensions = (process.env['PATHEXT'] ?? '.EXE;.CMD').split(';');
+  const directories = tools.flatMap((tool) => {
+    const found = (process.env['PATH'] ?? '')
+      .split(delimiter)
+      .find((directory) =>
+        extensions.some((extension) => isFile(join(directory, tool + extension))),
+      );
+    return found === undefined ? [] : [found];
+  });
+  return [await binWith(t, []), ...directories].join(delimiter);
+}
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function isExecutable(path: string): boolean {

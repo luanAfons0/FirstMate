@@ -6,11 +6,11 @@
  * browser and the Tray may see: status codes, headers, response bytes, and the
  * files the Host writes into its home directory.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { connect } from 'node:net';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 
@@ -84,12 +84,51 @@ export function fixture(name: string): string {
   return join(TESTS, 'fixtures', name);
 }
 
+/** What each test still has to undo, newest first. */
+const undoing = new WeakMap<TestContext, (() => Promise<void>)[]>();
+
+/**
+ * Undo this when the test ends, before anything set up earlier is undone.
+ *
+ * `t.after` runs its jobs in the order they came, so a home made first would
+ * be removed while the Host booted into it still ran. Linux does not mind.
+ * Windows refuses to remove a directory a process is working in.
+ */
+function atEnd(t: TestContext, job: () => Promise<void>): void {
+  let jobs = undoing.get(t);
+  if (jobs === undefined) {
+    const list: (() => Promise<void>)[] = [];
+    jobs = list;
+    undoing.set(t, list);
+    t.after(async () => {
+      for (const next of list.reverse()) await next();
+    });
+  }
+  jobs.push(job);
+}
+
+/** Remove a directory a test made. Windows may still hold it for a moment after a kill. */
+function removeDirectory(path: string): Promise<void> {
+  return rm(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
+/**
+ * Whether the Plugin in this directory can still start its Plugin Server: the
+ * executable bit on `mcp`, or on Windows the `mcp.cmd` beside it (ADR-0019).
+ */
+export async function canStart(directory: string): Promise<boolean> {
+  if (process.platform === 'win32') {
+    return (await stat(join(directory, 'mcp.cmd')).catch(() => null))?.isFile() === true;
+  }
+  return ((await stat(join(directory, 'mcp'))).mode & 0o111) !== 0;
+}
+
 /**
  * A home directory for one test, removed when the test ends.
  */
 export async function makeHome(t: TestContext): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), 'firstmate-test-'));
-  t.after(() => rm(home, { recursive: true, force: true }));
+  atEnd(t, () => removeDirectory(home));
   return home;
 }
 
@@ -156,10 +195,7 @@ export async function bootHostIn(
   let exited: number | null = null;
   child.once('exit', (code) => (exited = code));
 
-  t.after(async () => {
-    child.kill('SIGTERM');
-    await once(child);
-  });
+  atEnd(t, () => stop(child));
 
   const runtime = await waitForRuntimeFile(
     home,
@@ -191,9 +227,9 @@ export async function bootHostIn(
  */
 export async function build(t: TestContext): Promise<string> {
   const out = await mkdtemp(join(tmpdir(), 'firstmate-build-'));
-  t.after(() => rm(out, { recursive: true, force: true }));
+  atEnd(t, () => removeDirectory(out));
   await new Promise<void>((done, fail) => {
-    const child = spawn('pnpm', ['run', 'build', '--out-dir', out], {
+    const child = pnpm(['run', 'build', '--out-dir', out], {
       cwd: join(REPOSITORY, 'apps', 'cli'),
       stdio: ['ignore', 'ignore', 'pipe'],
     });
@@ -207,11 +243,22 @@ export async function build(t: TestContext): Promise<string> {
   return out;
 }
 
+/**
+ * One run of pnpm. On Windows pnpm is `pnpm.cmd`, which Node starts only
+ * through cmd.exe, so the command is one line with every word quoted. No word
+ * a test passes holds a quote or a `%`.
+ */
+export function pnpm(argv: readonly string[], options: SpawnOptions): ChildProcess {
+  if (process.platform !== 'win32') return spawn('pnpm', argv, options);
+  const line = ['pnpm', ...argv].map((word) => `"${word}"`).join(' ');
+  return spawn(line, { ...options, shell: true });
+}
+
 /** The Registry file, as the Host reads it. */
 async function writeRegistry(home: string, rows: readonly Row[]): Promise<void> {
   const plugins = rows.map((row) => ({
     name: row.name,
-    directory: resolve(row.directory.startsWith('/') ? row.directory : fixture(row.directory)),
+    directory: resolve(isAbsolute(row.directory) ? row.directory : fixture(row.directory)),
     grants: row.grants ?? [],
   }));
   await writeFile(join(home, 'registry.json'), `${JSON.stringify({ plugins }, null, 2)}\n`);
@@ -334,6 +381,26 @@ function parseRawResponse(received: string): RawResponse {
     headers,
     body: split < 0 ? '' : received.slice(split + 4),
   };
+}
+
+/**
+ * Stop a Host as its operator would, and wait for it to end.
+ *
+ * Windows has no signal that asks a process to end: a kill there is at once,
+ * and the Plugin Servers under the Host would outlive it, holding its output
+ * open. So on Windows the whole tree goes.
+ */
+async function stop(child: ChildProcess): Promise<void> {
+  const ended = once(child);
+  if (process.platform === 'win32' && child.pid !== undefined) {
+    const taskkill = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+      stdio: 'ignore',
+    });
+    await once(taskkill);
+  } else {
+    child.kill('SIGTERM');
+  }
+  await ended;
 }
 
 function once(child: ChildProcess): Promise<void> {

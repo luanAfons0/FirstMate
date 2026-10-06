@@ -1,5 +1,6 @@
 /** The Index Page: every registered Plugin, and a link to each Plugin Page. */
 import assert from 'node:assert/strict';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { bootHost } from './helpers/host.ts';
 
@@ -39,7 +40,7 @@ test('an empty Registry says where the Registry is', async (t) => {
   const page = await (await host.fetch('/')).text();
 
   assert.ok(page.includes('No Plugins are registered'), 'the empty state is plain');
-  assert.ok(page.includes(`${host.home}/registry.json`), 'it names the Registry file');
+  assert.ok(page.includes(join(host.home, 'registry.json')), 'it names the Registry file');
 });
 
 test('a linked Plugin is written as the address it leads to', async (t) => {
@@ -100,7 +101,7 @@ test('the Index Page says where a fetched Plugin lands, and how to move it', asy
 
   const page = await (await host.fetch('/')).text();
 
-  assert.ok(page.includes(`${host.home}/shelf`), 'it shows the Shelf in force');
+  assert.ok(page.includes(join(host.home, 'shelf')), 'it shows the Shelf in force');
   assert.ok(page.includes('node apps/cli/src/cli.ts shelf'), 'it names the command that moves it');
 });
 
@@ -110,7 +111,7 @@ test('the Index Page shows the Shelf with an empty Registry too', async (t) => {
   const page = await (await host.fetch('/')).text();
 
   assert.ok(page.includes('No Plugins are registered'), 'the Registry really is empty');
-  assert.ok(page.includes(`${host.home}/shelf`), 'and the Shelf is shown all the same');
+  assert.ok(page.includes(join(host.home, 'shelf')), 'and the Shelf is shown all the same');
 });
 
 test('the Shelf the Index Page shows is the Shelf the Host uses', async (t) => {
@@ -118,8 +119,8 @@ test('the Shelf the Index Page shows is the Shelf the Host uses', async (t) => {
 
   const page = await (await host.fetch('/')).text();
 
-  assert.ok(page.includes('/somewhere/else'), page);
-  assert.ok(!page.includes(`${host.home}/shelf`), 'the default is not shown instead');
+  assert.ok(page.includes(resolve('/somewhere/else')), page);
+  assert.ok(!page.includes(join(host.home, 'shelf')), 'the default is not shown instead');
 });
 
 test('the Shelf is escaped where it is shown', async (t) => {
@@ -128,5 +129,6 @@ test('the Shelf is escaped where it is shown', async (t) => {
   const page = await (await host.fetch('/')).text();
 
   assert.ok(!page.includes('<script>alert(1)'), 'no tag of the Shelf reaches the page');
-  assert.ok(page.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), page);
+  // Windows spells the slash of the closing tag as a backslash, once resolved.
+  assert.ok(page.includes('&lt;script&gt;alert(1)&lt;'), page);
 });

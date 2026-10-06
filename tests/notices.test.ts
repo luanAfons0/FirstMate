@@ -273,7 +273,10 @@ test('an mcp that cannot be run says why in its Stopped Notice', async (t) => {
   const [notice] = (await noticesOf(host)).notices;
 
   assert.equal(notice?.title, 'FirstMate: unrunnable is Stopped');
-  assert.match(notice?.body ?? '', /is not executable\.$/);
+  // Windows runs no `mcp` alone, and says which file it needs instead.
+  const why =
+    process.platform === 'win32' ? /it needs mcp\.cmd or mcp\.exe\.$/ : /is not executable\.$/;
+  assert.match(notice?.body ?? '', why);
 });
 
 test('a Plugin that stays Running adds no Host Notice', async (t) => {

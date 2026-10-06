@@ -89,13 +89,12 @@ Evidence, not a promise. "Proved" means someone has run it.
 | WSL Debian      | proved                | proved           | proved, systemd   | proved    |
 | Linux, native   | should work, untried  | should work, untried | should work, untried | not built |
 | macOS           | should work, untried  | should work, untried | not built      | not built |
-| Windows, native | should work, untried  | **will not run** | not built         | not built |
+| Windows, native | proved by CI          | proved by CI, from `mcp.cmd` or `mcp.exe` | not built | not built |
 
-**Native Windows will not run a Plugin Server.** That is a fact about the code,
-not a guess: the Supervisor checks the executable bit with `access(path, X_OK)`
-and then spawns the Plugin's `mcp` file directly, and Windows reads no shebang.
-The other half is unaffected — the Host still serves that Plugin's `web/`
-directory byte for byte, so its Plugin Page works.
+**Native Windows runs a Plugin Server from `mcp.cmd` or `mcp.exe`.** Windows
+reads no shebang, so a Plugin with only the shell form `mcp` is Stopped there,
+with one sentence that names the file it needs. The Host still serves that
+Plugin's `web/` directory byte for byte, so its Plugin Page works (ADR-0019).
 
 The service is a systemd unit, so it is Linux only. The Tray is a Windows
 program and reads the runtime file over a `\\wsl.localhost\` path, so it is
@@ -118,10 +117,13 @@ A directory, named in the Registry. There is no manifest and no schema.
 | ------------------ | ----------------------------------------------------------- |
 | `web/`             | Serves it at `/p/<name>/`, byte for byte.                   |
 | `mcp` (executable) | Runs it, and speaks MCP to it over stdin and stdout.        |
+| `mcp.exe`, `mcp.cmd` | The same, on Windows, where `mcp` is not run.             |
 
 The shebang of `mcp` decides the language, so a Plugin Server can be written in
-anything. Its output goes to the Host's own output, which under systemd is the
-journal.
+anything. Windows reads no shebang, so there the Host runs `mcp.exe`, or else
+`mcp.cmd` (ADR-0019). Every Plugin Server receives `FIRSTMATE_NODE`, the Node
+that runs the Host, so a Node Plugin needs no Node of its own. Its output goes
+to the Host's own output, which under systemd is the journal.
 
 A Plugin is in one of three states, and the Index Page shows which:
 
@@ -129,7 +131,7 @@ A Plugin is in one of three states, and the Index Page shows which:
 | ------------------ | ---------------------------------------------------------- |
 | `Running`          | The Plugin Server is up and answered the MCP handshake.     |
 | `Stopped`          | The Plugin Server exited, or could not be run at all.       |
-| `no Plugin Server` | The Plugin ships no `mcp` file. This is allowed.            |
+| `no Plugin Server` | The Plugin ships no `mcp` file of any form. This is allowed. |
 
 The Host never starts a Stopped Plugin again, so a broken Plugin stays visible
 instead of spinning in a restart loop. A Stopped Plugin still serves its Plugin
@@ -261,7 +263,7 @@ installs FirstMate can run what they installed.
 
 | Variable                | Default        | What it moves                                     |
 | ----------------------- | -------------- | ------------------------------------------------- |
-| `FIRSTMATE_HOME`        | `~/.firstmate` | Where the Registry, the runtime file and the settings live. |
+| `FIRSTMATE_HOME`        | `~/.firstmate`, or `%APPDATA%\FirstMate` on Windows | Where the Registry, the runtime file and the settings live. |
 | `FIRSTMATE_PORT`        | `4747`         | The port. Zero asks the system for a free one.    |
 | `FIRSTMATE_HANDSHAKE_MS`| `10000`        | How long a Plugin Server has to answer the handshake. |
 | `FIRSTMATE_MAX_CALL_MS` | `600000`       | The longest a Tool Bus call may ask the Host to wait. |

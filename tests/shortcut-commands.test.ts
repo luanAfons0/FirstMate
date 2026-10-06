@@ -39,7 +39,10 @@ test('bind writes a Shortcut in normal form, and keeps the Shelf', async (t) => 
     shortcuts: [{ keys: 'Ctrl+Alt+N', plugin: 'both', path: 'new.html' }],
   });
   const written = await stat(join(home, 'settings.json'));
-  assert.equal(written.mode & 0o777, 0o600, 'as private as the Registry');
+  // Windows keeps no mode bits: there the file lives in the user's own profile.
+  if (process.platform !== 'win32') {
+    assert.equal(written.mode & 0o777, 0o600, 'as private as the Registry');
+  }
   await assert.rejects(stat(join(home, 'settings.json.pending')), 'nothing is left half written');
 });
 
