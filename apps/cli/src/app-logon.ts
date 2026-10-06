@@ -11,7 +11,7 @@
  *
  * The deb's program is found as the desktop finds it: by the App's desktop
  * entry in the system's applications folders, whose Exec names it. Its place
- * is electron-builder's, `/opt/FirstMate/firstmate`, and reading the entry
+ * is electron-builder's, `/opt/FirstMate/firstmate-app`, and reading the entry
  * keeps that a fact of the package, not of this file.
  */
 import { readFileSync, statSync } from 'node:fs';

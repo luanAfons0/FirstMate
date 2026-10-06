@@ -534,7 +534,7 @@ test(
     // The deb installs its program under /opt and its desktop entry in the
     // system's applications folder, where the desktop finds it.
     const system = join(home, 'share');
-    const program = join(home, 'opt', 'FirstMate', 'firstmate');
+    const program = join(home, 'opt', 'FirstMate', 'firstmate-app');
     await mkdir(dirname(program), { recursive: true });
     await writeFile(program, '#!/bin/sh\n', { mode: 0o755 });
     await mkdir(join(system, 'applications'), { recursive: true });

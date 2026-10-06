@@ -74,10 +74,18 @@ async function checkDeb(out: string, name: string): Promise<void> {
     join(files, 'opt', 'FirstMate', 'resources', 'apparmor-profile'),
     'utf8',
   );
-  assert.match(profile, /^profile "firstmate" "\/opt\/FirstMate\/firstmate"/m, 'it names the App');
+  assert.match(
+    profile,
+    /^profile "firstmate-app" "\/opt\/FirstMate\/firstmate-app"/m,
+    'it names the App',
+  );
   assert.match(profile, /^\s*userns,$/m, 'it lets the App make a user namespace');
   const postinst = await readFile(join(control, 'postinst'), 'utf8');
-  assert.ok(postinst.includes("'/etc/apparmor.d/firstmate'"), 'the install script loads it');
+  assert.ok(postinst.includes("'/etc/apparmor.d/firstmate-app'"), 'the install script loads it');
+  assert.ok(
+    postinst.includes("'/usr/bin/firstmate-app'") && !postinst.includes("'/usr/bin/firstmate'"),
+    'the install script links firstmate-app on the path, and leaves firstmate to the command line',
+  );
 }
 
 /**
