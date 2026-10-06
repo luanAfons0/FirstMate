@@ -3,7 +3,7 @@
  *
  * It is the one external tool a `wsl` Place needs, as `git` is the one a URL
  * needs: not a package dependency, and it runs nothing a Plugin ships. A test
- * puts a fake `wsl.exe` first on PATH, as the systemd tests fake `systemctl`.
+ * puts a fake `wsl.exe` first on PATH.
  *
  * `wsl.exe` writes its own messages as UTF-16, and the program it runs writes
  * whatever that program writes. Both are read here as the text they are.

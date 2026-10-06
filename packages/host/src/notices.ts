@@ -9,7 +9,7 @@
  * sends its own when a Plugin goes Stopped. Both land on one queue in memory,
  * and nothing about a Notice is ever written to disk (ADR-0005).
  *
- * The Host promises nothing about delivery. A Notice no Tray reads in time is
+ * The Host promises nothing about delivery. A Notice nobody reads in time is
  * gone, and the answer a Plugin Server gets means "accepted" and nothing more.
  */
 import { HOST_ERROR, type Answer } from './mcp.ts';

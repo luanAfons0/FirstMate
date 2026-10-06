@@ -58,10 +58,10 @@ const DEFAULT_HANDSHAKE_MS = 10_000;
 const DEFAULT_MAX_CALL_MS = 600_000;
 
 /**
- * How long the Host holds a Notice for the Tray to read.
+ * How long the Host holds a Notice for a reader of `/notices.json`.
  *
- * A minute is many polls of the Tray, and short enough that a Tray which was
- * not running never finds old news waiting (ADR-0014). It moves so that a test
+ * A minute is many polls, and short enough that a reader which was not
+ * running never finds old news waiting (ADR-0014). It moves so that a test
  * proves the expiry in milliseconds rather than in a minute.
  */
 const DEFAULT_NOTICE_MS = 60_000;
@@ -79,7 +79,7 @@ export type Config = {
   readonly handshakeMs: number;
   /** The longest the Host will wait for a Plugin Server on a Tool Bus call. */
   readonly maxCallMs: number;
-  /** How long the Host holds a Notice for the Tray to read. */
+  /** How long the Host holds a Notice for a reader of `/notices.json`. */
   readonly noticeMs: number;
   /** The Shelf: the directory a fetched Plugin lands in. */
   readonly shelf: string;

@@ -1,5 +1,7 @@
 # The nexus migration
 
+This record was written for 1.x, so its paths and its Tray are the 1.x ones.
+
 `~/.nexus` is FirstMate's first Plugin, and the migration that made it one is
 finished. This records what moved, what proved it, and what nexus deleted, so
 that the second Plugin has a worked example and nobody reopens a decision that
