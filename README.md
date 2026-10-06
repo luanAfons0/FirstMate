@@ -483,10 +483,9 @@ Registry and the runtime file. What is remembered is the real path, so what you
 read back is what FirstMate uses.
 
 The choice is kept in `settings.json` and survives a restart. `FIRSTMATE_SHELF`
-beats it, for a test, a script, or a second FirstMate. The Index Page shows the
-Shelf in force and names the command that moves it, and that is all it does:
-the Shelf is moved from a terminal or the App's Settings View and from nowhere
-else, because no address on the Host changes it
+beats it, for a test, a script, or a second FirstMate. The Index Page says nothing
+of the Shelf: the Shelf is moved from a terminal or the App's Settings View and
+from nowhere else, because no address on the Host changes it
 ([ADR-0012](docs/adr/0012-the-host-keeps-one-setting.md)). Nothing scans the
 Shelf — a directory sitting there is not a Plugin until `add` or `install`
 registers it.
@@ -554,7 +553,7 @@ address on the Host changes it
 
 | Address              | What it serves                                     |
 | -------------------- | -------------------------------------------------- |
-| `/`                  | The Index Page: every Plugin, its state, the Shelf. |
+| `/`                  | The Index Page: every Plugin, its state. |
 | `/plugins.json`      | The same list, for the App. Nothing is written.    |
 | `/shortcuts.json`    | Every Shortcut and the address it opens, for the App. Nothing is written. |
 | `/notices.json?after=<n>` | The Notices after `n`, for any reader. The App hears them with no poll. Nothing is written. |

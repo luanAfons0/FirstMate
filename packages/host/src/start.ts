@@ -94,15 +94,10 @@ export async function start(
 
   // From here a failure must take the Plugin Servers down with it: their pipes
   // would otherwise hold a Host that serves nothing up for ever.
-  // The Shelf can move while the Host runs, and a reload reads it again.
-  let shelf = config.shelf;
   const reload = async (): Promise<void> => {
-    // Both are read before either is used, so a damaged file changes nothing.
     const now = readPlugins(config.home);
-    const moved = readConfig().shelf;
     await supervisor.hold(now);
     tell(hooks.onChange);
-    shelf = moved;
     console.log(`FirstMate: reloaded ${now.length} Plugin(s) from ${registryPath(config.home)}`);
   };
 
@@ -110,7 +105,6 @@ export async function start(
     port: config.port,
     plugins: () => supervisor.plugins(),
     registryPath: registryPath(config.home),
-    shelf: () => shelf,
     token,
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),

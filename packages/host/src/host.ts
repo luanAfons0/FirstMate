@@ -30,8 +30,6 @@ export type HostOptions = {
   readonly plugins: () => readonly HeldPlugin[];
   /** Where the Registry lives, so that an empty Index Page can say so. */
   readonly registryPath: string;
-  /** The Shelf in force, which the Index Page shows and never sets. */
-  readonly shelf: () => string;
   /** The token minted at startup. Every request carries it or is refused. */
   readonly token: string;
   /** What the Supervisor knows about a Plugin Server right now. */
@@ -156,7 +154,7 @@ async function handle(
     if (!readOnly(response, method)) return;
     const views = pluginViews(response, options);
     if (views === null) return;
-    sendHtml(response, indexPage(views, options.registryPath, options.shelf()), method === 'HEAD');
+    sendHtml(response, indexPage(views, options.registryPath), method === 'HEAD');
     return;
   }
   if (path === PLUGINS_PATH) {
