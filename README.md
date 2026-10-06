@@ -372,6 +372,18 @@ installer for you alone that needs no administrator, and the same App,
 uninstalled, in `apps/desktop/dist/win-unpacked/`. Both are unsigned, so
 Windows may warn before they run.
 
+To try a change to the App before it is released, you need no clone on
+Windows: the Windows check of every pull request keeps the installer it built,
+as the artifact `FirstMate-Setup`, for 14 days. Download it and run it, from
+the run's page or from a terminal:
+
+```sh
+gh run download <run-id> --name FirstMate-Setup
+```
+
+It installs over the App you have, keeps your settings, and is replaced by the
+next release when the App updates itself.
+
 The App's Host is the Host above: the same home, `%APPDATA%\FirstMate` unless
 `FIRSTMATE_HOME` moves it, the same port and the same runtime file, so the
 command line reaches it as it reaches any other. Only one App runs for one
