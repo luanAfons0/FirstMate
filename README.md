@@ -401,20 +401,23 @@ Settings View. Each Plugin Page you open has a view of its own and stays
 loaded until the App quits, so switching to another Plugin and back loses
 nothing. A link that leaves FirstMate opens in your browser.
 
-The Settings View has a side list of its sections, Places, Start at logon and
-Shortcuts, and says the App's version under it. Places shows each Place with
+The Settings View has a side list of its sections, Places, Plugin Order, Start
+at logon and Shortcuts, and says the App's version under it. Places shows each Place with
 its kind and its Shelf. There you move a Place's Shelf: type a path, or choose
 a folder for a Place on this machine. You remove a Place that holds no Plugin;
 the Place of this machine is always there. On Windows, Add a Place opens in
-the page and adds a `wsl` Place by its distribution. Start at logon is one
-switch. Each change runs the same check as `firstmate place` and
-`firstmate shelf`, and is refused in the same sentence: the line at the top of
+the page and adds a `wsl` Place by its distribution. Plugin Order shows each
+Plugin with its position and its state; drag a row, press Alt+↑ or Alt+↓, or
+use its up and down buttons, and it moves as `firstmate order` moves it. The
+rows then show the order the Host gives back, and a refused move leaves them
+where they were. Start at logon is one switch. Each change runs the same check
+as `firstmate place`, `firstmate shelf` and `firstmate order`, and is refused
+in the same sentence: the line at the top of
 the view, which stays in view as you scroll, says Working…, then what was done
 or why it was refused, and a refused field is marked with that sentence under
 it. What you typed stays, so you can correct it. The App then has the Host
 read its settings again. The Host never serves the Settings View, so no Plugin
-Page can reach it. Shortcuts, Plugins, Grants and the Plugin Order change from
-a terminal.
+Page can reach it. Shortcuts, Plugins and Grants change from a terminal.
 
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its
@@ -535,8 +538,9 @@ a Plugin you add goes to the bottom. `order` refuses a Plugin that is not in the
 Registry and a position outside the list. The order is kept in `settings.json`
 under `order`, and the Host reads it on every request, so a new order shows
 within a few seconds with no restart. `remove` takes the Plugin out of it, and
-`list` keeps Registry order. The order changes from a terminal alone; no
-address on the Host changes it
+`list` keeps Registry order. The order changes from a terminal or from the
+App's Settings View, which moves it through the same code in the App's own
+process; no address on the Host changes it
 ([ADR-0016](docs/adr/0016-the-operator-chooses-the-plugin-order.md)).
 
 ## The home directory

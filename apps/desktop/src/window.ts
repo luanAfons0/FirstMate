@@ -42,7 +42,7 @@ import {
   type HostAt,
 } from './addresses.ts';
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
-import type { Plugins } from './host-lists.ts';
+import { askForPlugins, type Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
 import { APP_ID } from './notices.ts';
 import {
@@ -96,7 +96,7 @@ export type Shown = {
 };
 
 /** What the Settings View needs to change a setting: the home, and a reload. */
-export type SettingsNeeds = Omit<ChangeNeeds, 'window'>;
+export type SettingsNeeds = Omit<ChangeNeeds, 'window' | 'readBack'>;
 
 /**
  * Open the window, shown unless `hidden` says the App starts in the Tray. It
@@ -223,7 +223,9 @@ export function openWindow(
     }
     if (setting) {
       // Read again each time, so a change from a terminal or the Tray shows.
-      settingsShown.show(settingsPage({ ...readShown(settingsNeeds.home), outcome, busy }));
+      settingsShown.show(
+        settingsPage({ ...readShown(settingsNeeds.home), plugins, outcome, busy }),
+      );
     }
     layout();
   };
@@ -379,7 +381,10 @@ export function openWindow(
       // A setting. One change at a time: a wsl Place can take a while to add.
       busy = true;
       redraw();
-      void change(asked, { ...settingsNeeds, window: () => window }).then((said) => {
+      const readBack = async (): Promise<void> => {
+        if (host !== undefined) plugins = await askForPlugins(host);
+      };
+      void change(asked, { ...settingsNeeds, window: () => window, readBack }).then((said) => {
         busy = false;
         outcome = said;
         refresh();
@@ -395,6 +400,7 @@ export function openWindow(
     'place-remove',
     'shelf',
     'shelf-choose',
+    'plugin-move',
   ]);
 
   const ask = (event: IpcMainEvent, said: unknown): void => {
