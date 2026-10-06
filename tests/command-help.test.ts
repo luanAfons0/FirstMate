@@ -4,7 +4,7 @@
  * without reading the sentence.
  */
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { firstmate, fixture, makeHome } from './helpers/host.ts';
@@ -247,4 +247,65 @@ test('each kind of refusal ends with its own exit code', async (t) => {
   const failed = await firstmate(home, ['list']);
   assert.equal(failed.code, 1, 'a damaged file is a failure, not a refusal');
   assert.match(failed.stderr, /is not valid JSON/);
+});
+
+test('a mistyped command is guessed in one line, and nothing is run', async (t) => {
+  const home = await makeHome(t);
+  const before = await readdir(home);
+
+  const typo = await firstmate(home, ['lsit']);
+
+  assert.equal(typo.code, 2);
+  assert.equal(typo.stdout, '');
+  assert.equal(
+    typo.stderr,
+    'firstmate: no such command: lsit. Did you mean list?\nfirstmate --help says every command.\n',
+  );
+  assert.deepEqual(await readdir(home), before, 'no file changed');
+  const helpWord = await firstmate(home, ['hlep']);
+  assert.match(helpWord.stderr, /Did you mean help\?/);
+});
+
+test('a command far from every name is refused with no guess', async (t) => {
+  const home = await makeHome(t);
+
+  const far = await firstmate(home, ['frobnicate']);
+
+  assert.equal(far.code, 2);
+  assert.equal(far.stdout, '');
+  assert.equal(
+    far.stderr,
+    'firstmate: no such command: frobnicate.\nfirstmate --help says every command.\n',
+  );
+});
+
+test('a tie between two names goes to the first in the table', async (t) => {
+  const home = await makeHome(t);
+
+  // "remove" and "revoke" are each one edit from "remoke"; remove comes first.
+  const tie = await firstmate(home, ['remoke']);
+
+  assert.match(tie.stderr, /Did you mean remove\?/);
+});
+
+test('--version and -v say which FirstMate this is, and end with 0', async (t) => {
+  const home = await makeHome(t);
+  const manifest = JSON.parse(await readFile('apps/cli/package.json', 'utf8')) as {
+    version: string;
+  };
+
+  for (const asked of ['--version', '-v']) {
+    const said = await firstmate(home, [asked]);
+    assert.equal(said.code, 0, said.stderr);
+    assert.equal(said.stdout, `firstmate ${manifest.version}\n`);
+    assert.equal(said.stderr, '');
+  }
+});
+
+test('help lists --version, which the short help has no room for', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['help']);
+
+  assert.match(helped.stdout, /firstmate --version/);
 });

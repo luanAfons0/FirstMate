@@ -299,6 +299,7 @@ it first. The token never reaches either file.
 firstmate --help
 firstmate <command> --help
 firstmate help <topic>
+firstmate --version
 ```
 
 `firstmate --help`, or `firstmate` with no words, prints one screen: every
@@ -308,6 +309,14 @@ code `2`, because nothing was asked.
 `--help` or `-h` after any command says how that command is typed and what
 its words mean, and does nothing else. `firstmate help <command>` says the
 same. A command typed wrong says what is wrong, then shows that same help.
+
+A word that is no command is refused in one line. When it is within two edits
+of a command's name, the line guesses that name: `firstmate: no such command:
+lsit. Did you mean list?` It runs nothing, and ends with `2`.
+
+`firstmate --version`, or `-v`, prints `firstmate <version>`, the version of
+the package, and ends with `0`. The short help has no room for it, so
+`firstmate help` lists it.
 
 `firstmate help` lists the help topics, and `firstmate help <topic>` says one:
 

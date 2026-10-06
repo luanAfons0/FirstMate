@@ -8,7 +8,7 @@
  */
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { connect } from 'node:net';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,10 +232,14 @@ export async function bootHostIn(
  * Build the command line's bundle as packing builds it, into a directory of
  * this test's own, and return that directory. It is removed when the test
  * ends. The package's own `dist/` is left to packing, which empties it first.
+ * The bundle sits in a `dist/` with the package's manifest beside it, as in the
+ * package, because the command line reads its own version from there.
  */
 export async function build(t: TestContext): Promise<string> {
-  const out = await mkdtemp(join(tmpdir(), 'firstmate-build-'));
-  atEnd(t, () => removeDirectory(out));
+  const root = await mkdtemp(join(tmpdir(), 'firstmate-build-'));
+  atEnd(t, () => removeDirectory(root));
+  await copyFile(join(REPOSITORY, 'apps', 'cli', 'package.json'), join(root, 'package.json'));
+  const out = join(root, 'dist');
   await completes('The build', pnpm(['run', 'build', '--out-dir', out], inPackage('cli')));
   return out;
 }

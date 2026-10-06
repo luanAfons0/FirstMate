@@ -176,6 +176,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
   src/cli.ts       the terminal: desktop, setup, place, import, shelf, install,
                    bind, unbind, order, logs, status, restart, and the
                    Registry: add, remove, list, grant, revoke.
+  src/version.ts   the version of the command line, read from its own package.json:
+                   `--version` says it, and `desktop` installs the App of it.
   src/setup.ts     firstmate setup: the conversation, and nothing else. Each
                    step calls commands.ts.
   src/prompt.ts    ask for text, yes or no, or from a list: with clack on a
