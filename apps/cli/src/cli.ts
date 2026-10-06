@@ -364,8 +364,8 @@ status reads the running Host, and ends with exit code 6 when none answers.`,
     about: ['logs'],
     text: `logs prints the Host's log: what the Host said, and what every Plugin Server
 wrote to stderr. It is one file in the home directory, and it never grows past
-its cap: the whole log then moves to firstmate.log.old, which is printed first. With -f it keeps
-printing new lines until you stop it with Ctrl-C.`,
+its cap: the whole log then moves to firstmate.log.old, which is printed
+first. With -f it keeps printing new lines until you stop it with Ctrl-C.`,
   },
   {
     about: ['restart'],
@@ -471,7 +471,7 @@ ${GROUPS.map((group) =>
   ].join('\n'),
 ).join('\n')}
 
-firstmate <command> --help   how one command is typed
+firstmate <command> --help   how one command is typed; --version, the version
 firstmate help <topic>       ${TOPIC_NAMES.join(', ')}`;
 }
 
@@ -480,9 +480,7 @@ function topicList(stream: NodeJS.WriteStream): string {
   return `${shortHelp(stream)}
 
 Topics, for firstmate help <topic>:
-${TOPICS.map((topic) => shortLine(topic.name, topic.short, 13)).join('\n')}
-
-firstmate --version          which FirstMate this is (-v too)`;
+${TOPICS.map((topic) => shortLine(topic.name, topic.short, 13)).join('\n')}`;
 }
 
 /** One command's own help: its usage line, and every note about it. */
@@ -545,24 +543,50 @@ const HELP_WORDS: ReadonlySet<string> = new Set(['-h', '--help']);
 /** The words that ask which FirstMate this is, typed where a command goes. */
 const VERSION_WORDS: ReadonlySet<string> = new Set(['-v', '--version']);
 
-/** The fewest single-letter edits that turn one word into another. */
+/**
+ * The fewest single-letter edits that turn one word into another. Two letters
+ * typed the wrong way round count as one edit, as a person counts them.
+ */
 function editDistance(from: string, to: string): number {
+  let before: number[] = [];
   let row = Array.from({ length: to.length + 1 }, (_cell, index) => index);
   for (let i = 1; i <= from.length; i += 1) {
     const next = [i];
     for (let j = 1; j <= to.length; j += 1) {
       const swap = from[i - 1] === to[j - 1] ? 0 : 1;
-      next.push(Math.min((row[j] ?? 0) + 1, (next[j - 1] ?? 0) + 1, (row[j - 1] ?? 0) + swap));
+      let fewest = Math.min((row[j] ?? 0) + 1, (next[j - 1] ?? 0) + 1, (row[j - 1] ?? 0) + swap);
+      if (i > 1 && j > 1 && from[i - 1] === to[j - 2] && from[i - 2] === to[j - 1]) {
+        fewest = Math.min(fewest, (before[j - 2] ?? 0) + 1);
+      }
+      next.push(fewest);
     }
+    before = row;
     row = next;
   }
   return row[to.length] ?? 0;
 }
 
-/** The nearest command name, or `help`, within two edits; a tie goes to the first in the table. */
+/**
+ * Words other tools use for something FirstMate does under another name. They
+ * are too far from that name for an edit to find it, so they are said here.
+ */
+const MEANT: ReadonlyMap<string, string> = new Map([
+  ['uninstall', 'remove'],
+  ['start', 'desktop'],
+  ['service', 'desktop'],
+]);
+
+/**
+ * The command a mistyped word meant, or nothing. A flag is never guessed at.
+ * A word of four letters or fewer is guessed within one edit, and a longer
+ * one within two; a tie goes to the first in the table.
+ */
 function nearestCommand(word: string): string | undefined {
+  if (word.startsWith('-')) return undefined;
+  const meant = MEANT.get(word);
+  if (meant !== undefined) return meant;
   let best: string | undefined;
-  let bestDistance = 3;
+  let bestDistance = word.length <= 4 ? 2 : 3;
   for (const name of [...COMMANDS.map((row) => row.name), HELP_WORD]) {
     const distance = editDistance(word, name);
     if (distance < bestDistance) {

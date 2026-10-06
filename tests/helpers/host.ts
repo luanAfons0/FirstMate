@@ -23,6 +23,13 @@ const BOOT_TIMEOUT_MS = 10_000;
 /** The same, for the App, which starts a browser engine before the Host is up. */
 const APP_BOOT_TIMEOUT_MS = 60_000;
 
+/**
+ * The colour words of this process's own environment, taken away. The test
+ * runner sets FORCE_COLOR when it runs in a terminal, and a child that took it
+ * would colour the bytes a test compares. A test that wants colour says so.
+ */
+const NO_COLOUR_GIVEN = { FORCE_COLOR: undefined, NO_COLOR: undefined };
+
 export type Row = {
   readonly name: string;
   /** A directory under tests/fixtures, or an absolute path of its own. */
@@ -191,7 +198,7 @@ export async function bootHostIn(
   const [program, argv] = options.app === undefined ? [process.execPath, entry] : [options.app, []];
   const child = spawn(program, argv, {
     cwd: REPOSITORY,
-    env: { ...process.env, FIRSTMATE_HOME: home, FIRSTMATE_PORT: '0', ...env },
+    env: { ...process.env, ...NO_COLOUR_GIVEN, FIRSTMATE_HOME: home, FIRSTMATE_PORT: '0', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -375,7 +382,13 @@ function run(
       cwd: REPOSITORY,
       // Not inside WSL unless a test says so, so that no command reaches the
       // real Windows of the machine the tests run on.
-      env: { ...process.env, WSL_DISTRO_NAME: '', FIRSTMATE_HOME: home, ...env },
+      env: {
+        ...process.env,
+        ...NO_COLOUR_GIVEN,
+        WSL_DISTRO_NAME: '',
+        FIRSTMATE_HOME: home,
+        ...env,
+      },
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     if (input !== undefined) child.stdin?.end(input);
@@ -404,7 +417,7 @@ export function firstmateRunning(t: TestContext, home: string, argv: readonly st
     [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), ...argv],
     {
       cwd: REPOSITORY,
-      env: { ...process.env, WSL_DISTRO_NAME: '', FIRSTMATE_HOME: home },
+      env: { ...process.env, ...NO_COLOUR_GIVEN, WSL_DISTRO_NAME: '', FIRSTMATE_HOME: home },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );

@@ -184,6 +184,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
                    terminal, over node:readline from a pipe (ADR-0025).
   src/progress.ts  a long wait on a terminal: a spinner, or a progress bar
                    when its size is known. From a pipe it shows nothing.
+  src/terminal.ts  colour, and rows in aligned columns, only on a terminal.
+                   From a pipe a row is the tab-separated line it always was.
   src/running-host.ts the running Host, as the terminal reaches it: over
                    loopback, with the token from the runtime file.
   src/install-app.ts firstmate desktop: download the App of this version from
@@ -208,7 +210,7 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/settings.ts  what the Settings View shows, and the changes it asks for,
                    made through core in the main process.
   src/settings-view.ts the Settings View, as a page the App writes.
-  src/notices.ts   Notices, as Windows notifications under the App's own ID.
+  src/notices.ts   Notices, as Windows pop-ups under the App's own ID.
   src/shortcuts.ts the Shortcuts, held with globalShortcut.
   src/popup.ts     the Popup a Shortcut opens.
   src/permissions.ts what a Plugin Page may use: clipboard write, and the

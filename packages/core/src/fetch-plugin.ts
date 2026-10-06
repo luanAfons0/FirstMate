@@ -105,6 +105,13 @@ async function copyDirectory(source: string, staging: string, shelf: string): Pr
  * are held, git is quiet and they are handed over only when the clone fails,
  * before the sentence that says so. Cloning runs none of the Plugin's code;
  * its executable runs when the Host starts it.
+ *
+ * Held words mean a spinner is drawing, and git asks for a password or a host
+ * key on the terminal itself, where the spinner would draw over the question
+ * and take the keys typed for it. So while the words are held, git and ssh
+ * ask nothing: a clone that needs an answer fails at once, in git's own
+ * words, and the operator runs it again from a pipe, or sets up a credential
+ * helper or an ssh key (ADR-0025).
  */
 function clone(url: string, staging: string, words: GitWords): Promise<void> {
   return new Promise((done, fail) => {
@@ -112,7 +119,8 @@ function clone(url: string, staging: string, words: GitWords): Promise<void> {
       words === 'shown'
         ? spawn('git', ['clone', '--', url, staging], { stdio: 'inherit' })
         : spawn('git', ['clone', '--quiet', '--', url, staging], {
-            stdio: ['inherit', 'ignore', 'pipe'],
+            env: askingNothing(process.env),
+            stdio: ['ignore', 'ignore', 'pipe'],
           });
     const held: Buffer[] = [];
     git.stderr?.on('data', (chunk: Buffer) => held.push(chunk));
@@ -135,6 +143,18 @@ function clone(url: string, staging: string, words: GitWords): Promise<void> {
       fail(new Error(`git could not clone ${url}: ${how}.`));
     });
   });
+}
+
+/**
+ * This environment, with git told not to ask on the terminal, and ssh told
+ * the same unless the operator chose their own ssh command.
+ */
+function askingNothing(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_SSH_COMMAND: env['GIT_SSH_COMMAND'] ?? 'ssh -o BatchMode=yes',
+  };
 }
 
 /** Whether the inner path is the outer one, or sits under it. */

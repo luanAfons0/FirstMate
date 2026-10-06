@@ -22,7 +22,7 @@
 
 import { STATE_WORDS, type PluginView } from '@firstmate/core/plugin-state';
 
-/** One Plugin, as the Index Page and the Tray both see it. */
+/** One Plugin, as the Index Page and the App both see it. */
 /**
  * From this many Plugins up, the Index Page offers a filter. Below it the
  * whole list is already on screen, and a box that narrows three rows is noise.

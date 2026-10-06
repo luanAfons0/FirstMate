@@ -147,7 +147,7 @@ test('the short help names every command once, and fits in one screen', async (t
   for (const group of ['Start', 'Plugins', 'Running', 'Grants and Shortcuts', 'Places']) {
     assert.ok(lines.includes(group), `the group ${group}`);
   }
-  assert.match(helped.stdout, /firstmate <command> --help/);
+  assert.match(helped.stdout, /firstmate <command> --help .*--version/);
   assert.match(helped.stdout, /firstmate help <topic> .*exit-codes, environment, places/);
 });
 
@@ -279,6 +279,33 @@ test('a command far from every name is refused with no guess', async (t) => {
   );
 });
 
+test('a short word or a flag gets no wild guess', async (t) => {
+  const home = await makeHome(t);
+
+  for (const word of ['stop', 'del', 'srat', '--place', '-x']) {
+    const typed = await firstmate(home, [word]);
+    assert.equal(typed.code, 2, word);
+    assert.equal(
+      typed.stderr,
+      `firstmate: no such command: ${word}.\nfirstmate --help says every command.\n`,
+    );
+  }
+});
+
+test('a word another tool uses guesses the command FirstMate has for it', async (t) => {
+  const home = await makeHome(t);
+
+  for (const [word, meant] of [
+    ['uninstall', 'remove'],
+    ['start', 'desktop'],
+    ['service', 'desktop'],
+  ] as const) {
+    const typed = await firstmate(home, [word]);
+    assert.equal(typed.code, 2, word);
+    assert.match(typed.stderr, new RegExp(`no such command: ${word}\\. Did you mean ${meant}\\?`));
+  }
+});
+
 test('a tie between two names goes to the first in the table', async (t) => {
   const home = await makeHome(t);
 
@@ -302,10 +329,10 @@ test('--version and -v say which FirstMate this is, and end with 0', async (t) =
   }
 });
 
-test('help lists --version, which the short help has no room for', async (t) => {
+test('help says --version once, in the short help it starts with', async (t) => {
   const home = await makeHome(t);
 
   const helped = await firstmate(home, ['help']);
 
-  assert.match(helped.stdout, /firstmate --version/);
+  assert.equal(helped.stdout.match(/--version/g)?.length, 1);
 });

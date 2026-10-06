@@ -36,7 +36,7 @@ const NOTICE_GAP_MS = 5_000;
 /** The name a Host Notice speaks under. No Plugin Name can be it: those are lowercase. */
 const HOST_NAME = 'FirstMate';
 
-/** One Notice, as the Tray reads it. */
+/** One Notice, as the App hears it and any reader of `/notices.json` reads it. */
 export type Notice = {
   /** Its place on the queue. It only goes up while the Host runs. */
   readonly sequence: number;
