@@ -8,6 +8,11 @@
  * stable App follows the latest stable Release, and a beta follows the newest
  * Release of either kind (ADR-0023). Nothing here names a channel.
  *
+ * On Linux the App updates itself only as an AppImage, whose runtime names
+ * the file in `APPIMAGE`. A deb is the package manager's to update
+ * (ADR-0026), and electron-updater would otherwise ask for root to install
+ * one, so a deb looks for nothing.
+ *
  * The first look waits a few minutes after the App starts. Starting is when
  * every Plugin Server starts too, and an App started only to be looked at, as
  * the smoke test starts one, has quit long before then and downloads nothing.
@@ -24,10 +29,10 @@ const LOOK_EVERY_MS = 6 * 60 * 60 * 1000;
 /**
  * Look for updates in the background from now on. `say` shows one Notice
  * when an update has downloaded. An App that is not packaged, run from a
- * clone, has no feed to follow and looks for nothing.
+ * clone, has no feed to follow and looks for nothing, and neither does a deb.
  */
 export function keepUpdated(say: (sentence: string) => void): void {
-  if (!app.isPackaged) return;
+  if (!updatesItself()) return;
   // Loaded at the first look, so starting the App does not evaluate the
   // updater. The bundle still carries it, as a chunk of its own (ADR-0020).
   let started: Promise<AutoUpdater> | undefined;
@@ -42,6 +47,14 @@ export function keepUpdated(say: (sentence: string) => void): void {
   };
   setTimeout(look, FIRST_LOOK_MS).unref();
   setInterval(look, LOOK_EVERY_MS).unref();
+}
+
+/** Whether this App is one electron-updater may update: packaged, and not a deb. */
+function updatesItself(): boolean {
+  if (!app.isPackaged) return false;
+  if (process.platform !== 'linux') return true;
+  const appImage = process.env['APPIMAGE'];
+  return appImage !== undefined && appImage !== '';
 }
 
 /** Load electron-updater and set it up, once. */

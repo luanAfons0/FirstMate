@@ -9,10 +9,11 @@
  * working Host.
  */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
+import { promisify } from 'node:util';
 import { bootHost, packageApp, type Booted } from './helpers/host.ts';
 
 /** What packaging makes on one system, and how the packaged App is started there. */
@@ -23,7 +24,12 @@ type Packaged = {
   readonly unpacked: string;
   /** Make the App ready to start from packaging's output, and say what starts it. */
   program(out: string): Promise<string>;
+  /** Check what the packages carry beside the program, apart from starting it. */
+  carries(out: string): Promise<void>;
 };
+
+/** Run one program to its end, and say what it wrote. */
+const run = promisify(execFile);
 
 /** The version packaging names every package after. */
 const VERSION = (
@@ -35,13 +41,44 @@ const PACKAGED: Readonly<Partial<Record<NodeJS.Platform, Packaged>>> = {
     packages: [/^FirstMate-Setup-.+\.exe$/],
     unpacked: 'win-unpacked',
     program: async (out) => join(out, 'win-unpacked', 'FirstMate.exe'),
+    carries: async () => undefined,
   },
   linux: {
     packages: [/^FirstMate-.+\.AppImage$/, /^firstmate_.+\.deb$/],
     unpacked: 'linux-unpacked',
     program: (out) => unpackAppImage(out, `FirstMate-${VERSION}.AppImage`),
+    carries: (out) => checkDeb(out, `firstmate_${VERSION}_amd64.deb`),
   },
 };
+
+/**
+ * The deb names a maintainer a person can write to, and carries the AppArmor
+ * profile its install script loads, so the Chromium sandbox runs on Ubuntu
+ * 24.04, where AppArmor stops an unknown program from making a user namespace
+ * (ADR-0026).
+ */
+async function checkDeb(out: string, name: string): Promise<void> {
+  const deb = join(out, name);
+  const { stdout: maintainer } = await run('dpkg-deb', ['--field', deb, 'Maintainer']);
+  assert.match(
+    maintainer.trim(),
+    /^Luan Afonso <[^@\s]+@[^@\s]+>$/,
+    'the deb names its maintainer',
+  );
+
+  const files = join(out, 'deb-files');
+  const control = join(out, 'deb-control');
+  await run('dpkg-deb', ['--extract', deb, files]);
+  await run('dpkg-deb', ['--control', deb, control]);
+  const profile = await readFile(
+    join(files, 'opt', 'FirstMate', 'resources', 'apparmor-profile'),
+    'utf8',
+  );
+  assert.match(profile, /^profile "firstmate" "\/opt\/FirstMate\/firstmate"/m, 'it names the App');
+  assert.match(profile, /^\s*userns,$/m, 'it lets the App make a user namespace');
+  const postinst = await readFile(join(control, 'postinst'), 'utf8');
+  assert.ok(postinst.includes("'/etc/apparmor.d/firstmate'"), 'the install script loads it');
+}
 
 /**
  * Unpack the AppImage into packaging's output, and say where its AppRun is.
@@ -103,6 +140,7 @@ test(
     for (const name of packaged.packages) {
       assert.equal(made.filter((file) => name.test(file)).length, 1, `packaging makes ${name}`);
     }
+    await packaged.carries(out);
 
     // The App learns where to look for an update from this file, which
     // packaging writes from the publish block of electron-builder.yml.

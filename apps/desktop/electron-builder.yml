@@ -67,14 +67,18 @@ linux:
   # the window to the entry and shows the FirstMate mark on it.
   syncDesktopName: true
   synopsis: A local plugin host.
-  # A deb names its maintainer. No address is published for the project, so
-  # the name stands alone, and the homepage in package.json says where to ask.
-  maintainer: Luan Afonso
+  # A deb names its maintainer as a name and an address, as Debian asks: the
+  # address the project's commits carry.
+  maintainer: Luan Afonso <luan.hmatao@gmail.com>
 appImage:
   artifactName: FirstMate-${version}.${ext}
 # The deb's own install script, electron-builder's, makes chrome-sandbox the
-# setuid helper and gives the App an AppArmor profile, so the Chromium sandbox
-# runs on Ubuntu 24.04 too (ADR-0026).
+# setuid helper where the kernel has no user namespaces, and loads the
+# AppArmor profile electron-builder writes into resources/apparmor-profile:
+# the App, unconfined, may make a user namespace. Without it, Ubuntu 24.04
+# stops the Chromium sandbox from starting (ADR-0026). The AppImage carries no
+# profile; the README gives the step for it. The deb also carries the update
+# feed, which the App ignores: the package manager updates a deb.
 deb:
   packageName: firstmate
   artifactName: firstmate_${version}_${arch}.${ext}
