@@ -30,8 +30,8 @@ import {
   shelfOf,
 } from '@firstmate/core/commands';
 import { readConfig } from '@firstmate/core/config';
-import { canHoldWslPlace, DEFAULT_PLACE, isPlaceKind, isPlaceName } from '@firstmate/core/places';
-import { refusalOf } from '@firstmate/core/refusal';
+import { DEFAULT_PLACE } from '@firstmate/core/places';
+import { aboutOf, refusalOf } from '@firstmate/core/refusal';
 import { readRegistry } from '@firstmate/core/registry';
 import { readSettings } from '@firstmate/core/settings';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
@@ -154,27 +154,24 @@ async function outcomeOf(asked: Asked, needs: ChangeNeeds): Promise<Outcome | un
     if (sentence === undefined) return undefined;
     return { done: true, sentence };
   } catch (fault: unknown) {
-    const field = refusalOf(fault) === undefined ? undefined : fieldOf(asked, fault);
+    const field = refusalOf(fault) === undefined ? undefined : fieldOf(asked, aboutOf(fault));
     return { done: false, sentence: sentenceOf(fault), ...(field === undefined ? {} : { field }) };
   }
 }
 
 /**
- * The field a refusal of this ask is about. `core` checks a Place in this
- * order: its name, its kind, then its distribution; a name already taken is
- * the name's fault too. A failure, which is no refusal, marks no field.
+ * The field a refusal of this ask is about. A refusal of a Shelf is about
+ * that Place's Shelf; one of Add a Place names its word itself, `about`, so
+ * nothing `core` checked is checked here again.
  */
-function fieldOf(asked: Asked, fault: unknown): Field | undefined {
+function fieldOf(asked: Asked, about: string | undefined): Field | undefined {
   if (asked.kind === 'shelf' || asked.kind === 'shelf-choose') {
     return { form: 'shelf', place: asked.place };
   }
   if (asked.kind !== 'place-add') return undefined;
-  const at = (name: 'name' | 'kind' | 'distribution'): Field => ({ form: 'place-add', name });
-  if (!isPlaceName(asked.name) || refusalOf(fault) === 'taken') return at('name');
-  if (!isPlaceKind(asked.placeKind) || (asked.placeKind === 'wsl' && !canHoldWslPlace())) {
-    return at('kind');
-  }
-  return asked.placeKind === 'wsl' ? at('distribution') : undefined;
+  return about === 'name' || about === 'kind' || about === 'distribution'
+    ? { form: 'place-add', name: about }
+    : undefined;
 }
 
 /** The change itself, and its sentence; undefined when nothing changed. */
