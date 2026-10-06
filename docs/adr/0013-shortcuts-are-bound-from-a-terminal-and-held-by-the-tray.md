@@ -46,3 +46,7 @@ The App reads `/shortcuts.json` when it starts and again after every reload, so 
 
 The Popup is a window of the App's own with no frame, on top of every other window, with no taskbar button, no preload and the sandbox on. It hides as before, and Esc now hides it while it has the focus, rather than through a key held for all of Windows while it is shown.
 
+
+## Amended: Linux too (ADR-0026)
+
+ADR-0026 amends this ADR: on Linux the App holds the Shortcuts too, so "all of Windows" reads "the whole desktop", and under Wayland the App turns on Electron's `GlobalShortcutsPortal` feature first.

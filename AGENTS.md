@@ -31,11 +31,11 @@ Run every command from the repository root.
 | `pnpm knip`                          | Find unused files, exports and dependencies.    |
 | `pnpm check`                         | All of the above, then every test. CI runs it.  |
 | `pnpm build`                         | Bundle `apps/cli` into `apps/cli/dist/`. Packing does this; you do not. |
-| `pnpm --filter @firstmate/desktop package` | Build the App, and its installer, into `apps/desktop/dist/`. Windows only. |
+| `pnpm --filter @firstmate/desktop package` | Build the App, and its installer, into `apps/desktop/dist/`. Windows or Linux. |
 | `apps\desktop\dist\win-unpacked\FirstMate.exe` | Run the packaged App without installing it. Set `FIRSTMATE_HOME` first. |
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
-| `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows or WSL. |
+| `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows, Linux or WSL. |
 | `node apps/cli/src/cli.ts --help`             | Every command in its group, in one screen.      |
 | `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `help <command>` says the same. |
 | `node apps/cli/src/cli.ts help [<topic>]`     | The help topics: exit-codes, environment, places. |
@@ -111,9 +111,9 @@ knip and every test.
   Release, then the command line on npm, with one version. The installer's
   and its checksum's names are a contract `firstmate desktop` reads
   (ADR-0023, `.github/workflows/release.yml`).
-- **Windows** for the App, which holds the Tray, the window, Notices and
+- **Windows and Linux** for the App, which holds the Tray, the window, Notices and
   Shortcuts with Electron's own features: no PowerShell helper and no systemd
-  (ADR-0020). **WSL** only as a Place a Plugin can run in (ADR-0021).
+  (ADR-0020, ADR-0026). **WSL** only as a Place a Plugin can run in, on Windows (ADR-0021).
 
 ## Project structure
 
@@ -194,7 +194,7 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
   src/one-x.ts     bring a 1.x install across, as import and setup both do.
   tsdown.config.ts the bundle, which runs on the publish path alone.
 apps/desktop/       the App, @firstmate/desktop: one Electron program for
-                    Windows. Private; its release is the installer (ADR-0020).
+                    Windows and Linux. Private; its release is the installers (ADR-0026).
   src/main.ts      the main process: start the Host, hold the one-App lock,
                    wire the parts below together, stop the Host on Quit.
   src/window.ts    the window: the strip, the switcher, the Settings View,
@@ -210,7 +210,7 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/settings.ts  what the Settings View shows, and the changes it asks for,
                    made through core in the main process.
   src/settings-view.ts the Settings View, as a page the App writes.
-  src/notices.ts   Notices, as Windows pop-ups under the App's own ID.
+  src/notices.ts   Notices, as desktop pop-ups under the App's own ID.
   src/shortcuts.ts the Shortcuts, held with globalShortcut.
   src/popup.ts     the Popup a Shortcut opens.
   src/permissions.ts what a Plugin Page may use: clipboard write, and the
@@ -298,7 +298,7 @@ and drives it over HTTP, exactly as a browser does.
   helper's `build`, and boots it through the same helper with `built`.
 - `tests/app.test.ts` alone packages the App, with the helper's `packageApp`,
   and starts the packaged program through the same helper with `app`. It runs
-  on Windows only, and takes about a minute. The App's window has no test.
+  on Windows and on Linux, and takes about a minute. The App's window has no test.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
   `notifier`. Add a fixture rather than a mock. A fixture with an `mcp`
