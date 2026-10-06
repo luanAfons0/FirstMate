@@ -15,12 +15,29 @@
  * the main process for something through `firstmate.ask`, which only these
  * pages carry (`preload.ts`).
  *
- * A page is written again rather than scripted when what it says changes: it
- * is small, and loading it again costs less than reaching into it would.
+ * Each view loads its page once. After that, when what a page shows changes,
+ * the main process sends the page its new body over IPC (`SHOW_CHANNEL`), and
+ * the page's own script puts it in place: it keeps every element that is
+ * still there and changes only what differs, so the operator's focus, scroll
+ * and typed text survive. A row that can move carries `data-key`, so it is
+ * matched by what it is rather than where it was. A page that sets something
+ * on itself, such as which field is hidden, does it again in `whenShown`,
+ * which runs once at load and after every body.
  */
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { ASK, openAsk } from './ask.ts';
 import type { Plugins } from './host-lists.ts';
+
+/**
+ * One of the App's own pages: the whole page, which a view loads once, and the
+ * body it shows now, which is all the main process sends after that.
+ */
+export type Written = {
+  /** The whole page, around this body. */
+  readonly whole: (body: string) => string;
+  /** What the page shows now. */
+  readonly body: string;
+};
 
 /** Where the window is: the Index Page, one Plugin Page, or the Settings View. */
 export type Here =
@@ -72,8 +89,8 @@ export function dataAddress(html: string): string {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-/** The strip, as one HTML document. */
-export function stripPage(view: StripView): string {
+/** The strip. */
+export function stripPage(view: StripView): Written {
   const atTheList = view.here.kind === 'list';
   const crumbs = `<a class="crumb" href="#" data-ask="${ASK.pluginList}"\
 ${atTheList ? ' aria-disabled="true"' : ''} title="See the Plugin list">\
@@ -83,7 +100,7 @@ ${atTheList ? ' aria-disabled="true"' : ''} title="See the Plugin list">\
 aria-expanded="${view.switcher}"${view.starting ? ' aria-disabled="true"' : ''} \
 title="Switch Plugin">${hereWords(view.here, view.starting)} \
 <span aria-hidden="true">▾</span></a>`;
-  return page(
+  return written(
     'FirstMate',
     stripStyles(),
     `<nav class="bar">
@@ -108,11 +125,12 @@ function hereWords(here: Here, starting: boolean): string {
 }
 
 /**
- * The switcher, as one HTML document: every Plugin, or the one sentence that
- * stands in for the list. Its script works its keys and closes it when it
- * loses the focus.
+ * The switcher: every Plugin, or the one sentence that stands in for the
+ * list. Its script works its keys and closes it when it loses the focus.
+ * `opened` counts each time it opens, so that the page puts the focus on the
+ * open Plugin each time, and only then.
  */
-export function switcherPage(open: string | undefined, plugins: Plugins): string {
+export function switcherPage(open: string | undefined, plugins: Plugins, opened: number): Written {
   const rows =
     plugins.kind === 'untold'
       ? '<p class="none">The Host would not say which Plugins there are.</p>'
@@ -127,28 +145,35 @@ export function switcherPage(open: string | undefined, plugins: Plugins): string
               // and not offered. A Stopped Plugin is still offered: the Host
               // serves its page whatever its Plugin Server does.
               if (!plugin.hasPage) {
-                return `<span class="row" aria-disabled="true">${words}<span class="tick"></span></span>`;
+                return `<span class="row" data-key="${escaped(plugin.name)}" aria-disabled="true">${words}<span class="tick"></span></span>`;
               }
               const here = plugin.name === open;
-              return `<a class="row" href="#" data-ask="${escaped(openAsk(plugin.name))}"\
-${here ? ' aria-current="page"' : ''}>${words}<span class="tick" aria-hidden="true">\
+              return `<a class="row" href="#" data-key="${escaped(plugin.name)}" \
+data-ask="${escaped(openAsk(plugin.name))}"${here ? ' aria-current="page"' : ''}>${words}<span class="tick" aria-hidden="true">\
 ${here ? '✓' : ''}</span></a>`;
             })
             .join('\n');
-  return page(
+  return written(
     'Plugins',
     switcherStyles(),
-    `<div class="panel" role="menu" aria-label="Plugins">
+    `<div class="panel" role="menu" aria-label="Plugins" data-opened="${opened}">
 ${rows}
 </div>`,
     `const close = () => firstmate.ask('${ASK.switcherClose}');
-const rows = Array.from(document.querySelectorAll('.panel a.row'));
-const start = document.querySelector('.panel a[aria-current]') || rows[0];
-if (start) start.focus();
+const offered = () => Array.from(document.querySelectorAll('.panel a.row'));
+let opened;
+whenShown(() => {
+  const panel = document.querySelector('.panel');
+  if (panel === null || panel.dataset.opened === opened) return;
+  opened = panel.dataset.opened;
+  const start = document.querySelector('.panel a[aria-current]') || offered()[0];
+  if (start) start.focus();
+});
 addEventListener('keydown', (event) => {
   if (event.key === 'Escape') { event.preventDefault(); close(); return; }
   if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
   event.preventDefault();
+  const rows = offered();
   const at = rows.indexOf(document.activeElement);
   const by = event.key === 'ArrowDown' ? 1 : -1;
   const next = at < 0 ? 0 : Math.min(Math.max(at + by, 0), rows.length - 1);
@@ -160,20 +185,30 @@ addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) clos
 }
 
 /**
- * One whole page: its policy, its style, its body, and the one script every
- * page shares, which sends a click on anything with `data-ask` to the main
- * process.
+ * One of the App's own pages, from its title, its style, its body and its own
+ * script.
  */
-export function page(title: string, style: string, body: string, script: string): string {
+export function written(title: string, style: string, body: string, script = ''): Written {
+  return { whole: (now) => page(title, style, now, script), body };
+}
+
+/**
+ * One whole page: its policy, its style, its body, and the one script every
+ * page shares. That script sends a click on anything with `data-ask` to the
+ * main process, and puts each body the main process sends in place of the
+ * one shown, changing only what differs.
+ */
+function page(title: string, style: string, body: string, script: string): string {
   return `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${POLICY}">
 <title>${title}</title>
 <style>
+#shown { display: contents; }
 ${style}
 </style>
-${body}
+<div id="shown">${body}</div>
 <script>
 addEventListener('click', (event) => {
   const asking = event.target instanceof Element ? event.target.closest('[data-ask]') : null;
@@ -181,10 +216,59 @@ addEventListener('click', (event) => {
   event.preventDefault();
   if (asking.getAttribute('aria-disabled') !== 'true') firstmate.ask(asking.dataset.ask);
 });
+${PUT_IN_PLACE}
 ${script}
 </script>
 </html>`;
 }
+
+/**
+ * The part of the shared script that puts a new body in place. Two nodes are
+ * the same node when their kind, their tag and their `data-key` agree; a
+ * node that stays keeps everything the operator gave it. A field keeps what
+ * was typed in it, because a changed `value` attribute changes only a field
+ * nobody typed in. A box shows what the main process says, not the last click.
+ */
+const PUT_IN_PLACE = `const keyOf = (node) => (node instanceof Element ? node.getAttribute('data-key') : null);
+const alike = (a, b) =>
+  a.nodeType === b.nodeType && a.nodeName === b.nodeName && keyOf(a) === keyOf(b);
+const patch = (live, next) => {
+  if (!(live instanceof Element)) {
+    if (live.nodeValue !== next.nodeValue) live.nodeValue = next.nodeValue;
+    return;
+  }
+  for (const { name } of Array.from(live.attributes)) {
+    if (!next.hasAttribute(name)) live.removeAttribute(name);
+  }
+  for (const { name, value } of Array.from(next.attributes)) {
+    if (live.getAttribute(name) !== value) live.setAttribute(name, value);
+  }
+  if (live instanceof HTMLInputElement && (live.type === 'checkbox' || live.type === 'radio')) {
+    live.checked = live.defaultChecked;
+  }
+  patchChildren(live, next);
+};
+const patchChildren = (live, next) => {
+  const spare = Array.from(live.childNodes);
+  Array.from(next.childNodes).forEach((wanted, at) => {
+    const found = spare.findIndex((node) => alike(node, wanted));
+    const node = found < 0 ? wanted : spare.splice(found, 1)[0];
+    if (found >= 0) patch(node, wanted);
+    if (live.childNodes[at] !== node) live.insertBefore(node, live.childNodes[at] ?? null);
+  });
+  for (const node of spare) node.remove();
+};
+const settled = [];
+const whenShown = (hook) => {
+  settled.push(hook);
+  hook();
+};
+firstmate.shown((body) => {
+  const next = document.createElement('template');
+  next.innerHTML = body;
+  patchChildren(document.getElementById('shown'), next.content);
+  for (const hook of settled) hook();
+});`;
 
 function stripStyles(): string {
   return `:root { color-scheme: dark; }

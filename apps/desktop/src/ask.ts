@@ -7,12 +7,21 @@
  * only they carry. It hands the main process one string, and this reads it.
  * A Plugin Page has no preload, so it has no way to ask anything at all.
  *
+ * The other way, the main process sends each of those views what it shows,
+ * on its own channel, and the page puts it in place (`pages.ts`).
+ *
  * This file imports nothing, because the preload carries it into a sandboxed
  * page, where Node's modules do not exist.
  */
 
 /** The IPC channel an App view asks on. */
 export const ASK_CHANNEL = 'firstmate:ask';
+
+/**
+ * The IPC channel the main process sends an App view what it shows on: the
+ * page's body, as one HTML string, which the page puts in place of its own.
+ */
+export const SHOW_CHANNEL = 'firstmate:show';
 
 /** What an App view asked for. */
 export type Asked =
