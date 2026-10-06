@@ -79,7 +79,11 @@ test('the package carries core inside the bundle, and depends on nothing', async
     assert.ok(!text.includes('@firstmate/'), `${path} imports a workspace package`);
     // The prompt library is a devDependency, and the bundle carries it
     // (ADR-0025): what the bundle imports is Node's own, or the bundle's own.
-    for (const [, named] of text.matchAll(/(?:from|import\()\s*["']([^"']+)["']/g)) {
+    // `from "x"`, `import("x")`, a bare `import "x"`, and `require("x")`. A
+    // specifier holds no space or comma, which keeps out a sentence that only
+    // says the word, as `"import", "import takes..."`.
+    const imports = /(?<![\w"'.])(?:from|import|require)\s*\(?\s*["']([^"'\s,]+)["']/g;
+    for (const [, named] of text.matchAll(imports)) {
       assert.match(named ?? '', /^(node:|\.\/)/, `${path} imports ${named}`);
     }
   }

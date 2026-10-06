@@ -23,7 +23,6 @@ import {
   listPlaces,
   moveShelf,
 } from '@firstmate/core/commands';
-import { cancel, intro, note, outro } from '@clack/prompts';
 import { readConfig } from '@firstmate/core/config';
 import { holdsOneX } from '@firstmate/core/import-1x';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
@@ -45,17 +44,21 @@ type Changes = {
   failed: boolean;
 };
 
+/** Clack, which frames `setup` on a terminal and is loaded only there. */
+type Clack = typeof import('@clack/prompts');
+
 /** Run the conversation, and give back the exit code. */
 export async function setup(): Promise<number> {
   const changes: Changes = { done: [], failed: false };
   // On a terminal setup opens with a title and closes with a summary in the
   // same frame as its questions; a pipe gets the plain lines (ADR-0025).
-  const framed = onTerminal();
-  if (framed) intro('firstmate setup');
+  // Clack is loaded only then, so that a pipe loads none of it.
+  const framed: Clack | undefined = onTerminal() ? await import('@clack/prompts') : undefined;
+  framed?.intro('firstmate setup');
   const prompt = openPrompt(() => {
-    if (framed) {
+    if (framed !== undefined) {
       summarise(changes, framed);
-      cancel('setup stopped. The steps it finished are kept.');
+      framed.cancel('setup stopped. The steps it finished are kept.');
     } else {
       process.stdout.write('\n');
       summarise(changes, framed);
@@ -75,7 +78,7 @@ export async function setup(): Promise<number> {
   } finally {
     prompt.close();
     summarise(changes, framed);
-    if (framed) outro(changes.failed ? 'setup finished, and a step failed.' : 'setup is done.');
+    framed?.outro(changes.failed ? 'setup finished, and a step failed.' : 'setup is done.');
   }
   return changes.failed ? 1 : 0;
 }
@@ -323,7 +326,8 @@ async function askPath(prompt: Prompt, plugin: string): Promise<string> {
 /**
  * Whether the App starts at logon. It is asked only where the App is
  * installed and does not start at logon yet, and it is off until the
- * operator says yes. It writes the same entry the App's Tray writes.
+ * operator says yes. It writes the same entry the App writes from its Tray
+ * and its Settings View.
  */
 async function askLogon(prompt: Prompt, changes: Changes): Promise<void> {
   const here = await appHere();
@@ -363,11 +367,11 @@ async function reload(changes: Changes): Promise<void> {
  * Say what changed, and nothing when nothing did: in a note on a terminal,
  * and in plain lines anywhere else.
  */
-function summarise(changes: Changes, framed: boolean): void {
+function summarise(changes: Changes, framed: Clack | undefined): void {
   if (changes.done.length === 0) return;
   const done = changes.done.splice(0);
-  if (framed) {
-    note(done.join('\n'), 'setup changed');
+  if (framed !== undefined) {
+    framed.note(done.join('\n'), 'setup changed');
     return;
   }
   console.log('firstmate: setup changed:');

@@ -408,7 +408,7 @@ export function checkShortcutPath(path: string, plugin: string): void {
 }
 
 /**
- * Bind keys to one address of one Plugin, for the Tray to hold in all of
+ * Bind keys to one address of one Plugin, for the App to hold in all of
  * Windows, and give back the Shortcut written.
  *
  * Binding is a write, and like moving the Shelf it is done from a terminal and

@@ -1,15 +1,15 @@
 /**
- * A Shortcut: a key combination the Tray holds for all of Windows, bound from
+ * A Shortcut: a key combination the App holds for all of Windows, bound from
  * a terminal to one address of one Plugin (ADR-0013).
  *
  * The keys are read here and nowhere else, so the command line that writes a
- * Shortcut and the Tray that registers it agree on what `Ctrl+Alt+N` means.
+ * Shortcut and the App that registers it agree on what `Ctrl+Alt+N` means.
  * Letter case and modifier order do not matter to a person, so they do not
  * matter here either: every Shortcut is kept in one normal form, and two
  * Shortcuts are the same Shortcut when their normal forms are equal.
  *
  * This module imports nothing native and nothing from the Host, because the
- * Tray runs it on Windows.
+ * App runs it on Windows.
  */
 
 /** A Shortcut as the settings file holds it. */

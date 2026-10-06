@@ -5,7 +5,7 @@
  * logs and no settings store of its own. Five settings are the exception: the
  * Shelf, because nothing can fetch a Plugin without somewhere to put it
  * (ADR-0012), the Places, because a Plugin has to run somewhere (ADR-0021),
- * the Shortcuts, because the Tray has to learn them from somewhere that
+ * the Shortcuts, because the App has to learn them from somewhere that
  * survives a restart (ADR-0013), the Plugin Order, because the Registry is
  * read only when the Host starts and a new order should not restart every
  * Plugin Server (ADR-0016), and the operator's answers when a Plugin Page asks

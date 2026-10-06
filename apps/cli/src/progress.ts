@@ -11,8 +11,10 @@
  * gives the terminal back its signals at once, so that Ctrl-C stops the
  * command and its child together, as it does with no spinner, and the
  * command ends 130.
+ *
+ * Clack is loaded when a wait starts on a terminal, and never from a pipe, so
+ * a command that waits for nothing loads none of it.
  */
-import { progress, spinner } from '@clack/prompts';
 import { onTerminal } from './prompt.ts';
 
 /** A wait as its caller moves it: further along, then done or failed. */
@@ -33,8 +35,9 @@ const UNSEEN: Wait = { advance: () => undefined, done: () => undefined, failed: 
  * progress bar with the bytes so far; with bytes counted but no size it is a
  * spinner with the bytes so far; with neither it is a spinner.
  */
-export function startWait(doing: string, size?: number): Wait {
+export async function startWait(doing: string, size?: number): Promise<Wait> {
   if (!onTerminal()) return UNSEEN;
+  const { progress, spinner } = await import('@clack/prompts');
   const stopped = { cancelMessage: `${doing} stopped.`, onCancel: () => process.exit(130) };
   const bar = size !== undefined && size > 0 ? progress({ ...stopped, max: size }) : undefined;
   const shown = bar ?? spinner(stopped);
@@ -59,7 +62,7 @@ export async function whileWaiting<T>(
   done: (value: T) => string,
   work: () => Promise<T>,
 ): Promise<T> {
-  const wait = startWait(doing);
+  const wait = await startWait(doing);
   try {
     const value = await work();
     wait.done(done(value));
