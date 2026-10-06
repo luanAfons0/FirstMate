@@ -29,6 +29,7 @@
  */
 import { canHoldWslPlace } from '@firstmate/core/places';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
+import { shortcutAddress } from '@firstmate/core/shortcut';
 import { type IconName, icon } from '@firstmate/core/theme';
 import { logonAsk, placeRemoveAsk, shelfChooseAsk, TYPED } from './ask.ts';
 import { escaped, written, type Written } from './pages.ts';
@@ -259,14 +260,19 @@ ${rows}
 </section>`;
 }
 
+/**
+ * One Shortcut: its keys, and the address it opens as `core` writes it, with
+ * the Host's own parts of the address dimmed.
+ */
 function shortcutRow(shortcut: ShortcutShown): string {
   const keys = shortcut.keys
     .split('+')
     .map((key) => `<kbd>${escaped(key)}</kbd>`)
     .join('+');
+  const [, plugin = '', path = ''] = /^\/p\/([^/]*)\/(.*)$/.exec(shortcutAddress(shortcut)) ?? [];
   return `<div class="shortcut" data-key="shortcut:${escaped(shortcut.keys)}">\
-<span class="k">${keys}</span><code><i>/p/</i>${escaped(shortcut.plugin)}<i>/</i>\
-${escaped(shortcut.path)}</code></div>`;
+<span class="k">${keys}</span><code><i>/p/</i>${escaped(plugin)}<i>/</i>\
+${escaped(path)}</code></div>`;
 }
 
 function disabled(busy: boolean): string {
