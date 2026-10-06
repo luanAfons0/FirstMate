@@ -20,6 +20,11 @@
  * The window shows the Host and nothing else. A link to anywhere else, in a new
  * window or the same one, opens in the operator's own browser.
  *
+ * On Windows and Linux the strip is the title bar: the window hides its own,
+ * and the system draws the window's buttons over the strip's right end, in
+ * the strip's colours, light or dark as the system is. The strip stops short
+ * of them, so no part of it is ever under a button.
+ *
  * The window is made before the Host is ready, so that it and the Tray show
  * while the Host still starts every Plugin Server. Until `ready`, the strip
  * says "Starting…" and no view below it loads; what the operator opened in that
@@ -28,10 +33,18 @@
  * cookie.
  */
 import { fileURLToPath } from 'node:url';
-import { app, BaseWindow, ipcMain, shell, WebContentsView, type IpcMainEvent } from 'electron';
+import { TITLE_BAR, WINDOW_BACKGROUND } from '@firstmate/core/theme';
+import {
+  app,
+  BaseWindow,
+  ipcMain,
+  nativeTheme,
+  shell,
+  WebContentsView,
+  type IpcMainEvent,
+} from 'electron';
 import {
   admitted,
-  browserAddress,
   INDEX,
   isOwnStart,
   leavesTheHost,
@@ -65,6 +78,19 @@ const TITLE = 'FirstMate';
 /** The window's first size, in logical pixels. */
 const WIDTH = 1100;
 const HEIGHT = 760;
+
+/**
+ * How wide the window's own buttons are where the strip is the title bar, in
+ * logical pixels: three of them, 46 each as Windows draws them, and 32 each as
+ * Electron draws them on Linux. The strip leaves this much free at its right
+ * end. Anywhere else the window keeps its own title bar, and the strip is
+ * only a strip.
+ */
+const BUTTONS_WIDTH =
+  process.platform === 'win32' ? 138 : process.platform === 'linux' ? 96 : undefined;
+
+/** Whether the strip is the title bar here. */
+const STRIP_IS_TITLE_BAR = BUTTONS_WIDTH !== undefined;
 
 /** The preload the App's own views carry, and no other view. */
 const PRELOAD = fileURLToPath(new URL('../preload/app.cjs', import.meta.url));
@@ -115,10 +141,18 @@ export function openWindow(
     height: HEIGHT,
     minWidth: 480,
     minHeight: 320,
-    backgroundColor: '#17181a',
+    backgroundColor: background(),
+    ...(STRIP_IS_TITLE_BAR
+      ? { titleBarStyle: 'hidden' as const, titleBarOverlay: titleBar() }
+      : {}),
     icon: markPath('running'),
     show: false,
   });
+  const followTheme = (): void => {
+    window.setBackgroundColor(background());
+    if (STRIP_IS_TITLE_BAR) window.setTitleBarOverlay(titleBar());
+  };
+  nativeTheme.on('updated', followTheme);
   // The taskbar button takes its icon from these details, not from the
   // window's icon, so they name the App's own executable and its mark. Run
   // from a clone, the executable is Electron's, and the button keeps it.
@@ -192,7 +226,8 @@ export function openWindow(
   const layout = (): void => {
     const [width = 0, height = 0] = window.getContentSize();
     const below = { x: 0, y: STRIP_HEIGHT, width, height: Math.max(height - STRIP_HEIGHT, 0) };
-    strip.setBounds({ x: 0, y: 0, width, height: STRIP_HEIGHT });
+    const buttons = BUTTONS_WIDTH ?? 0;
+    strip.setBounds({ x: 0, y: 0, width: Math.max(width - buttons, 0), height: STRIP_HEIGHT });
     for (const [owner, view] of contents) {
       view.setBounds(below);
       view.setVisible(!setting && owner === current);
@@ -215,6 +250,10 @@ export function openWindow(
         switcher: switching,
         fault,
         starting: host === undefined,
+        stopped:
+          plugins.kind === 'told'
+            ? plugins.plugins.filter((plugin) => plugin.state === 'stopped').length
+            : 0,
       }),
     );
     // The switcher and the Settings View load the first time they are shown.
@@ -349,12 +388,6 @@ export function openWindow(
   const act = (asked: Asked): void => {
     if (asked.kind === 'plugin-list') {
       open('/');
-    } else if (asked.kind === 'open-in-browser') {
-      if (host === undefined) return;
-      const shown = setting ? undefined : contents.get(current)?.webContents.getURL();
-      openOutside(browserAddress(host, shown)).catch(() =>
-        complain('The system browser would not open this page.'),
-      );
     } else if (asked.kind === 'switcher' || asked.kind === 'switcher-close') {
       switching = asked.kind === 'switcher' && !switching;
       // Counted on every open, so that its page puts the focus on the open
@@ -420,6 +453,7 @@ export function openWindow(
   window.on('restore', layout);
   window.on('closed', () => {
     ipcMain.off(ASK_CHANNEL, ask);
+    nativeTheme.off('updated', followTheme);
     for (const view of [strip, switcher, settings, ...contents.values()]) {
       view.webContents.close();
     }
@@ -477,6 +511,17 @@ export function openWindow(
       redraw();
     },
   };
+}
+
+/** The theme's background for the system's light or dark. */
+function background(): string {
+  return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light;
+}
+
+/** The window's own buttons, as tall as the strip and in its colours. */
+function titleBar(): { color: string; symbolColor: string; height: number } {
+  const colours = nativeTheme.shouldUseDarkColors ? TITLE_BAR.dark : TITLE_BAR.light;
+  return { ...colours, height: STRIP_HEIGHT };
 }
 
 /**

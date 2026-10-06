@@ -27,8 +27,6 @@ export const SHOW_CHANNEL = 'firstmate:show';
 export type Asked =
   /** Show the Index Page. */
   | { readonly kind: 'plugin-list' }
-  /** Give what the window shows to the system browser. */
-  | { readonly kind: 'open-in-browser' }
   /** Open the switcher, or close it when it is open. */
   | { readonly kind: 'switcher' }
   /** Close the switcher. */
@@ -60,7 +58,6 @@ export type Asked =
 /** The words each view says, for each thing that carries nothing with it. */
 export const ASK = {
   pluginList: 'plugin-list',
-  openInBrowser: 'open-in-browser',
   switcher: 'switcher',
   switcherClose: 'switcher-close',
   settings: 'settings',
