@@ -11,7 +11,8 @@
  * ends; it never starts a second Host.
  *
  * This file only wires the parts together. The window and its views are
- * `window.ts`, the Tray is `tray.ts`, and Notices are `notices.ts`. Closing the window hides it; Quit,
+ * `window.ts`, the Tray is `tray.ts`, Notices are `notices.ts`, and the
+ * Shortcuts and their Popup are `shortcuts.ts` and `popup.ts`. Closing the window hides it; Quit,
  * from the Tray, ends the App.
  */
 import { join } from 'node:path';
@@ -20,8 +21,10 @@ import { readConfig, type Config } from '@firstmate/core/config';
 import { AT_LOGON } from '@firstmate/core/logon';
 import type { Notice } from '@firstmate/host/notices';
 import { start, type RunningHost } from '@firstmate/host/start';
-import { askForPlugins } from './host-lists.ts';
+import { askForPlugins, askForShortcuts } from './host-lists.ts';
 import { nameTheApp, showNotices } from './notices.ts';
+import { makePopup } from './popup.ts';
+import { holdShortcuts } from './shortcuts.ts';
 import { holdTray, type HeldTray } from './tray.ts';
 import { openWindow, type Shown } from './window.ts';
 
@@ -53,13 +56,22 @@ function main(): void {
   // What the Host says about its Plugins is asked again whenever it may have
   // changed, and the window and the Tray are both told the answer.
   let refresh = (): void => {};
+  // The Shortcuts are read again after the same changes, so a reload picks
+  // up a bind or an unbind.
+  let reread = (): void => {};
   // A Notice the Host takes while it starts, such as a Plugin that would not
   // start, waits until the App can show it.
   const early: Notice[] = [];
   let notify = (notice: Notice): void => {
     early.push(notice);
   };
-  const host = start(config, { onChange: () => refresh(), onNotice: (notice) => notify(notice) });
+  const host = start(config, {
+    onChange: () => {
+      refresh();
+      reread();
+    },
+    onNotice: (notice) => notify(notice),
+  });
   stopOnQuit(host);
 
   Promise.all([host, app.whenReady()]).then(
@@ -80,7 +92,25 @@ function main(): void {
       const notices = showNotices((path) => window.open(path));
       notify = (notice) => notices.show(notice);
       for (const notice of early.splice(0)) notices.show(notice);
+      const popup = makePopup({
+        host: running,
+        admitted: () => window.admitted(),
+        toBrowser: (address) => window.toBrowser(address),
+      });
+      const shortcuts = holdShortcuts({
+        // A Shortcut pressed again puts its own Popup away.
+        pressed: (keys, address) => {
+          if (popup.shownBy() === keys) popup.hideIfOpenedBy(keys);
+          else popup.show(keys, address);
+        },
+        released: (keys) => popup.hideIfOpenedBy(keys),
+        say: (sentence) => notices.say(sentence),
+      });
+      reread = () => {
+        void askForShortcuts(running).then((now) => shortcuts.hold(now));
+      };
       refresh();
+      reread();
     },
     (fault: unknown) => {
       // The Host did not start, and it has already ended what it started.

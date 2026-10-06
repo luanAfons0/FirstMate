@@ -1,9 +1,10 @@
 /**
- * What the Host says about its Plugins, as the App reads it.
+ * What the Host says about its Plugins and its Shortcuts, as the App reads it.
  *
- * The App asks `/plugins.json` over loopback, the address the 1.x Tray asked,
- * rather than reaching into the Host it holds. The Host then has one surface,
- * and the strip, the switcher and the Tray all see what a browser sees.
+ * The App asks `/plugins.json` and `/shortcuts.json` over loopback, the
+ * addresses the 1.x Tray asked, rather than reaching into the Host it holds.
+ * The Host then has one surface, and the strip, the switcher, the Tray and
+ * the Shortcuts all see what a browser sees.
  */
 import type { PluginState } from '@firstmate/core/plugin-state';
 import { admitted, type HostAt } from './addresses.ts';
@@ -38,6 +39,42 @@ export async function askForPlugins(host: HostAt): Promise<Plugins> {
   const rows = said.plugins;
   if (!Array.isArray(rows)) return { kind: 'untold' };
   return { kind: 'told', plugins: rows.flatMap(onePlugin) };
+}
+
+/** One Shortcut, as the Host says it: the keys, and the address they open. */
+type ShortcutSeen = {
+  /** The keys, in core's normal form, such as `Ctrl+Alt+N`. */
+  readonly keys: string;
+  /** The path on the Host a press opens, such as `/p/worklog/new.html`. */
+  readonly address: string;
+};
+
+/**
+ * What the Host said about the Shortcuts. A Host that would not say has not
+ * unbound anything, so "untold" changes nothing that is held.
+ */
+export type Shortcuts =
+  | { readonly kind: 'told'; readonly shortcuts: readonly ShortcutSeen[] }
+  | { readonly kind: 'untold' };
+
+/** Every Shortcut in the settings, or the fact that the Host would not say. */
+export async function askForShortcuts(host: HostAt): Promise<Shortcuts> {
+  const said = await askFor(host, '/shortcuts.json');
+  if (typeof said !== 'object' || said === null || !('shortcuts' in said)) {
+    return { kind: 'untold' };
+  }
+  const rows = said.shortcuts;
+  if (!Array.isArray(rows)) return { kind: 'untold' };
+  return { kind: 'told', shortcuts: rows.flatMap(oneShortcut) };
+}
+
+function oneShortcut(row: unknown): readonly ShortcutSeen[] {
+  if (typeof row !== 'object' || row === null) return [];
+  const { keys, address } = row as Record<string, unknown>;
+  if (typeof keys !== 'string' || typeof address !== 'string') return [];
+  // Only an address under a Plugin's own is opened, whatever the answer says.
+  if (!address.startsWith('/p/')) return [];
+  return [{ keys, address }];
 }
 
 /** What the Host answers at one address, read as JSON, or undefined when it does not. */
