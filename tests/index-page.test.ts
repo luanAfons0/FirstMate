@@ -1,6 +1,6 @@
 /** The Index Page: every registered Plugin, and a link to each Plugin Page. */
 import assert from 'node:assert/strict';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import test from 'node:test';
 import { bootHost } from './helpers/host.ts';
 
@@ -90,37 +90,9 @@ test('an empty Registry says how to add a Plugin', async (t) => {
 
   const page = await (await host.fetch('/')).text();
 
-  assert.ok(
-    page.includes('node apps/cli/src/cli.ts add'),
-    'the empty page is an invitation to act',
-  );
-});
-
-test('the Index Page says where a fetched Plugin lands, and how to move it', async (t) => {
-  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
-
-  const page = await (await host.fetch('/')).text();
-
-  assert.ok(page.includes(join(host.home, 'shelf')), 'it shows the Shelf in force');
-  assert.ok(page.includes('node apps/cli/src/cli.ts shelf'), 'it names the command that moves it');
-});
-
-test('the Index Page shows the Shelf with an empty Registry too', async (t) => {
-  const host = await bootHost(t, []);
-
-  const page = await (await host.fetch('/')).text();
-
-  assert.ok(page.includes('No Plugins are registered'), 'the Registry really is empty');
-  assert.ok(page.includes(join(host.home, 'shelf')), 'and the Shelf is shown all the same');
-});
-
-test('the Shelf the Index Page shows is the Shelf the Host uses', async (t) => {
-  const host = await bootHost(t, [], { FIRSTMATE_SHELF: '/somewhere/else' });
-
-  const page = await (await host.fetch('/')).text();
-
-  assert.ok(page.includes(resolve('/somewhere/else')), page);
-  assert.ok(!page.includes(join(host.home, 'shelf')), 'the default is not shown instead');
+  assert.ok(page.includes('firstmate add &lt;name&gt; &lt;dir&gt;'), 'it says how to register');
+  assert.ok(page.includes('firstmate install research'), 'it says how to fetch an Official Plugin');
+  assert.ok(!page.includes('cli.ts'), 'it shows the command a person types, not a path');
 });
 
 test('the Index Page carries the dark theme and the light one, and the system chooses', async (t) => {
@@ -145,12 +117,45 @@ test('the Index Page loads nothing from outside itself', async (t) => {
   }
 });
 
-test('the Shelf is escaped where it is shown', async (t) => {
-  const host = await bootHost(t, [], { FIRSTMATE_SHELF: '/tmp/<script>alert(1)</script>' });
+test('the Index Page heading says Plugins, and its title stays FirstMate', async (t) => {
+  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
 
   const page = await (await host.fetch('/')).text();
 
-  assert.ok(!page.includes('<script>alert(1)'), 'no tag of the Shelf reaches the page');
-  // Windows spells the slash of the closing tag as a backslash, once resolved.
-  assert.ok(page.includes('&lt;script&gt;alert(1)&lt;'), page);
+  assert.ok(page.includes('<h1>Plugins</h1>'), 'the heading names the list');
+  assert.ok(page.includes('<title>FirstMate</title>'), 'the title is the App');
+});
+
+test('the count names the Stopped Plugins, and only when there are some', async (t) => {
+  const host = await bootHost(t, [
+    { name: 'both', directory: 'both' },
+    { name: 'quitter', directory: 'quitter' },
+  ]);
+  const page = await (await host.fetch('/')).text();
+  assert.ok(page.includes('2 Plugins · 1 Running · <span class="stopped">1 Stopped</span>'), page);
+
+  const calm = await bootHost(t, [{ name: 'both', directory: 'both' }]);
+  assert.ok(!(await (await calm.fetch('/')).text()).includes('Stopped</span>'), 'none Stopped');
+});
+
+test('a Stopped row gives the command that starts its Plugin Server again', async (t) => {
+  const host = await bootHost(t, [
+    { name: 'both', directory: 'both' },
+    { name: 'quitter', directory: 'quitter' },
+  ]);
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.ok(page.includes('<code>firstmate restart quitter</code>'), 'the Stopped row says it');
+  assert.ok(!page.includes('firstmate restart both'), 'a Running row does not');
+});
+
+test('the Index Page keeps no form and no Shelf line', async (t) => {
+  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.ok(!page.includes('<form'), 'no form');
+  assert.ok(!page.includes('<button'), 'no button');
+  assert.ok(!page.includes('Shelf') && !page.includes('shelf'), 'no word of the Shelf');
 });
