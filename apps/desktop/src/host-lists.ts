@@ -68,7 +68,8 @@ export async function askToRestart(host: HostAt, name: string): Promise<string |
     });
     return answer.ok ? undefined : await answer.text();
   } catch (fault: unknown) {
-    return `The Host did not answer the restart of ${name}: ${fault instanceof Error ? fault.message : String(fault)}`;
+    const why = fault instanceof Error ? fault.message : String(fault);
+    return `The Host did not answer the restart of ${name}: ${why}`;
   }
 }
 
