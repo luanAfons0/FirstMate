@@ -3,7 +3,9 @@
  *
  * Electron allows every permission a page asks for unless it is told
  * otherwise. The App tells it otherwise: every permission is refused, for
- * every page, except two a Plugin Page may ask for, the microphone and a
+ * every page, except what a Plugin Page may have. It may write to the
+ * clipboard, unasked, as any web page may when the operator clicks "copy";
+ * it never reads it. And it may ask for two devices, the microphone and a
  * capture of the screen or a window with its sound. scribe records a call
  * with them. The first time a Plugin asks for one, the App asks the operator,
  * naming the Plugin, and keeps the answer for that Plugin in the settings
@@ -36,6 +38,12 @@ const ASKING: Readonly<Record<Device, string>> = {
   microphone: 'use the microphone',
   capture: 'capture your screen or a window, with its sound',
 };
+
+/**
+ * What a Plugin Page is given unasked: writing to the clipboard. Reading it is
+ * refused, because the clipboard may hold what another program put there.
+ */
+const GIVEN: ReadonlySet<string> = new Set(['clipboard-sanitized-write']);
 
 /** The most screens and windows the App offers to capture in one dialog. */
 const SOURCES_SHOWN = 8;
@@ -92,6 +100,10 @@ export function guardPermissions(needs: PermissionNeeds): void {
 
   shared.setPermissionRequestHandler((contents, permission, callback, details) => {
     const plugin = pluginAt(needs.host, details.requestingUrl ?? contents.getURL());
+    if (plugin !== undefined && GIVEN.has(permission)) {
+      callback(true);
+      return;
+    }
     const types = 'mediaTypes' in details ? details.mediaTypes : undefined;
     const device = permission === 'media' ? mediaDevice(types) : undefined;
     if (plugin === undefined || device === undefined) {
@@ -102,11 +114,13 @@ export function guardPermissions(needs: PermissionNeeds): void {
   });
 
   // A check asks, with no prompt, whether a permission is already given. Only
-  // an answer the operator gave says yes.
+  // what a Plugin Page is given unasked, or an answer the operator gave, says yes.
   shared.setPermissionCheckHandler((contents, permission, origin, details) => {
-    if (permission !== 'media' || details.mediaType !== 'audio') return false;
     const plugin = pluginAt(needs.host, details.requestingUrl ?? contents?.getURL() ?? origin);
-    return plugin !== undefined && keptAnswer(needs.home, plugin, 'microphone') === true;
+    if (plugin === undefined) return false;
+    if (GIVEN.has(permission)) return true;
+    if (permission !== 'media' || details.mediaType !== 'audio') return false;
+    return keptAnswer(needs.home, plugin, 'microphone') === true;
   });
 
   // No Plugin Page reaches a USB, serial or HID device.

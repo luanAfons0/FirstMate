@@ -424,9 +424,10 @@ Releases; a beta follows the newest Release, beta or stable, so a beta tester
 lands on the stable version and stays there (ADR-0023). An App you build and
 run unpacked from a clone never updates.
 
-A Plugin Page is refused every permission, camera, location and notifications
-among them, except the microphone and a capture of the screen or a window with
-its sound. The first time a Plugin asks for one, the App asks you, naming the
+A Plugin Page may write to the clipboard, so its "copy" buttons work, but never
+read it. It is refused every other permission, camera, location and
+notifications among them, except the microphone and a capture of the screen or
+a window with its sound. The first time a Plugin asks for one, the App asks you, naming the
 Plugin, and keeps your answer under `permissions` in `settings.json`. To be
 asked again, take that Plugin out of `permissions`. For a capture, the App
 then asks which screen or window to give.

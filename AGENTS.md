@@ -199,8 +199,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/notices.ts   Notices, as Windows notifications under the App's own ID.
   src/shortcuts.ts the Shortcuts, held with globalShortcut.
   src/popup.ts     the Popup a Shortcut opens.
-  src/permissions.ts what a Plugin Page may use: the microphone and a capture,
-                   asked once per Plugin, and nothing else.
+  src/permissions.ts what a Plugin Page may use: clipboard write, and the
+                   microphone and a capture, asked once per Plugin.
   src/update.ts    the App's own updates, with electron-updater: downloaded in
                    the background, said in one Notice, installed on Quit.
   src/marks.ts     where the running and stopped marks are.
