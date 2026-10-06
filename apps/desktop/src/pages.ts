@@ -82,6 +82,17 @@ export const SWITCHER_WIDTH = 360;
 /** How far the switcher sits from the window's left edge, under the breadcrumb. */
 export const SWITCHER_LEFT = 8;
 
+/**
+ * The room the switcher's view leaves round its panel, in logical pixels: a
+ * gap under the strip, and the panel's shadow at each side and below. The view
+ * is clear there, so the panel shows with its round corners and its shadow,
+ * as the mock draws it, over the page below.
+ */
+export const SWITCHER_ROOM = { above: 4, side: 8, below: 20 } as const;
+
+/** The switcher panel's greatest height, as the mock caps it. The rows scroll past it. */
+const SWITCHER_MOST = 420;
+
 /** Everything the switcher shows. */
 export type SwitcherView = {
   /** The Plugin whose page is open, if one is. */
@@ -114,12 +125,13 @@ const POLICY =
   "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; " +
   "base-uri 'none'; form-action 'none'";
 
-/** How tall the switcher needs to be to show the filter, every row and the
- *  key line. The window holds it inside its own height, and the rows scroll
- *  past that. A filter leaves the height as it is. */
+/** How tall the switcher panel needs to be to show the filter, every row and
+ *  the key line, up to its greatest height. The window holds it inside its
+ *  own height too, and the rows scroll past either. A filter leaves the
+ *  height as it is. */
 export function switcherHeight(plugins: Plugins): number {
   const rows = plugins.kind === 'told' ? Math.max(plugins.plugins.length, 1) : 1;
-  return FILTER + rows * ROW + AROUND + KEYS;
+  return Math.min(FILTER + rows * ROW + AROUND + KEYS, SWITCHER_MOST);
 }
 
 /** A page, as the address a view loads it from. */
@@ -319,6 +331,10 @@ addEventListener('keydown', (event) => {
   apply();
   next.scrollIntoView({ block: 'nearest' });
 });
+// A click on the clear room round the panel is a click outside it.
+addEventListener('mousedown', (event) => {
+  if (event.target instanceof Element && event.target.closest('.panel') === null) close();
+});
 // A click anywhere else in the window takes the focus away from the switcher.
 addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) close(); }, 120));`;
 
@@ -479,11 +495,16 @@ function stripStyles(): string {
 
 function switcherStyles(): string {
   return `* { box-sizing: border-box; }
-  html, body { margin: 0; height: 100vh; overflow: hidden; background: var(--raised); }
-  body { color: var(--text); font: 13px/1 var(--sans); user-select: none; }
+  /* The view is clear round the panel, which leaves room for its shadow. */
+  html, body { margin: 0; height: 100vh; overflow: hidden; background: transparent; }
+  body {
+    color: var(--text); font: 13px/1 var(--sans); user-select: none;
+    padding: ${SWITCHER_ROOM.above}px ${SWITCHER_ROOM.side}px ${SWITCHER_ROOM.below}px;
+  }
   .panel {
-    height: 100vh; display: flex; flex-direction: column;
+    height: 100%; display: flex; flex-direction: column; overflow: hidden;
     background: var(--raised); border: 1px solid var(--line-2);
+    border-radius: var(--radius-panel); box-shadow: var(--shadow-panel);
   }
   /* Each part is as tall as switcherHeight counts it. */
   .find {
