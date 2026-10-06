@@ -7,16 +7,15 @@
  * turns start at logon on and off, and quits. Quit is the one way the App
  * ends: closing the window only hides it, and every Plugin keeps running.
  *
- * Start at logon is Windows's own entry for the App, set through Electron, and
- * it is off until the operator turns it on. It is the same Run entry `setup`
- * writes (ADR-0024), so each sees what the other wrote. The App it starts begins in the
+ * Start at logon is Windows's own entry for the App (`logon.ts`), and it is off
+ * until the operator turns it on. The App it starts begins in the
  * Tray, with the window put away, because nobody asked to see it.
  */
 import { app, Menu, Tray, type MenuItemConstructorOptions } from 'electron';
-import { AT_LOGON, LOGON_NAME } from '@firstmate/core/logon';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { pluginPath } from './addresses.ts';
 import type { PluginSeen, Plugins } from './host-lists.ts';
+import { readLogon, writeLogon } from './logon.ts';
 import { markPath } from './marks.ts';
 
 /** What the Tray needs from the rest of the App. */
@@ -25,6 +24,8 @@ export type TrayNeeds = {
   readonly open: (path: string) => void;
   /** Bring the window up as it was. */
   readonly reveal: () => void;
+  /** Start at logon changed, so the Settings View shows it too. */
+  readonly changed: () => void;
 };
 
 /** The Tray, and the way to tell it what the Host now says. */
@@ -65,17 +66,6 @@ export function holdTray(needs: TrayNeeds): HeldTray {
 }
 
 /**
- * The logon entry, named as `setup` names it. Electron would name it after the
- * Application User Model ID, and then neither would find the other's entry.
- */
-const LOGON = { name: LOGON_NAME, path: process.execPath, args: [AT_LOGON] };
-
-/** Whether the App starts at logon. */
-function readLogon(): boolean {
-  return app.getLoginItemSettings(LOGON).openAtLogin;
-}
-
-/**
  * The menu. The Plugins are a submenu rather than a run of items, so that
  * Quit never moves under the pointer when a Plugin is added or taken away.
  */
@@ -94,7 +84,8 @@ function menu(
       type: 'checkbox',
       checked: logon,
       click: (item) => {
-        app.setLoginItemSettings({ ...LOGON, openAtLogin: item.checked });
+        writeLogon(item.checked);
+        needs.changed();
         draw();
       },
     },

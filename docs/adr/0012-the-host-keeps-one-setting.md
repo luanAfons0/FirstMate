@@ -46,7 +46,12 @@ The day a graphical interface should move the Shelf, it belongs in a chrome the 
 
 A Plugin Page may ask for the microphone or a capture of the screen or a window, and nothing else (ADR-0020). The first time a Plugin asks for one, the App asks the operator in a dialog of its own, naming the Plugin, and keeps the answer under `permissions` in `settings.json`, by Plugin Name, so it is asked once and not on every call.
 
-This is the one setting not written from a terminal, and it is written by the App's main process and nowhere else. The rule above still holds where it matters: no address on the Host writes it, no page can reach the code that does, and no page can answer for the operator, because the dialog is the App's own window and not a page. A page can only ask, and asking is what a page is allowed to do. The main process reads the other settings first and writes them back unchanged, as every command does.
+It is written by the App's main process and nowhere else. The rule above still holds where it matters: no address on the Host writes it, no page can reach the code that does, and no page can answer for the operator, because the dialog is the App's own window and not a page. A page can only ask, and asking is what a page is allowed to do. The main process reads the other settings first and writes them back unchanged, as every command does.
 
 An answer is kept until the operator takes it out of the file. A damaged answer fails every command, as a damaged Shortcut does, because an answer read wrongly could let a Plugin Page reach a device the operator refused.
 
+## Amended: the Settings View moves the Shelf and the Places (2.0)
+
+The day foreseen above came with the App. Its Settings View adds and removes a Place, moves each Place's Shelf, and turns start at logon on and off. It is the App's own view, written by the App and never served by the Host (ADR-0008), so no Plugin Page can reach it, and it carries the one preload that can ask the main process for anything.
+
+It does not run the command line. The main process calls the same `core` commands a terminal runs, `addPlace`, `removePlace` and `moveShelf`, with the same checks and the same refusals, and then reloads the Host in-process. The rule this ADR set still holds: no address on the Host writes a setting, and no page posts to `/reload` (ADR-0018). The Settings View shows the Shortcuts and changes none of them: they, the Plugins, the Grants and the Plugin Order still change from a terminal alone.

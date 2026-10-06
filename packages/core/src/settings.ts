@@ -9,10 +9,11 @@
  * survives a restart (ADR-0013), the Plugin Order, because the Registry is
  * read only when the Host starts and a new order should not restart every
  * Plugin Server (ADR-0016), and the operator's answers when a Plugin Page asks
- * for the microphone or a capture of the screen. The first four are written
- * from a terminal and from nowhere else. The answers are written by the App's
- * main process, after the operator answers its own dialog, and never by a
- * page (ADR-0012).
+ * for the microphone or a capture of the screen. The Shortcuts and the Plugin
+ * Order are written from a terminal alone. The Shelf and the Places are
+ * written from a terminal and from the App's Settings View, and the answers by
+ * the App's own dialog; both through the App's main process, never by a page
+ * (ADR-0012).
  *
  * It is written the way the runtime file is written: whole, through a rename,
  * for this user alone. A settings file that is not there means nothing has

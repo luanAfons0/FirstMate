@@ -29,6 +29,12 @@ export type RunningHost = {
   /** The token that admits a browser. It is never printed by whoever holds it. */
   readonly token: string;
   /**
+   * Read the Registry and the settings again, as `POST /reload` does. The App
+   * calls it after its Settings View writes a setting, so that no page ever
+   * asks the Host to reload (ADR-0018).
+   */
+  reload(): Promise<void>;
+  /**
    * Remove the runtime file, end every Plugin Server and close the HTTP
    * server. A second call waits for the first rather than stopping twice.
    */
@@ -153,7 +159,7 @@ export async function start(
     });
   }
 
-  return { port: host.port, token, stop };
+  return { port: host.port, token, reload, stop };
 }
 
 /**

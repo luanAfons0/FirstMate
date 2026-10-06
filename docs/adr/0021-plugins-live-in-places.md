@@ -44,4 +44,4 @@ Leave the default Place in the settings file like any other. The Host would have
 
 A second `local` Place is allowed. It runs its Plugin Servers on this machine as the default one does, and differs only in its Shelf.
 
-The Index Page shows the default Place's Shelf. The other Places and their Shelves are in `firstmate place`, and in the Settings View once it shows them.
+The Index Page shows the default Place's Shelf. The other Places and their Shelves are in `firstmate place`, and in the Settings View, which also adds and removes a Place and moves its Shelf (ADR-0012).

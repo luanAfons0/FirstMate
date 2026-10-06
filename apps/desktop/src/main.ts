@@ -97,9 +97,16 @@ function main(): void {
         say: (sentence) => notices.say(sentence),
       });
       // Started at logon, the App begins in the Tray with the window put away.
-      const window = openWindow(running, refresh, process.argv.includes(AT_LOGON));
+      const window = openWindow(running, refresh, process.argv.includes(AT_LOGON), {
+        home: config.home,
+        reload: () => running.reload(),
+      });
       shown = window;
-      tray = holdTray({ open: (path) => window.open(path), reveal: () => window.reveal() });
+      tray = holdTray({
+        open: (path) => window.open(path),
+        reveal: () => window.reveal(),
+        changed: () => refresh(),
+      });
       notify = (notice) => notices.show(notice);
       for (const notice of early.splice(0)) notices.show(notice);
       const popup = makePopup({
