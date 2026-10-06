@@ -177,42 +177,42 @@ addEventListener('submit', (event) => {
 }
 
 function styles(): string {
-  return `:root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: #17181a; }
-  body { color: #d6d8dc; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+  return `* { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); }
+  body { color: var(--text); font: 14px/1.5 var(--sans); }
   main { max-width: 720px; padding: 24px 28px 40px; }
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
   h2 { font-size: 14px; font-weight: 600; margin: 28px 0 6px; }
-  h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: #b4b8bf; }
+  h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--muted); }
   p { margin: 6px 0; }
-  .hint, .none, .kind { color: #8b8f97; font-size: 13px; }
-  .outcome { padding: 8px 12px; border-radius: 6px; background: #24262a; }
-  .outcome.done { color: #4ecb96; }
-  .outcome.refused, .refused { color: #ff8f84; }
+  .hint, .none, .kind { color: var(--muted); font-size: 13px; }
+  .outcome { padding: 8px 12px; border-radius: var(--radius-panel); background: var(--hover); }
+  .outcome.done { color: var(--running); }
+  .outcome.refused, .refused { color: var(--stopped); }
   .place, form.add {
-    border: 1px solid #2c2e33; border-radius: 8px; padding: 10px 12px; margin: 8px 0;
+    border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 10px 12px; margin: 8px 0;
   }
   .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
   .gap { flex: 1; }
   form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
   form.add { flex-direction: row; }
   form.add h3 { flex-basis: 100%; }
-  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #8b8f97; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
   form.shelf label { flex: 1; min-width: 240px; }
-  label.check { flex-direction: row; align-items: baseline; gap: 8px; font-size: 14px; color: #d6d8dc; }
+  label.check { flex-direction: row; align-items: baseline; gap: 8px; font-size: 14px; color: var(--text); }
   input, select, button {
-    font: 13px/1.2 ui-sans-serif, system-ui, Segoe UI, sans-serif; color: #d6d8dc;
-    background: #1d1f23; border: 1px solid #34363b; border-radius: 6px; padding: 7px 9px;
+    font: 13px/1.2 var(--sans); color: var(--text);
+    background: var(--raised); border: 1px solid var(--line-2);
+    border-radius: var(--radius-control); padding: 7px 9px;
   }
-  input[name=directory] { font-family: ui-monospace, Consolas, monospace; }
+  input[name=directory] { font-family: var(--mono); }
   button { cursor: pointer; }
-  button:hover { background: #24262a; border-color: #4a4d54; }
+  button:hover { background: var(--hover); border-color: var(--faint); }
   button.quiet { padding: 3px 8px; }
   button:disabled, input:disabled { opacity: .5; cursor: default; }
-  :focus-visible { outline: 2px solid #7aa2f7; outline-offset: 1px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   [hidden] { display: none !important; }
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 8px 0; }
   dd { margin: 0; }
-  code, kbd { font: 13px/1.4 ui-monospace, Consolas, monospace; color: #d6d8dc; }`;
+  code, kbd { font: 13px/1.4 var(--mono); color: var(--text); }`;
 }

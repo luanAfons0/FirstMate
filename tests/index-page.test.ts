@@ -123,6 +123,28 @@ test('the Shelf the Index Page shows is the Shelf the Host uses', async (t) => {
   assert.ok(!page.includes(join(host.home, 'shelf')), 'the default is not shown instead');
 });
 
+test('the Index Page carries the dark theme and the light one, and the system chooses', async (t) => {
+  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
+
+  const page = await (await host.fetch('/')).text();
+
+  assert.ok(page.includes('color-scheme: light dark'), 'the browser is told both themes exist');
+  assert.match(page, /@media \(prefers-color-scheme: light\)/, 'the system picks the theme');
+  // The paper of the approved look, dark and then light: one set for every page.
+  assert.ok(page.includes('--bg: #17181a'), 'the dark paper is the one the App shows');
+  assert.ok(page.includes('--bg: #f8f8f7'), 'the light paper is the one the App shows');
+});
+
+test('the Index Page loads nothing from outside itself', async (t) => {
+  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
+
+  const page = await (await host.fetch('/')).text();
+
+  for (const outside of ['<link', ' src=', '@import', 'url(', '//']) {
+    assert.ok(!page.includes(outside), `the page carries no ${outside}`);
+  }
+});
+
 test('the Shelf is escaped where it is shown', async (t) => {
   const host = await bootHost(t, [], { FIRSTMATE_SHELF: '/tmp/<script>alert(1)</script>' });
 

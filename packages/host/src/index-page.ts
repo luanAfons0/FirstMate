@@ -3,7 +3,8 @@
  *
  * It lists every Plugin in the Registry and links to each Plugin Page. It is
  * one file with no assets of its own, because the Host serves Plugin Pages and
- * has no business shipping a front end beside them.
+ * has no business shipping a front end beside them. Its colours, dark and
+ * light, and its state shapes are the App's own, from `@firstmate/core/theme`.
  *
  * A row is written as the address it leads to, because a Plugin Name is what
  * identifies a Plugin in every address, and a Plugin with no Plugin Page has
@@ -21,6 +22,7 @@
  */
 
 import { STATE_WORDS, type PluginView } from '@firstmate/core/plugin-state';
+import { THEME_STYLE } from '@firstmate/core/theme';
 
 /** One Plugin, as the Index Page and the App both see it. */
 /**
@@ -124,43 +126,18 @@ function shelfNote(shelf: string): string {
 }
 
 function styles(): string {
-  return `:root {
-  color-scheme: light dark;
-  --paper: #fcfcfb;
-  --raised: #ffffff;
-  --ink: #16181d;
-  --muted: #6b7280;
-  --faint: #a4abb5;
-  --line: rgba(22, 24, 29, .11);
-  --live: #157f57;
-  --stopped: #b3261e;
-  --focus: #2f6feb;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #131519;
-    --raised: #1a1d23;
-    --ink: #e7e9ec;
-    --muted: #98a0aa;
-    --faint: #666d78;
-    --line: rgba(231, 233, 236, .13);
-    --live: #4ecb96;
-    --stopped: #ff6f61;
-    --focus: #7aa2f7;
-  }
-}
+  return `${THEME_STYLE}
 * { box-sizing: border-box; }
 body {
   margin: 0 auto; padding: 3rem 1rem 4rem; max-width: 40rem;
-  font: 16px/1.5 system-ui, sans-serif;
-  color: var(--ink); background: var(--paper);
+  font: 16px/1.5 var(--sans);
+  color: var(--text); background: var(--bg);
 }
 header {
   display: flex; align-items: baseline; gap: .75rem;
   margin: 0 0 1.75rem;
 }
-h1 { font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+h1 { color: var(--ink); font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; margin: 0; }
 .count {
   margin: 0; font-family: var(--mono); font-size: .75rem;
   color: var(--faint); font-variant-numeric: tabular-nums;
@@ -172,10 +149,10 @@ li + li { border-top: 1px solid var(--line); }
 .row {
   display: flex; align-items: center; gap: .75rem;
   padding: .8rem .75rem; margin: 0 -.75rem;
-  border-radius: 7px; text-decoration: none; color: inherit;
+  border-radius: var(--radius-control); text-decoration: none; color: inherit;
 }
 a.row:hover { background: var(--raised); box-shadow: 0 0 0 1px var(--line); }
-a.row:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+a.row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (prefers-reduced-motion: no-preference) {
   a.row { transition: background .1s ease, box-shadow .1s ease; }
 }
@@ -186,14 +163,6 @@ a.row:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 }
 .address i { font-style: normal; color: var(--faint); }
 .address b { font-weight: 600; }
-
-/* Shape as well as colour, so the state never rests on colour alone. */
-.dot {
-  flex: none; width: .5rem; height: .5rem; border-radius: 50%;
-  background: var(--live);
-}
-.dot.stopped { background: var(--stopped); }
-.dot.no-plugin-server { background: none; box-shadow: inset 0 0 0 1.5px var(--faint); }
 
 .state {
   flex: none; font-family: var(--mono); font-size: .75rem; color: var(--muted);
@@ -207,7 +176,7 @@ a.row:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 #filter {
   width: 100%; padding: .45rem 2rem .45rem .75rem;
   font: inherit; font-size: .875rem; color: inherit;
-  background: none; border: 0; border-radius: 7px;
+  background: none; border: 0; border-radius: var(--radius-control);
 }
 #filter::placeholder { color: var(--faint); }
 #filter:focus-visible { outline: 0; background: var(--raised); box-shadow: 0 0 0 1px var(--line); }

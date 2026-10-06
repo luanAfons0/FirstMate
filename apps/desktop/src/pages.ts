@@ -23,8 +23,13 @@
  * matched by what it is rather than where it was. A page that sets something
  * on itself, such as which field is hidden, does it again in `whenShown`,
  * which runs once at load and after every body.
+ *
+ * Every page takes its colours, radii, state shapes and icons from
+ * `@firstmate/core/theme`, the look the Index Page takes too, and carries the
+ * sprite of the icons it draws inside itself.
  */
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
+import { type IconName, icon, sprite, THEME_STYLE } from '@firstmate/core/theme';
 import { ASK, openAsk } from './ask.ts';
 import type { Plugins } from './host-lists.ts';
 
@@ -94,12 +99,12 @@ export function stripPage(view: StripView): Written {
   const atTheList = view.here.kind === 'list';
   const crumbs = `<a class="crumb" href="#" data-ask="${ASK.pluginList}"\
 ${atTheList ? ' aria-disabled="true"' : ''} title="See the Plugin list">\
-<span aria-hidden="true">⌂</span> FirstMate</a>
-<span class="sep" aria-hidden="true">›</span>
+${icon('house')} FirstMate</a>
+${icon('caret-right', 'sep')}
 <a class="crumb last" href="#" data-ask="${view.switcher ? ASK.switcherClose : ASK.switcher}" \
 aria-expanded="${view.switcher}"${view.starting ? ' aria-disabled="true"' : ''} \
 title="Switch Plugin">${hereWords(view.here, view.starting)} \
-<span aria-hidden="true">▾</span></a>`;
+${icon('caret-down', 'caret')}</a>`;
   return written(
     'FirstMate',
     stripStyles(),
@@ -111,11 +116,15 @@ ${view.fault === undefined ? '' : `<span class="fault">${escaped(view.fault)}</s
 ${view.starting ? ' aria-disabled="true"' : ''} \
 title="Open what is shown here in the system browser">open in browser</a>
 <a class="button gear" href="#" data-ask="${ASK.settings}" title="Settings" aria-label="Settings" \
-aria-pressed="${view.here.kind === 'settings'}">⚙</a>
+aria-pressed="${view.here.kind === 'settings'}">${icon('gear-six')}</a>
 </nav>`,
     '',
+    STRIP_ICONS,
   );
 }
+
+/** The icons the strip draws. */
+const STRIP_ICONS: readonly IconName[] = ['house', 'caret-right', 'caret-down', 'gear-six'];
 
 /** The last part of the breadcrumb: what is open, or that the Host still starts. */
 function hereWords(here: Here, starting: boolean): string {
@@ -150,7 +159,7 @@ export function switcherPage(open: string | undefined, plugins: Plugins, opened:
               const here = plugin.name === open;
               return `<a class="row" href="#" data-key="${escaped(plugin.name)}" \
 data-ask="${escaped(openAsk(plugin.name))}"${here ? ' aria-current="page"' : ''}>${words}<span class="tick" aria-hidden="true">\
-${here ? '✓' : ''}</span></a>`;
+${here ? icon('check') : ''}</span></a>`;
             })
             .join('\n');
   return written(
@@ -181,33 +190,49 @@ addEventListener('keydown', (event) => {
 });
 // A click anywhere else in the window takes the focus away from the switcher.
 addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) close(); }, 120));`,
+    ['check'],
   );
 }
 
 /**
- * One of the App's own pages, from its title, its style, its body and its own
- * script.
+ * One of the App's own pages, from its title, its style, its body, its own
+ * script and the icons any body of it may draw.
  */
-export function written(title: string, style: string, body: string, script = ''): Written {
-  return { whole: (now) => page(title, style, now, script), body };
+export function written(
+  title: string,
+  style: string,
+  body: string,
+  script = '',
+  icons: readonly IconName[] = [],
+): Written {
+  return { whole: (now) => page(title, style, now, script, icons), body };
 }
 
 /**
- * One whole page: its policy, its style, its body, and the one script every
- * page shares. That script sends a click on anything with `data-ask` to the
+ * One whole page: its policy, the shared look and its own style, the sprite of
+ * its icons, its body, and the one script every page shares. The sprite sits
+ * outside the body, so a new body never sends it again. That script sends a click on anything with `data-ask` to the
  * main process, and puts each body the main process sends in place of the
  * one shown, changing only what differs.
  */
-function page(title: string, style: string, body: string, script: string): string {
+function page(
+  title: string,
+  style: string,
+  body: string,
+  script: string,
+  icons: readonly IconName[],
+): string {
   return `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${POLICY}">
 <title>${title}</title>
 <style>
+${THEME_STYLE}
 #shown { display: contents; }
 ${style}
 </style>
+${sprite(icons)}
 <div id="shown">${body}</div>
 <script>
 addEventListener('click', (event) => {
@@ -271,69 +296,70 @@ firstmate.shown((body) => {
 });`;
 
 function stripStyles(): string {
-  return `:root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100vh; overflow: hidden; background: #17181a; }
+  return `* { box-sizing: border-box; }
+  html, body { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); }
   body {
-    color: #d6d8dc; display: flex; flex-direction: column;
-    font: 13px/1 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+    color: var(--text); display: flex; flex-direction: column;
+    font: 13px/1 var(--sans);
   }
   .bar {
     flex: none; height: 44px; display: flex; align-items: center; gap: 6px;
     padding: 0 10px 0 8px; min-width: 0;
   }
   a { color: inherit; text-decoration: none; }
-  a:focus-visible { outline: 2px solid #7aa2f7; outline-offset: 1px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .crumb {
     display: inline-flex; align-items: center; gap: 6px; min-width: 0;
-    padding: 6px 8px; border-radius: 6px; white-space: nowrap; color: #b4b8bf;
+    padding: 6px 8px; border-radius: var(--radius-control); white-space: nowrap;
+    color: var(--muted);
   }
-  .crumb.last { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; color: #d6d8dc; }
+  .crumb svg.i { width: 14px; height: 14px; }
+  .crumb .caret { width: 12px; height: 12px; color: var(--faint); }
+  .crumb.last { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
   .crumb b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-  .crumb:hover, .crumb[aria-expanded='true'] { background: #24262a; }
+  .crumb:hover, .crumb[aria-expanded='true'] { background: var(--hover); }
   .crumb[aria-disabled='true'] { pointer-events: none; }
-  .sep { color: #5d6169; }
+  .sep { width: 12px; height: 12px; color: var(--faint); }
   .gap { flex: 1; }
   .fault {
-    color: #e8a0a0; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    color: var(--stopped); min-width: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; padding-left: 6px;
   }
   .button {
-    border: 1px solid #34363b; border-radius: 6px; padding: 6px 10px; white-space: nowrap;
+    display: inline-flex; align-items: center;
+    border: 1px solid var(--line-2); border-radius: var(--radius-control);
+    padding: 6px 10px; white-space: nowrap;
   }
-  .button:hover { background: #24262a; border-color: #4a4d54; }
+  .button:hover { background: var(--hover); border-color: var(--faint); }
   .button[aria-disabled='true'] { opacity: .5; pointer-events: none; }
-  .gear { font-size: 15px; line-height: 13px; padding: 6px 8px; }
-  .gear[aria-pressed='true'] { background: #2b2e33; border-color: #4a4d54; }`;
+  .gear { padding: 5px 7px; }
+  .gear[aria-pressed='true'] { background: var(--press); border-color: var(--faint); }`;
 }
 
 function switcherStyles(): string {
-  return `:root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100vh; overflow: hidden; background: #1d1f23; }
-  body { color: #d6d8dc; font: 13px/1 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+  return `* { box-sizing: border-box; }
+  html, body { margin: 0; height: 100vh; overflow: hidden; background: var(--raised); }
+  body { color: var(--text); font: 13px/1 var(--sans); }
   a { color: inherit; text-decoration: none; }
   .panel {
     height: 100vh; overflow-y: auto; padding: 4px;
-    background: #1d1f23; border: 1px solid #34363b;
+    background: var(--raised); border: 1px solid var(--line-2);
   }
   .row {
-    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 6px;
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+    border-radius: var(--radius-control);
   }
-  a.row:hover, a.row:focus-visible { background: #2a2d32; outline: 0; }
+  a.row:hover, a.row:focus-visible { background: var(--hover); outline: 0; }
   .row[aria-disabled='true'] { opacity: .5; }
   .name {
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font: 600 13px/1.2 var(--mono);
   }
-  .state { flex: none; font: 11px/1 ui-monospace, Consolas, monospace; color: #8b8f97; }
-  .state.stopped { color: #ff6f61; }
-  .tick { flex: none; width: 12px; color: #4ecb96; }
-  /* Shape as well as colour, so the state never rests on colour alone. */
-  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #4ecb96; }
-  .dot.stopped { background: #ff6f61; }
-  .dot.no-plugin-server { background: none; box-shadow: inset 0 0 0 1.5px #666d78; }
-  .none { margin: 0; padding: 10px; color: #8b8f97; }`;
+  .state { flex: none; font: 11px/1 var(--mono); color: var(--muted); }
+  .state.stopped { color: var(--stopped); }
+  .tick { flex: none; width: 14px; color: var(--running); }
+  .tick svg.i { width: 14px; height: 14px; }
+  .none { margin: 0; padding: 10px; color: var(--muted); }`;
 }
 
 /** A Plugin Name, or anything else read from a file, is written as text. */
