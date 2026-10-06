@@ -106,7 +106,12 @@ const COMMANDS: readonly Command[] = [
     does: 'answer a few questions, and have FirstMate set up.',
     run: setUp,
   },
-  { name: 'desktop', takes: '', does: 'open the FirstMate window. Windows only.', run: desktop },
+  {
+    name: 'desktop',
+    takes: '',
+    does: 'install the App of this version, and open it.',
+    run: desktop,
+  },
   {
     name: 'place',
     takes: '[add <name> <kind> [...] | remove <name>]',
@@ -276,9 +281,11 @@ never removes anything. Answers can be piped in, one per line.`,
   },
   {
     about: ['desktop'],
-    text: `The window works out which distribution holds the Host and where the Host keeps
-its home directory. Say them yourself with --distribution <name> and
---home <path> when it cannot.`,
+    text: `desktop downloads the App installer of its own version from the GitHub Release,
+checks its SHA-256, installs it for you alone with no administrator, and opens
+the App. When that version, or a newer one, is installed, it only opens it. It
+runs on Windows, and inside WSL, where it reaches Windows through interop.
+FIRSTMATE_RELEASES_URL moves where it downloads from.`,
   },
   {
     about: ['add', 'grant', 'revoke', 'install'],
@@ -460,33 +467,18 @@ function setUp(argv: readonly string[]): Promise<number> | number {
 }
 
 /**
- * Open the FirstMate window.
+ * Install the App of this command line's version, and open it (ADR-0022).
  *
- * The window is imported here rather than at the top of this file, because it
- * is the one part of FirstMate that has a dependency, and every other command
- * must keep working on a machine where that dependency's native binary will not
- * load (ADR-0011). `start` is imported the same way, for a reason of its own.
+ * It is imported here rather than at the top of this file, so that no other
+ * command loads what only this one needs. The 1.x window, `desktop.ts`, is no
+ * longer reached from here; #145 removes it.
  */
 async function desktop(argv: readonly string[]): Promise<number> {
-  let distribution: string | undefined;
-  let home: string | undefined;
-
-  for (let at = 0; at < argv.length; at += 2) {
-    const flag = argv[at];
-    const value = argv[at + 1];
-    if (value === undefined || (flag !== '--distribution' && flag !== '--home')) {
-      return typedWrong(
-        'desktop',
-        'desktop takes --distribution <name> and --home <path>, and ' +
-          `works both out when you leave them out.`,
-      );
-    }
-    if (flag === '--distribution') distribution = value;
-    else home = value;
+  if (argv.length > 0) {
+    return typedWrong('desktop', 'desktop takes nothing.');
   }
-
-  const { openWindow } = await import('./desktop.ts');
-  return openWindow({ distribution, home });
+  const { installApp } = await import('./install-app.ts');
+  return installApp();
 }
 
 async function add(home: string, argv: readonly string[], place?: string): Promise<number> {

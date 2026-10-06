@@ -29,6 +29,11 @@ nsis:
   # The name `firstmate desktop` downloads the installer by, beside the
   # checksum the release workflow writes for it (ADR-0022).
   artifactName: FirstMate-Setup-${version}.${ext}
+  # The name of the App's registry keys, where the installer records its
+  # version and its folder for Windows, and where `firstmate desktop` reads
+  # them. It is what electron-builder derives from appId, written down so that
+  # nothing moves it unseen: a new GUID is a second App beside the first.
+  guid: 97530065-71e0-5fdb-bf30-b8a47e68e176
 # Where a release is published, so that packaging writes the update feed,
 # latest.yml, and the App learns where to look for an update. Packaging
 # publishes nothing itself: the release workflow attaches the files to the

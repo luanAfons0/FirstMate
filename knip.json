@@ -1,12 +1,20 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "includeEntryExports": true,
+  // The 1.x window exports what its command used to import. #145 deletes it.
+  "ignoreIssues": {
+    "apps/cli/src/desktop.ts": ["exports"]
+  },
   "workspaces": {
     ".": {
       "entry": ["tests/**/*.test.ts", "tests/helpers/no-webview.ts"],
       "project": ["tests/**/*.ts"]
     },
     "apps/cli": {
+      // The 1.x window. `firstmate desktop` installs the App now and imports
+      // it no more, and #145 deletes it with @webviewjs/webview. Until then it
+      // is an entry, so that what it imports still counts as used.
+      "entry": ["src/desktop.ts"],
       "project": ["src/**/*.ts"]
     },
     "apps/desktop": {

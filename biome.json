@@ -36,5 +36,6 @@
         "useLiteralKeys": "off"
       }
     }
-  }
+  },
+  "overrides": [{ "includes": ["knip.json"], "json": { "parser": { "allowComments": true } } }]
 }

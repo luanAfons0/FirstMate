@@ -85,24 +85,25 @@ test('the package carries core and host inside the bundle', async () => {
   assert.deepEqual(Object.keys(manifest.dependencies ?? {}), ['@webviewjs/webview']);
 });
 
-test('the package holds the desktop program and the icons it draws with', async () => {
-  const files = await packed;
+test('no part of the package loads the 1.x window', async () => {
   const code = await builtCode();
 
-  // The window library is imported where the window opens and nowhere else,
-  // so every other command runs where its native binary will not (ADR-0011).
-  const importers = [...code].filter(([, text]) => text.includes('@webviewjs/webview'));
-  assert.equal(importers.length, 1, 'one chunk holds the window');
-  const [path = '', text = ''] = importers[0] ?? [];
-  assert.ok(text.includes('import("@webviewjs/webview")'), 'it is a dynamic import');
-  assert.ok(!/^import .*@webviewjs\/webview/m.test(text), 'it is not a static import');
-  assert.notEqual(path, 'dist/cli.js', 'the command line does not load it');
-  assert.notEqual(path, 'dist/main.js', 'the Host does not load it');
+  // firstmate desktop installs the App now (ADR-0022), and nothing reaches the
+  // 1.x window. Its library stays a dependency until #145 takes both out.
+  for (const [path, text] of code) {
+    assert.ok(!text.includes('@webviewjs/webview'), `${path} loads the window library`);
+  }
+});
 
-  // The Tray cannot draw without them, and the bundler copies nothing that is
-  // not code, so they are packed from where they live rather than built.
-  assert.ok(files.includes('icons/firstmate-running.ico'));
-  assert.ok(files.includes('icons/firstmate-stopped.ico'));
+test('the command line reads its own version beside the bundle', async () => {
+  const code = await builtCode();
+
+  // firstmate desktop installs the App of its own version, which it reads
+  // from the package's manifest, one folder up from the file that reads it.
+  const readers = [...code].filter(([, text]) => text.includes('"../package.json"'));
+  assert.equal(readers.length, 1, 'one chunk reads the version');
+  assert.match(readers[0]?.[0] ?? '', /^dist\/[^/]+\.js$/, 'and it sits directly in dist/');
+  assert.ok((await packed).includes('package.json'), 'beside the manifest it reads');
 });
 
 test('every package in the workspace carries one version', async () => {
