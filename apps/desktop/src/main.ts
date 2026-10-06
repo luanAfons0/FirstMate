@@ -25,6 +25,7 @@ import { join } from 'node:path';
 import { app, dialog, Menu } from 'electron';
 import { readConfig, type Config } from '@firstmate/core/config';
 import { AT_LOGON } from '@firstmate/core/logon';
+import { flushLog } from '@firstmate/host/log';
 import type { Notice } from '@firstmate/host/notices';
 import { start, type RunningHost } from '@firstmate/host/start';
 import { askForPlugins, askForShortcuts } from './host-lists.ts';
@@ -149,7 +150,7 @@ function main(): void {
       // The App says why in one sentence and does not start either, even
       // when its window already shows.
       say(fault instanceof Error ? fault.message : String(fault));
-      app.exit(1);
+      exit(1);
     },
   );
 }
@@ -178,15 +179,24 @@ function stopOnQuit(host: Promise<RunningHost>): void {
     host
       .then((running) => running.stop())
       .then(
-        () => app.exit(0),
+        () => exit(0),
         // A Host that never started has nothing to stop; one that did not
         // stop cleanly still ends with the App, and says it failed.
         (fault: unknown) => {
           console.error(`${NAME}: the Host did not stop cleanly.`, fault);
-          app.exit(1);
+          exit(1);
         },
       );
   });
+}
+
+/**
+ * End the App now. The log holds its writes for a tick, and `app.exit` waits
+ * for none, so what it still holds is written first (ADR-0022).
+ */
+function exit(code: number): void {
+  flushLog();
+  app.exit(code);
 }
 
 /** One sentence in a box, for a person with no terminal to read it in. */

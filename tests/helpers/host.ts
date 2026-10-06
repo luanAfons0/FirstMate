@@ -65,6 +65,8 @@ export type Booted = {
    * `fetch`, and a path holding `..` is normalised away before it is sent.
    */
   raw(request: RawRequest): Promise<RawResponse>;
+  /** Stop the Host as its operator would, and wait for it to end. */
+  stop(): Promise<void>;
 };
 
 type RawRequest = {
@@ -232,6 +234,7 @@ export async function bootHostIn(
         headers: { cookie: cookieFor(runtime.token), ...init?.headers },
       }),
     raw: (request) => rawRequest(runtime.port, runtime.token, request),
+    stop: () => stop(child),
   };
 }
 
