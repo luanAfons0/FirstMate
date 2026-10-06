@@ -502,7 +502,8 @@ async function confirmOnce(question: string): Promise<boolean> {
 
 /**
  * Say every Place, or add or remove one. A Place is a setting, written from a
- * terminal and from nowhere else, like the Shelf it carries (ADR-0021).
+ * terminal or from the App's Settings View, like the Shelf it carries
+ * (ADR-0012, ADR-0021).
  */
 async function place(home: string, argv: readonly string[], json: boolean): Promise<number> {
   const [what, name, kind, ...needs] = argv;

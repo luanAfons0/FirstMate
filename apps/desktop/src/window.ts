@@ -37,7 +37,6 @@ import type { Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
 import {
   dataAddress,
-  settingsPage,
   STRIP_HEIGHT,
   stripPage,
   SWITCHER_LEFT,
@@ -46,6 +45,8 @@ import {
   switcherPage,
   type Here,
 } from './pages.ts';
+import { change, readShown, type ChangeNeeds, type Outcome } from './settings.ts';
+import { settingsPage } from './settings-view.ts';
 
 /** The window's title. The strip names what is open inside it. */
 const TITLE = 'FirstMate';
@@ -79,12 +80,21 @@ export type Shown = {
   toBrowser(address: string): void;
 };
 
+/** What the Settings View needs to change a setting: the home, and a reload. */
+export type SettingsNeeds = Omit<ChangeNeeds, 'window'>;
+
 /**
  * Open the window on the Index Page, shown unless `hidden` says the App starts
  * in the Tray. `refresh` asks the Host for its Plugins again; the answer comes
- * back through `told`.
+ * back through `told`, and it is asked after every change the Settings View
+ * makes, so the Tray shows it too.
  */
-export function openWindow(host: HostAt, refresh: () => void, hidden: boolean): Shown {
+export function openWindow(
+  host: HostAt,
+  refresh: () => void,
+  hidden: boolean,
+  settingsNeeds: SettingsNeeds,
+): Shown {
   const window = new BaseWindow({
     title: TITLE,
     width: WIDTH,
@@ -114,6 +124,10 @@ export function openWindow(host: HostAt, refresh: () => void, hidden: boolean): 
   let switching = false;
   /** Whether the Settings View is shown in place of the content views. */
   let setting = false;
+  /** What became of the last change the Settings View asked for. */
+  let outcome: Outcome | undefined;
+  /** Whether a change the Settings View asked for is still being made. */
+  let busy = false;
   /** What went wrong with the last thing asked for, until the next one. */
   let fault: string | undefined;
   /** Every Plugin the Host last named, in the Plugin Order. */
@@ -173,9 +187,13 @@ export function openWindow(host: HostAt, refresh: () => void, hidden: boolean): 
         loadPage(switcher, list);
       }
     }
-    if (setting && settingsSaid === '') {
-      settingsSaid = settingsPage();
-      loadPage(settings, settingsSaid);
+    if (setting) {
+      // Read again each time, so a change from a terminal or the Tray shows.
+      const view = settingsPage({ ...readShown(settingsNeeds.home), outcome, busy });
+      if (view !== settingsSaid) {
+        settingsSaid = view;
+        loadPage(settings, view);
+      }
     }
     layout();
   };
@@ -310,16 +328,39 @@ export function openWindow(host: HostAt, refresh: () => void, hidden: boolean): 
       setting = !setting;
       switching = false;
       fault = undefined;
+      outcome = undefined;
       redraw();
       if (setting) settings.webContents.focus();
+    } else if (asked.kind !== 'nothing' && !busy) {
+      // A setting. One change at a time: a wsl Place can take a while to add.
+      busy = true;
+      redraw();
+      void change(asked, { ...settingsNeeds, window: () => window }).then((said) => {
+        busy = false;
+        outcome = said;
+        refresh();
+        redraw();
+      });
     }
   };
+
+  /** What only the Settings View may ask for: a change to a setting. */
+  const SETTING: ReadonlySet<Asked['kind']> = new Set([
+    'logon',
+    'place-add',
+    'place-remove',
+    'shelf',
+    'shelf-choose',
+  ]);
 
   const ask = (event: IpcMainEvent, said: unknown): void => {
     // Only the App's own views carry the preload. The check is here as well,
     // so that the rule does not rest on the preload alone.
     const own = [strip, switcher, settings].some((view) => view.webContents === event.sender);
-    if (own) act(readAsked(said));
+    if (!own) return;
+    const asked = readAsked(said);
+    if (SETTING.has(asked.kind) && event.sender !== settings.webContents) return;
+    act(asked);
   };
   ipcMain.on(ASK_CHANNEL, ask);
 

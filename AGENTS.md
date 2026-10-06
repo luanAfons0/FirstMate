@@ -192,6 +192,10 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/addresses.ts the Host's addresses, and which owner each belongs to.
   src/host-lists.ts what /plugins.json says, as the App reads it.
   src/tray.ts      the Tray: the marks, the menu, and start at logon.
+  src/logon.ts     start at logon: the Run entry setup writes too.
+  src/settings.ts  what the Settings View shows, and the changes it asks for,
+                   made through core in the main process.
+  src/settings-view.ts the Settings View, as a page the App writes.
   src/notices.ts   Notices, as Windows notifications under the App's own ID.
   src/shortcuts.ts the Shortcuts, held with globalShortcut.
   src/popup.ts     the Popup a Shortcut opens.

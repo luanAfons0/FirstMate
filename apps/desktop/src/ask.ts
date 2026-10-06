@@ -28,6 +28,21 @@ export type Asked =
   | { readonly kind: 'open'; readonly name: string }
   /** Open the Settings View, or close it when it is open. */
   | { readonly kind: 'settings' }
+  /** Turn start at logon on or off. */
+  | { readonly kind: 'logon'; readonly on: boolean }
+  /** Add a Place: a local one, or a `wsl` one in this distribution. */
+  | {
+      readonly kind: 'place-add';
+      readonly name: string;
+      readonly placeKind: string;
+      readonly distribution?: string;
+    }
+  /** Remove a Place. */
+  | { readonly kind: 'place-remove'; readonly name: string }
+  /** Move a Place's Shelf to this directory. */
+  | { readonly kind: 'shelf'; readonly place: string; readonly directory: string }
+  /** Ask the operator for a folder, and move a Place's Shelf there. */
+  | { readonly kind: 'shelf-choose'; readonly place: string }
   /** Nothing the App knows. Nothing happens. */
   | { readonly kind: 'nothing' };
 
@@ -42,24 +57,67 @@ export const ASK = {
 
 /** The words that ask to show one Plugin Page. */
 export function openAsk(name: string): string {
-  return `open/${encodeURIComponent(name)}`;
+  return said('open', name);
+}
+
+/** The words that ask to turn start at logon on or off. */
+export function logonAsk(on: boolean): string {
+  return said('logon', on ? 'on' : 'off');
+}
+
+/** The words that ask to remove a Place. */
+export function placeRemoveAsk(name: string): string {
+  return said('place-remove', name);
+}
+
+/** The words that ask for a folder for a Place's Shelf. */
+export function shelfChooseAsk(place: string): string {
+  return said('shelf-choose', place);
+}
+
+/**
+ * The first words of an ask whose last part the page fills in from what the
+ * operator typed: `place-add/<name>/<kind>[/<distribution>]` and
+ * `shelf/<place>/<directory>`. The page joins each part encoded.
+ */
+export const TYPED = { placeAdd: 'place-add', shelf: 'shelf' } as const;
+
+/** Words, with every part encoded, so that a slash in a part stays inside it. */
+function said(kind: string, ...parts: readonly string[]): string {
+  return [kind, ...parts.map(encodeURIComponent)].join('/');
 }
 
 /**
  * What a view asked for. It never throws: what it cannot read asks for
- * nothing. A Plugin Name is handed on as it was asked for, and the main
- * process opens it only when the Host named it.
+ * nothing. A name or a path is handed on as it was asked for: the main process
+ * opens a Plugin only when the Host named it, and `core` checks everything
+ * else the Settings View asks to write, as it checks a terminal's.
  */
 export function readAsked(said: unknown): Asked {
   if (typeof said !== 'string') return { kind: 'nothing' };
   for (const kind of Object.values(ASK)) {
     if (said === kind) return { kind };
   }
-  const open = /^open\/([^/]+)$/.exec(said);
-  if (open?.[1] === undefined) return { kind: 'nothing' };
+  const [kind, ...encoded] = said.split('/');
+  let parts: string[];
   try {
-    return { kind: 'open', name: decodeURIComponent(open[1]) };
+    parts = encoded.map(decodeURIComponent);
   } catch {
     return { kind: 'nothing' };
   }
+  const [first, second, third, ...more] = parts;
+  if (first === undefined || first === '' || more.length > 0) return { kind: 'nothing' };
+  if (second === undefined) {
+    if (kind === 'open') return { kind, name: first };
+    if (kind === 'logon' && (first === 'on' || first === 'off'))
+      return { kind, on: first === 'on' };
+    if (kind === 'place-remove') return { kind, name: first };
+    if (kind === 'shelf-choose') return { kind, place: first };
+  } else if (third === undefined) {
+    if (kind === 'place-add') return { kind, name: first, placeKind: second };
+    if (kind === 'shelf') return { kind, place: first, directory: second };
+  } else if (kind === 'place-add') {
+    return { kind, name: first, placeKind: second, distribution: third };
+  }
+  return { kind: 'nothing' };
 }

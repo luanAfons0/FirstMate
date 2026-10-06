@@ -1,5 +1,6 @@
 /**
- * The App's own pages: the strip, the switcher and the Settings View.
+ * The App's own pages: the strip and the switcher, and what every one of the
+ * App's pages shares. The Settings View is `settings-view.ts`.
  *
  * The strip says where the window is as a breadcrumb, FirstMate and then the
  * Plugin that is open, and each part goes somewhere: FirstMate to the Index
@@ -154,36 +155,11 @@ addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) clos
 }
 
 /**
- * The Settings View, until it holds the settings (#141). It names the commands
- * that change each setting, because a terminal is where they change today.
- */
-export function settingsPage(): string {
-  return page(
-    'Settings',
-    settingsStyles(),
-    `<main>
-<h1>Settings</h1>
-<p>The settings are changed from a terminal. Each command asks FirstMate to read them again.</p>
-<dl>
-<dt>The Shelf</dt><dd><code>firstmate shelf [dir]</code></dd>
-<dt>Shortcuts</dt><dd><code>firstmate bind &lt;keys&gt; &lt;plugin&gt; [path]</code>,
-<code>firstmate unbind &lt;keys&gt;</code></dd>
-<dt>The Plugin Order</dt><dd><code>firstmate order &lt;name&gt; &lt;position&gt;</code></dd>
-<dt>Grants</dt><dd><code>firstmate grant &lt;from&gt; &lt;to&gt;</code>,
-<code>firstmate revoke &lt;from&gt; &lt;to&gt;</code></dd>
-</dl>
-<p>Start at logon is in the menu of FirstMate's icon in the notification area.</p>
-</main>`,
-    '',
-  );
-}
-
-/**
  * One whole page: its policy, its style, its body, and the one script every
  * page shares, which sends a click on anything with `data-ask` to the main
  * process.
  */
-function page(title: string, style: string, body: string, script: string): string {
+export function page(title: string, style: string, body: string, script: string): string {
   return `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -270,21 +246,8 @@ function switcherStyles(): string {
   .none { margin: 0; padding: 10px; color: #8b8f97; }`;
 }
 
-function settingsStyles(): string {
-  return `:root { color-scheme: dark; }
-  html, body { margin: 0; background: #17181a; }
-  body { color: #d6d8dc; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
-  main { max-width: 640px; padding: 24px 28px; }
-  h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
-  p { color: #b4b8bf; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; }
-  dt { color: #8b8f97; }
-  dd { margin: 0; }
-  code { font: 13px/1.4 ui-monospace, Consolas, monospace; color: #d6d8dc; }`;
-}
-
-/** A Plugin Name is not the App's to trust, so it is written as text. */
-function escaped(text: string): string {
+/** A Plugin Name, or anything else read from a file, is written as text. */
+export function escaped(text: string): string {
   return text
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
