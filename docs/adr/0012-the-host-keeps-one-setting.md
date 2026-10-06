@@ -44,7 +44,7 @@ The day a graphical interface should move the Shelf, it belongs in a chrome the 
 
 ## Amended: the App keeps the operator's permission answers (2.0)
 
-A Plugin Page may ask for the microphone or a capture of the screen or a window, and nothing else (ADR-0020). The first time a Plugin asks for one, the App asks the operator in a dialog of its own, naming the Plugin, and keeps the answer under `permissions` in `settings.json`, by Plugin Name, so it is asked once and not on every call.
+A Plugin Page may ask for the microphone or a capture of the screen or a window, and nothing else (ADR-0020). Writing to the clipboard it is given unasked, as any web page is, because a "copy" button needs it and it reaches no device; that is no setting and nothing is kept. The first time a Plugin asks for one, the App asks the operator in a dialog of its own, naming the Plugin, and keeps the answer under `permissions` in `settings.json`, by Plugin Name, so it is asked once and not on every call.
 
 It is written by the App's main process and nowhere else. The rule above still holds where it matters: no address on the Host writes it, no page can reach the code that does, and no page can answer for the operator, because the dialog is the App's own window and not a page. A page can only ask, and asking is what a page is allowed to do. The main process reads the other settings first and writes them back unchanged, as every command does.
 
