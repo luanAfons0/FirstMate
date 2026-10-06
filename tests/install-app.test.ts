@@ -4,14 +4,17 @@
  * It downloads the installer and its checksum from the GitHub Release of its
  * version, refuses an installer that does not match, runs the one that does
  * silently, and opens the App; an App of that version, or a newer one, is only
- * opened (ADR-0023). Every test runs against a fake Release and a fake
- * Windows, `tests/helpers/windows.ts`: WSL on Linux, and Windows itself on
- * Windows.
+ * opened (ADR-0023). The Windows App's tests run against a fake Release and
+ * a fake Windows, `tests/helpers/windows.ts`: WSL on Linux, and Windows itself
+ * on Windows. On Linux outside WSL the App is the AppImage, and its tests run
+ * against a fake Release and a home of their own, `tests/helpers/linux.ts`.
  */
 import assert from 'node:assert/strict';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile, stat, utimes } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import test from 'node:test';
 import { firstmate, makeHome } from './helpers/host.ts';
+import { fakeLinux } from './helpers/linux.ts';
 import { fakeWindows } from './helpers/windows.ts';
 
 test('desktop downloads the App of its own version, checks it, installs it and opens it', async (t) => {
@@ -108,24 +111,144 @@ test('a version with no Release is refused, and nothing runs', async (t) => {
   assert.ok(!(await windows.calls()).some((line) => line.startsWith('FirstMate')));
 });
 
-test('desktop says where it belongs on a Linux that is not WSL', async (t) => {
-  if (process.platform !== 'linux') {
-    t.skip('this machine is Windows, or has no WSL to be outside of');
-    return;
-  }
-  const windows = await fakeWindows(t);
+const NOT_LINUX = process.platform !== 'linux' && 'the AppImage is the Linux form of the App';
+
+test(
+  'on Linux, desktop downloads the AppImage of its own version, checks it, installs it and opens it',
+  { skip: NOT_LINUX },
+  async (t) => {
+    const linux = await fakeLinux(t);
+    const home = await makeHome(t);
+
+    const run = await firstmate(home, ['desktop'], linux.env);
+
+    assert.equal(run.code, 0, run.stderr);
+    const appImage = `FirstMate-${linux.version}.AppImage`;
+    assert.deepEqual(linux.asked, [
+      `/v${linux.version}/${appImage}.sha256`,
+      `/v${linux.version}/${appImage}`,
+    ]);
+    assert.equal((await stat(linux.program)).mode & 0o111, 0o111, 'the AppImage is executable');
+    assert.equal(await readFile(linux.versionFile, 'utf8'), `${linux.version}\n`);
+    await linux.until(new RegExp(`^FirstMate\\.AppImage ${linux.version}`));
+    assert.match(
+      run.stdout,
+      new RegExp(`installed FirstMate ${linux.version} at ${linux.program}, and opened it\\.\\n$`),
+    );
+    assert.deepEqual(
+      await readdir(dirname(linux.program)),
+      ['FirstMate.AppImage', 'FirstMate.version'],
+      'nothing else is left beside it',
+    );
+  },
+);
+
+test(
+  'on Linux, an AppImage that does not match its checksum is refused, and nothing runs',
+  { skip: NOT_LINUX },
+  async (t) => {
+    const linux = await fakeLinux(t, 'wrong checksum');
+    const home = await makeHome(t);
+
+    const run = await firstmate(home, ['desktop'], linux.env);
+
+    assert.equal(run.code, 3, 'a value that is not what it must be');
+    assert.match(
+      run.stderr,
+      /^firstmate: the AppImage from \S+ does not match its published SHA-256, so it was not run\.\n$/,
+    );
+    await assert.rejects(stat(dirname(linux.program)), { code: 'ENOENT' }, 'nothing was written');
+    assert.deepEqual(await linux.calls(), [], 'no App was opened');
+  },
+);
+
+test('on Linux, an AppImage of the same version is only opened', { skip: NOT_LINUX }, async (t) => {
+  const linux = await fakeLinux(t);
+  await linux.install(linux.version);
   const home = await makeHome(t);
 
-  const run = await firstmate(home, ['desktop'], { ...windows.env, WSL_DISTRO_NAME: '' });
+  const run = await firstmate(home, ['desktop'], linux.env);
 
-  assert.equal(run.code, 1);
-  assert.equal(
-    run.stderr,
-    'firstmate: the FirstMate App runs on Windows. Run firstmate desktop on Windows, or inside WSL.\n',
-  );
-  assert.equal(run.stdout, '', 'a refusal is not news');
-  assert.deepEqual(await windows.calls(), [], 'it asked Windows nothing');
+  assert.equal(run.code, 0, run.stderr);
+  assert.deepEqual(linux.asked, [], 'nothing was downloaded');
+  await linux.until(new RegExp(`^FirstMate\\.AppImage ${linux.version}`));
+  assert.equal(run.stdout, `firstmate: opened FirstMate ${linux.version}.\n`);
 });
+
+test(
+  'on Linux, a newer AppImage is opened and not taken back to this version',
+  { skip: NOT_LINUX },
+  async (t) => {
+    const linux = await fakeLinux(t);
+    await linux.install('999.0.0');
+    const home = await makeHome(t);
+
+    const run = await firstmate(home, ['desktop'], linux.env);
+
+    assert.equal(run.code, 0, run.stderr);
+    assert.deepEqual(linux.asked, []);
+    await linux.until(/^FirstMate\.AppImage 999\.0\.0/);
+    assert.match(run.stdout, /opened FirstMate 999\.0\.0, which is newer than this command line/);
+    assert.equal(await readFile(linux.versionFile, 'utf8'), '999.0.0\n');
+  },
+);
+
+test('on Linux, an older AppImage is replaced by this version', { skip: NOT_LINUX }, async (t) => {
+  const linux = await fakeLinux(t);
+  await linux.install('0.0.1');
+  const home = await makeHome(t);
+
+  const run = await firstmate(home, ['desktop'], linux.env);
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.equal(linux.asked.length, 2, 'the checksum and the AppImage were downloaded');
+  await linux.until(new RegExp(`^FirstMate\\.AppImage ${linux.version}`));
+  assert.ok(
+    !(await linux.calls()).some((line) => line.startsWith('FirstMate.AppImage 0.0.1')),
+    'the older App was not opened',
+  );
+  assert.equal(await readFile(linux.versionFile, 'utf8'), `${linux.version}\n`);
+  assert.match(run.stdout, new RegExp(`installed FirstMate ${linux.version}`));
+});
+
+test(
+  'on Linux, an AppImage that updated itself is opened and not replaced',
+  { skip: NOT_LINUX },
+  async (t) => {
+    const linux = await fakeLinux(t);
+    await linux.install('0.0.1');
+    // The App replaced its AppImage after desktop wrote the version beside it.
+    const later = new Date(Date.now() + 60_000);
+    await utimes(linux.program, later, later);
+    const home = await makeHome(t);
+
+    const run = await firstmate(home, ['desktop'], linux.env);
+
+    assert.equal(run.code, 0, run.stderr);
+    assert.deepEqual(linux.asked, [], 'nothing was downloaded');
+    await linux.until(/^FirstMate\.AppImage 0\.0\.1/);
+    assert.equal(
+      run.stdout,
+      'firstmate: opened FirstMate, which has updated itself since it was installed.\n',
+    );
+  },
+);
+
+test(
+  'on Linux, a version with no Release is refused, and nothing runs',
+  { skip: NOT_LINUX },
+  async (t) => {
+    const linux = await fakeLinux(t, 'none');
+    const home = await makeHome(t);
+
+    const run = await firstmate(home, ['desktop'], linux.env);
+
+    assert.equal(run.code, 4, 'a thing that is not there');
+    assert.match(run.stderr, new RegExp(`there is no FirstMate ${linux.version} to install`));
+    await assert.rejects(stat(linux.program), { code: 'ENOENT' }, 'nothing was installed');
+    assert.deepEqual(await linux.calls(), [], 'no App was opened');
+  },
+);
 
 test('desktop takes nothing', async (t) => {
   const home = await makeHome(t);
