@@ -378,8 +378,9 @@ command line reaches it as it reaches any other. Only one App runs for one
 home; a second start shows the first window. When another program holds the
 port, the App says so and does not start. Closing the window hides it: the
 App and every Plugin keep running, and the Tray brings the window back. Quit,
-in the Tray's menu, ends the App and stops every Plugin Server. Each Plugin Server runs on the App's own
-executable as Node, so a Node Plugin needs no Node of its own.
+in the Tray's menu, ends the App and stops every Plugin Server. Each Plugin
+Server runs on the App's own executable as Node, so a Node Plugin needs no Node
+of its own.
 
 The window has the strip at the top: FirstMate, then what is open, which opens
 the switcher with every Plugin in the Plugin Order; "open in browser", which
@@ -405,6 +406,13 @@ frame, on top of the others. It hides when it loses focus, on Esc, on its own
 Shortcut again, and when its page goes to any address other than its own.
 Keys another program already holds are named in a Notice, never dropped in
 silence.
+
+A Plugin Page is refused every permission, camera, location and notifications
+among them, except the microphone and a capture of the screen or a window with
+its sound. The first time a Plugin asks for one, the App asks you, naming the
+Plugin, and keeps your answer under `permissions` in `settings.json`. To be
+asked again, take that Plugin out of `permissions`. For a capture, the App
+then asks which screen or window to give.
 
 ## Configure it
 
@@ -503,9 +511,9 @@ Host changes the order
   the absolute path of its directory, and its Grants.
 - `runtime.json` — the port the Host listened on and the token it minted. It is
   rewritten at every start and removed when the Host stops.
-- `settings.json` — the three settings the Host remembers: the Shelf, the
-  Shortcuts and the Plugin Order. It is absent until you choose a Shelf, bind
-  a Shortcut or move a Plugin.
+- `settings.json` — the settings FirstMate remembers: the Shelf, the Places,
+  the Shortcuts, the Plugin Order, and the App's permission answers. It is
+  absent until you choose one of them.
 
 ## Addresses
 

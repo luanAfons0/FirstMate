@@ -41,3 +41,12 @@ watching: if a second external binary is ever wanted, that is the moment to ask
 whether fetching belongs in the Host at all, or in a Plugin.
 
 The day a graphical interface should move the Shelf, it belongs in a chrome the Host does not serve — the strip above the window's content view (ADR-0011) — which moves it by running the command line, not by calling the Host.
+
+## Amended: the App keeps the operator's permission answers (2.0)
+
+A Plugin Page may ask for the microphone or a capture of the screen or a window, and nothing else (ADR-0020). The first time a Plugin asks for one, the App asks the operator in a dialog of its own, naming the Plugin, and keeps the answer under `permissions` in `settings.json`, by Plugin Name, so it is asked once and not on every call.
+
+This is the one setting not written from a terminal, and it is written by the App's main process and nowhere else. The rule above still holds where it matters: no address on the Host writes it, no page can reach the code that does, and no page can answer for the operator, because the dialog is the App's own window and not a page. A page can only ask, and asking is what a page is allowed to do. The main process reads the other settings first and writes them back unchanged, as every command does.
+
+An answer is kept until the operator takes it out of the file. A damaged answer fails every command, as a damaged Shortcut does, because an answer read wrongly could let a Plugin Page reach a device the operator refused.
+

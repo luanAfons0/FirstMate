@@ -12,8 +12,9 @@
  *
  * This file only wires the parts together. The window and its views are
  * `window.ts`, the Tray is `tray.ts`, Notices are `notices.ts`, and the
- * Shortcuts and their Popup are `shortcuts.ts` and `popup.ts`. Closing the window hides it; Quit,
- * from the Tray, ends the App.
+ * Shortcuts and their Popup are `shortcuts.ts` and `popup.ts`, and what a
+ * Plugin Page may use of the machine is `permissions.ts`. Closing the window
+ * hides it; Quit, from the Tray, ends the App.
  */
 import { join } from 'node:path';
 import { app, dialog, Menu } from 'electron';
@@ -23,6 +24,7 @@ import type { Notice } from '@firstmate/host/notices';
 import { start, type RunningHost } from '@firstmate/host/start';
 import { askForPlugins, askForShortcuts } from './host-lists.ts';
 import { nameTheApp, showNotices } from './notices.ts';
+import { guardPermissions } from './permissions.ts';
 import { makePopup } from './popup.ts';
 import { holdShortcuts } from './shortcuts.ts';
 import { holdTray, type HeldTray } from './tray.ts';
@@ -85,11 +87,18 @@ function main(): void {
           tray?.told(plugins);
         });
       };
+      const notices = showNotices((path) => shown?.open(path));
+      // Every permission is settled before the first page can ask for one.
+      guardPermissions({
+        host: running,
+        home: config.home,
+        window: () => shown?.window,
+        say: (sentence) => notices.say(sentence),
+      });
       // Started at logon, the App begins in the Tray with the window put away.
       const window = openWindow(running, refresh, process.argv.includes(AT_LOGON));
       shown = window;
       tray = holdTray({ open: (path) => window.open(path), reveal: () => window.reveal() });
-      const notices = showNotices((path) => window.open(path));
       notify = (notice) => notices.show(notice);
       for (const notice of early.splice(0)) notices.show(notice);
       const popup = makePopup({
