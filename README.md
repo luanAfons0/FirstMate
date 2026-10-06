@@ -376,8 +376,9 @@ The App's Host is the Host above: the same home, `%APPDATA%\FirstMate` unless
 `FIRSTMATE_HOME` moves it, the same port and the same runtime file, so the
 command line reaches it as it reaches any other. Only one App runs for one
 home; a second start shows the first window. When another program holds the
-port, the App says so and does not start. Closing the window quits the App,
-and Quit stops every Plugin Server. Each Plugin Server runs on the App's own
+port, the App says so and does not start. Closing the window hides it: the
+App and every Plugin keep running, and the Tray brings the window back. Quit,
+in the Tray's menu, ends the App and stops every Plugin Server. Each Plugin Server runs on the App's own
 executable as Node, so a Node Plugin needs no Node of its own.
 
 The window has the strip at the top: FirstMate, then what is open, which opens
@@ -386,6 +387,12 @@ gives what the window shows to your browser; and the gear, which opens the
 Settings View. Each Plugin Page you open has a view of its own and stays
 loaded until the App quits, so switching to another Plugin and back loses
 nothing. A link that leaves FirstMate opens in your browser.
+
+The Tray is FirstMate's icon in the notification area. It wears the stopped
+mark while any Plugin is Stopped. A click on it brings the window up, and its
+menu opens the Index Page or any Plugin, turns **Start at logon** on and off,
+and quits. Start at logon is off until you turn it on; the App it starts
+begins in the Tray, with the window put away.
 
 ## Configure it
 

@@ -12,7 +12,7 @@ import { admitted, type HostAt } from './addresses.ts';
 const ASK_TIMEOUT_MS = 5_000;
 
 /** What the Host says about one Plugin. */
-type PluginSeen = {
+export type PluginSeen = {
   /** The Plugin Name, which is also its address. */
   readonly name: string;
   /** Whether it ships a Plugin Page, so whether there is anything to open. */

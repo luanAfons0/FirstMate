@@ -11,13 +11,16 @@
  * ends; it never starts a second Host.
  *
  * This file only wires the parts together. The window and its views are
- * `window.ts`.
+ * `window.ts`, and the Tray is `tray.ts`. Closing the window hides it; Quit,
+ * from the Tray, ends the App.
  */
 import { join } from 'node:path';
 import { app, dialog, Menu } from 'electron';
 import { readConfig, type Config } from '@firstmate/core/config';
+import { AT_LOGON } from '@firstmate/core/logon';
 import { start, type RunningHost } from '@firstmate/host/start';
 import { askForPlugins } from './host-lists.ts';
+import { holdTray, type HeldTray } from './tray.ts';
 import { openWindow, type Shown } from './window.ts';
 
 /** The window's title, and the name every sentence the App says is signed with. */
@@ -40,12 +43,13 @@ function main(): void {
   }
 
   let shown: Shown | undefined;
+  let tray: HeldTray | undefined;
   app.on('second-instance', () => shown?.reveal());
 
-  // There is no Tray yet, so the window is the App: closing it quits.
-  app.on('window-all-closed', () => app.quit());
-
-  const host = start(config);
+  // What the Host says about its Plugins is asked again whenever it may have
+  // changed, and the window and the Tray are both told the answer.
+  let refresh = (): void => {};
+  const host = start(config, { onChange: () => refresh() });
   stopOnQuit(host);
 
   Promise.all([host, app.whenReady()]).then(
@@ -53,10 +57,16 @@ function main(): void {
       // The Index Page and each Plugin Page are whole pages, so the window
       // adds no menu of its own above them (ADR-0008).
       Menu.setApplicationMenu(null);
-      const refresh = (): void => {
-        void askForPlugins(running).then((plugins) => shown?.told(plugins));
+      refresh = () => {
+        void askForPlugins(running).then((plugins) => {
+          shown?.told(plugins);
+          tray?.told(plugins);
+        });
       };
-      shown = openWindow(running, refresh);
+      // Started at logon, the App begins in the Tray with the window put away.
+      const window = openWindow(running, refresh, process.argv.includes(AT_LOGON));
+      shown = window;
+      tray = holdTray({ open: (path) => window.open(path), reveal: () => window.reveal() });
       refresh();
     },
     (fault: unknown) => {

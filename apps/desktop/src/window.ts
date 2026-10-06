@@ -19,7 +19,7 @@
  * window or the same one, opens in the operator's own browser.
  */
 import { fileURLToPath } from 'node:url';
-import { BaseWindow, ipcMain, shell, WebContentsView, type IpcMainEvent } from 'electron';
+import { app, BaseWindow, ipcMain, shell, WebContentsView, type IpcMainEvent } from 'electron';
 import {
   admitted,
   browserAddress,
@@ -34,6 +34,7 @@ import {
 } from './addresses.ts';
 import { ASK_CHANNEL, readAsked, type Asked } from './ask.ts';
 import type { Plugins } from './host-lists.ts';
+import { markPath } from './marks.ts';
 import {
   dataAddress,
   settingsPage,
@@ -72,10 +73,11 @@ export type Shown = {
 };
 
 /**
- * Open the window on the Index Page. `refresh` asks the Host for its Plugins
- * again; the answer comes back through `told`.
+ * Open the window on the Index Page, shown unless `hidden` says the App starts
+ * in the Tray. `refresh` asks the Host for its Plugins again; the answer comes
+ * back through `told`.
  */
-export function openWindow(host: HostAt, refresh: () => void): Shown {
+export function openWindow(host: HostAt, refresh: () => void, hidden: boolean): Shown {
   const window = new BaseWindow({
     title: TITLE,
     width: WIDTH,
@@ -83,7 +85,20 @@ export function openWindow(host: HostAt, refresh: () => void): Shown {
     minWidth: 480,
     minHeight: 320,
     backgroundColor: '#17181a',
+    icon: markPath('running'),
     show: false,
+  });
+
+  // Closing the window hides it. The Tray holds the App, and every Plugin
+  // keeps running; Quit is what ends it, and only then does the window close.
+  let quitting = false;
+  app.on('before-quit', () => {
+    quitting = true;
+  });
+  window.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    window.hide();
   });
 
   /** The owner whose view is shown: a Plugin Name, or `INDEX`. */
@@ -313,7 +328,7 @@ export function openWindow(host: HostAt, refresh: () => void): Shown {
   });
 
   open('/');
-  window.show();
+  if (!hidden) window.show();
 
   return {
     window,

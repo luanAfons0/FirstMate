@@ -65,8 +65,14 @@ export type Notices = {
 /**
  * Open an empty queue. `noticeMs` is how long a Notice lives, and it comes from
  * `FIRSTMATE_NOTICE_MS` so that a test can prove the expiry in milliseconds.
+ * `heard`, when given, is told of each Notice the queue takes, so that the App,
+ * which holds the Host in its own process, needs no poll (ADR-0014).
  */
-export function openNotices(noticeMs: number, now: () => number = Date.now): Notices {
+export function openNotices(
+  noticeMs: number,
+  now: () => number = Date.now,
+  heard: (notice: Notice) => void = () => {},
+): Notices {
   const held: { readonly notice: Notice; readonly at: number }[] = [];
   // When each Plugin last had a Notice accepted, for the gap between two.
   const lastSent = new Map<string, number>();
@@ -74,8 +80,10 @@ export function openNotices(noticeMs: number, now: () => number = Date.now): Not
 
   const hold = (title: string, body: string, address: string): void => {
     latest += 1;
-    held.push({ notice: { sequence: latest, title, body, address }, at: now() });
+    const notice = { sequence: latest, title, body, address };
+    held.push({ notice, at: now() });
     if (held.length > QUEUE_LIMIT) held.splice(0, held.length - QUEUE_LIMIT);
+    heard(notice);
   };
 
   return {

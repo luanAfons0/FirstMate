@@ -35,8 +35,33 @@ export type RunningHost = {
   stop(): Promise<void>;
 };
 
+/**
+ * What the program that holds the Host hears from it, in its own process. The
+ * App uses it to keep the Tray right without asking the Host on a timer.
+ */
+export type HostHooks = {
+  /**
+   * Called after anything that can change what `/plugins.json` says: a
+   * reload, a restart, and every Notice, because a Notice is how the Host
+   * says that a Plugin went Stopped.
+   */
+  readonly onChange?: () => void;
+};
+
 /** Start the Host for this Config, and resolve once it listens and has said so. */
-export async function start(config: Config = readConfig()): Promise<RunningHost> {
+export async function start(
+  config: Config = readConfig(),
+  hooks: HostHooks = {},
+): Promise<RunningHost> {
+  // A hook that throws is the holder's fault, and must not break the Host.
+  const tell = (hook: (() => void) | undefined): void => {
+    try {
+      hook?.();
+    } catch (fault: unknown) {
+      console.error('FirstMate: a hook of the program that holds the Host failed.', fault);
+    }
+  };
+
   const plugins = readPlugins(config.home);
   // The token lives in memory and in the runtime file, and is minted fresh
   // every start, so yesterday's address is worth nothing today.
@@ -45,7 +70,7 @@ export async function start(config: Config = readConfig()): Promise<RunningHost>
   keepLog(config.home, token);
 
   // One queue of Notices for the run. It lives in memory and dies with it.
-  const notices = openNotices(config.noticeMs);
+  const notices = openNotices(config.noticeMs, Date.now, () => tell(hooks.onChange));
 
   // Every Plugin Server starts before the first request can reach one.
   const supervisor = await superviseAll(
@@ -63,6 +88,7 @@ export async function start(config: Config = readConfig()): Promise<RunningHost>
     const now = readPlugins(config.home);
     const moved = readConfig().shelf;
     await supervisor.hold(now);
+    tell(hooks.onChange);
     shelf = moved;
     console.log(`FirstMate: reloaded ${now.length} Plugin(s) from ${registryPath(config.home)}`);
   };
@@ -79,7 +105,11 @@ export async function start(config: Config = readConfig()): Promise<RunningHost>
     order: () => readSettings(config.home).order ?? [],
     notices: (after) => notices.after(after),
     reload,
-    restart: (name) => supervisor.restart(name),
+    restart: async (name) => {
+      const restarted = await supervisor.restart(name);
+      tell(hooks.onChange);
+      return restarted;
+    },
   }).catch(async (fault: unknown) => {
     await supervisor.stopAll();
     throw portTaken(fault, config.port) ?? fault;
