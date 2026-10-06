@@ -339,10 +339,11 @@ export function written(
 /**
  * One whole page: its policy, the shared look and its own style, the sprite of
  * its icons, its body, and the one script every page shares. The sprite sits
- * outside the body, so a new body never sends it again. That script sends a click on
- * anything with `data-ask` to the main process, or what its `data-keys` says
- * when the click came from the keyboard, and puts each body the main process sends in place of the
- * one shown, changing only what differs.
+ * outside the body, so a new body never sends it again. That script sends a
+ * click on anything with `data-ask` to the main process, or what its
+ * `data-keys` says when the click came from the keyboard. It puts each body
+ * the main process sends in place of the one shown, changing only what
+ * differs.
  */
 function page(
   title: string,
