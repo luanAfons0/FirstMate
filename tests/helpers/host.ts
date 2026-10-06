@@ -256,7 +256,9 @@ export async function build(t: TestContext): Promise<string> {
 
 /**
  * Package the App as a release packages it, installer and all, into a
- * directory of this test's own, and return that directory. It is removed when
+ * directory of this test's own, and return that directory. Packaging makes
+ * the packages of the system the test runs on: the installer on Windows, the
+ * AppImage and the deb on Linux. It is removed when
  * the test ends. The App's own `out/` is rewritten on the way, as every build
  * of it does.
  */

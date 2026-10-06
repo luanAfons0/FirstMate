@@ -138,8 +138,10 @@ export function guardPermissions(needs: PermissionNeeds): void {
         if (!allowed) return refuse();
         const source = await chooseSource(plugin, needs.window());
         if (source === undefined) return refuse();
-        // The sound of the whole machine, which is how a call is heard.
-        callback({ video: source, ...(request.audioRequested ? { audio: 'loopback' } : {}) });
+        // The sound of the whole machine, which is how a call is heard. Only
+        // Windows lends it; on Linux a capture is the picture alone (ADR-0026).
+        const sound = request.audioRequested && process.platform === 'win32';
+        callback({ video: source, ...(sound ? { audio: 'loopback' } : {}) });
       })
       .catch(refuse);
   });

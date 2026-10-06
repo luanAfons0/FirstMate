@@ -153,10 +153,11 @@ export function openWindow(
     if (STRIP_IS_TITLE_BAR) window.setTitleBarOverlay(titleBar());
   };
   nativeTheme.on('updated', followTheme);
-  // The taskbar button takes its icon from these details, not from the
-  // window's icon, so they name the App's own executable and its mark. Run
-  // from a clone, the executable is Electron's, and the button keeps it.
-  if (app.isPackaged) {
+  // The Windows taskbar button takes its icon from these details, not from
+  // the window's icon, so they name the App's own executable and its mark.
+  // Run from a clone, the executable is Electron's, and the button keeps it.
+  // Only Windows has them (ADR-0026).
+  if (process.platform === 'win32' && app.isPackaged) {
     window.setAppDetails({
       appId: APP_ID,
       appIconPath: process.execPath,

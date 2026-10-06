@@ -1,8 +1,9 @@
-# How the App is packaged: one Windows program, and an installer for it
-# (ADR-0020).
+# How the App is packaged: one program, with an installer for Windows and an
+# AppImage and a deb for Linux (ADR-0020, ADR-0026). Packaging makes the
+# packages of the system it runs on.
 #
-# The installer is NSIS, one click, for this user alone: it writes under
-# %LOCALAPPDATA%\Programs and asks for no administrator. The betas ship
+# The Windows installer is NSIS, one click, for this user alone: it writes
+# under %LOCALAPPDATA%\Programs and asks for no administrator. The betas ship
 # unsigned; the certificate is decided before 2.0.0 final.
 appId: io.github.luanafons0.firstmate
 productName: FirstMate
@@ -49,6 +50,34 @@ nsis:
   # them. It is what electron-builder derives from appId, written down so that
   # nothing moves it unseen: a new GUID is a second App beside the first.
   guid: 97530065-71e0-5fdb-bf30-b8a47e68e176
+# On Linux the App is an AppImage, which electron-updater keeps up to date,
+# and a deb, which the package manager does (ADR-0026). Both take their mark
+# from one large PNG, which the desktop scales to the size it draws.
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: build/icon.png
+  category: Utility
+  # The program, and the deb's package, are named in lower case, as Linux
+  # names a command.
+  executableName: firstmate
+  # The desktop entry is named after desktopName in package.json, which is
+  # the app ID Electron gives its window under Wayland, so the desktop links
+  # the window to the entry and shows the FirstMate mark on it.
+  syncDesktopName: true
+  synopsis: A local plugin host.
+  # A deb names its maintainer. No address is published for the project, so
+  # the name stands alone, and the homepage in package.json says where to ask.
+  maintainer: Luan Afonso
+appImage:
+  artifactName: FirstMate-${version}.${ext}
+# The deb's own install script, electron-builder's, makes chrome-sandbox the
+# setuid helper and gives the App an AppArmor profile, so the Chromium sandbox
+# runs on Ubuntu 24.04 too (ADR-0026).
+deb:
+  packageName: firstmate
+  artifactName: firstmate_${version}_${arch}.${ext}
 # Where a release is published, so that packaging writes the update feed,
 # latest.yml, and the App learns where to look for an update. Packaging
 # publishes nothing itself: the release workflow attaches the files to the

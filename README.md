@@ -694,9 +694,13 @@ Prettier, looks for dead code with knip, and runs every test. CI runs the same
 command. `pnpm typecheck` checks the types alone.
 
 `pnpm build` makes the bundle of `apps/cli` that goes to npm, by hand. The last
-command, on Windows, writes `apps/desktop/dist/FirstMate-Setup-<version>.exe`, a
-one-click installer for you alone that needs no administrator, and the same App,
-uninstalled, in `apps/desktop/dist/win-unpacked/`.
+command packages the App for the system it runs on. On Windows it writes
+`apps/desktop/dist/FirstMate-Setup-<version>.exe`, a one-click installer for you
+alone that needs no administrator, and the same App, uninstalled, in
+`apps/desktop/dist/win-unpacked/`. On Linux it writes
+`apps/desktop/dist/FirstMate-<version>.AppImage` and
+`apps/desktop/dist/firstmate_<version>_<arch>.deb`, and the same App, unpacked,
+in `apps/desktop/dist/linux-unpacked/`.
 
 The repository is a pnpm workspace: `packages/core` and `packages/host` are
 private, and `apps/cli` is the package on npm. Node 24 runs TypeScript without a
@@ -704,5 +708,7 @@ build step, so a clone never holds built output and nothing here compiles.
 Packing bundles `apps/cli`, with `core` and `host` inside it, on the way to npm
 and nowhere else (ADR-0017). `pnpm build` makes the same bundle by hand.
 `apps/desktop` is the App, and it is the one thing a clone builds: Electron
-cannot run a clone's TypeScript. On Windows, `node --test` packages it and
-starts the packaged program, so the suite takes about a minute longer there.
+cannot run a clone's TypeScript. On Windows and on Linux, `node --test` packages
+it and starts the packaged program, so the suite takes about a minute longer
+there. On Linux the App needs a display, and the test skips on a machine with
+none; CI gives it one with `xvfb-run`.

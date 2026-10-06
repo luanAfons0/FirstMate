@@ -1,10 +1,10 @@
 /**
  * The App: the Host in its main process, and one window on the Index Page.
  *
- * The App is the one program a person installs on Windows (ADR-0020). It
- * starts the Host as `node packages/host/src/main.ts` does, with the same
- * home, the same port and the same runtime file, so that the command line and
- * every test reach it the same way. Quit stops the Host through the same
+ * The App is the one program a person installs on Windows or Linux
+ * (ADR-0020, ADR-0026). It starts the Host as `node packages/host/src/main.ts`
+ * does, with the same home, the same port and the same runtime file, so that
+ * the command line and every test reach it the same way. Quit stops the Host through the same
  * `stop()` a signal reaches, so no Plugin Server outlives the App.
  *
  * The window and the Tray show as soon as Electron is ready, before the Host
@@ -43,6 +43,7 @@ const NAME = 'FirstMate';
 main();
 
 function main(): void {
+  holdShortcutsUnderWayland();
   const config = configOrSay();
   if (config === undefined) return;
 
@@ -162,6 +163,18 @@ function main(): void {
       exit(1);
     },
   );
+}
+
+/**
+ * Under Wayland a program holds no key of the whole desktop by itself: it
+ * asks the desktop's portal for its Shortcuts. Electron asks only with this
+ * feature on, and only if it is on before the App is ready. X11 needs
+ * nothing, and ignores it (ADR-0026).
+ */
+function holdShortcutsUnderWayland(): void {
+  if (process.platform === 'linux') {
+    app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+  }
 }
 
 /** The Config, or nothing once the App has said why it cannot read one. */
