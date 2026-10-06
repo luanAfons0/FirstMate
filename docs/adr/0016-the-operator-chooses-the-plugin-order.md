@@ -29,3 +29,7 @@ The window finds the command line in the service unit. `ExecStart` names the Nod
 What the Settings View shows after a drop is the order the Host gives back in `/plugins.json`, never the order the drop made on the page. A move the command refused is said in the strip, and the rows go back to where they were kept.
 
 The Settings View also shows the Shelf, the Shortcuts and the Grants. It reads them from the Host's own files over the distribution's path, with the Host's own readers, as the window already reads the runtime file (ADR-0007), and it changes none of them.
+
+## Amended: the main process writes it (ADR-0026)
+
+ADR-0026 amends this section: the App is one program on Windows and Linux, so its main process changes the Plugin Order through `core`, with no `wsl.exe` and no service unit in the way.

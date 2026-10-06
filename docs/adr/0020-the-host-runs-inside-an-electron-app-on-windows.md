@@ -51,3 +51,7 @@ The App has one automated test. `tests/app.test.ts` packages the App, installer 
 The App ships unsigned for the betas, and Windows may warn before it runs. The certificate is decided before 2.0.0 final.
 
 Electron fetches its binary the first time it runs, not when it is installed, so a clone that never starts the App never fetches it. Packaging fetches the Electron it packs on its own.
+
+## Amended: Windows and Linux (ADR-0026)
+
+ADR-0026 amends this ADR: the App is one program on Windows and on Linux, packed as NSIS, AppImage and deb, and the packaged-App test runs on both.

@@ -24,3 +24,7 @@ Have `setup` turn start at logon on through the App. The App may not be running 
 ADR-0011's one dependency, the window library, no longer exists, and that ADR is superseded by ADR-0020 already.
 
 Note: the bundle now carries `@clack/prompts`, a devDependency, for the questions `setup` asks on a terminal. The package still depends on nothing (ADR-0025).
+
+## Amended: start at logon on each system (ADR-0026)
+
+ADR-0026 amends this ADR: start at logon is one entry on each system, the Run value on Windows and an XDG autostart entry on Linux, and the App and `setup` write the same one.
