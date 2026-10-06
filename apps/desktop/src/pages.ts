@@ -160,8 +160,10 @@ title="Switch Plugin">${hereWords(view.here, view.starting)}${icon('caret-down',
   const pill =
     view.stopped === 0
       ? ''
-      : `<a class="pill" href="#" data-ask="${switcher}"${keys} title="See which Plugins are Stopped">\
-<span class="dot stopped" aria-hidden="true"></span>${view.stopped}<span class="w"> Stopped</span></a>`;
+      : `<a class="pill" href="#" data-ask="${switcher}"${keys} \
+title="See which Plugins are Stopped">\
+<span class="dot stopped" aria-hidden="true"></span>${view.stopped}\
+<span class="w"> Stopped</span></a>`;
   return written(
     'FirstMate',
     stripStyles(),
@@ -387,7 +389,9 @@ addEventListener('click', (event) => {
   event.preventDefault();
   if (asking.getAttribute('aria-disabled') === 'true') return;
   // A click with no pointer behind it came from the keyboard.
-  firstmate.ask(event.detail === 0 && asking.dataset.keys ? asking.dataset.keys : asking.dataset.ask);
+  firstmate.ask(
+    event.detail === 0 && asking.dataset.keys ? asking.dataset.keys : asking.dataset.ask,
+  );
 });
 ${PUT_IN_PLACE}
 ${script}
@@ -402,7 +406,8 @@ ${script}
  * was typed in it, because a changed `value` attribute changes only a field
  * nobody typed in. A box shows what the main process says, not the last click.
  */
-const PUT_IN_PLACE = `const keyOf = (node) => (node instanceof Element ? node.getAttribute('data-key') : null);
+const PUT_IN_PLACE = `const keyOf = (node) =>
+  node instanceof Element ? node.getAttribute('data-key') : null;
 const alike = (a, b) =>
   a.nodeType === b.nodeType && a.nodeName === b.nodeName && keyOf(a) === keyOf(b);
 const patch = (live, next) => {
@@ -467,7 +472,9 @@ function stripStyles(): string {
   .crumb.here { flex: 0 1 auto; overflow: hidden; color: var(--ink); }
   .crumb.here b { font: 600 12.5px/1 var(--mono); overflow: hidden; text-overflow: ellipsis; }
   .crumb.here .plain { font-weight: 600; }
-  .crumb .caret { width: 12px; height: 12px; color: var(--faint); transition: transform .18s var(--ease); }
+  .crumb .caret {
+    width: 12px; height: 12px; color: var(--faint); transition: transform .18s var(--ease);
+  }
   .crumb[aria-expanded='true'] .caret { transform: rotate(180deg); }
   .sep { width: 12px; height: 12px; color: var(--faint); }
   .drag { flex: 1; align-self: stretch; }
@@ -541,7 +548,9 @@ function switcherStyles(): string {
   .again svg.i { width: 12px; height: 12px; }
   .again:hover { border-color: var(--faint); color: var(--ink); }
   .again:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .again[aria-disabled='true'] { cursor: default; color: var(--muted); border-color: var(--line-2); }
+  .again[aria-disabled='true'] {
+    cursor: default; color: var(--muted); border-color: var(--line-2);
+  }
   .tick { flex: none; width: 14px; color: var(--accent); }
   .tick svg.i { width: 14px; height: 14px; }
   .none { margin: 0; padding: 9px 10px; line-height: 16px; color: var(--muted); font-size: 12.5px; }

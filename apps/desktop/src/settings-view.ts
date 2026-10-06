@@ -94,12 +94,18 @@ ${pane}
 }
 
 function sideLink(section: Section): string {
-  return `<a href="#${section.id}" data-to="${section.id}">${icon(section.icon)}${section.words}</a>`;
+  return (
+    `<a href="#${section.id}" data-to="${section.id}">` +
+    `${icon(section.icon)}${section.words}</a>`
+  );
 }
 
 function outcomeLine(shown: SettingsShown): string {
   if (shown.busy) {
-    return `<div class="outcome" role="status">${icon('circle-notch', 'spin')}<span>Working…</span></div>`;
+    return (
+      `<div class="outcome" role="status">${icon('circle-notch', 'spin')}` +
+      '<span>Working…</span></div>'
+    );
   }
   if (shown.outcome === undefined) return '';
   const { done, sentence } = shown.outcome;
@@ -159,7 +165,8 @@ placeholder="debian" autocomplete="off" spellcheck="false"${name.on}>${name.unde
 <option value="local">local: this machine</option>
 </select>${kind.under}</label>
 <label class="field for-wsl"><span>Distribution</span><input class="input" name="distribution" \
-placeholder="Debian" autocomplete="off" spellcheck="false"${distribution.on}>${distribution.under}</label>
+placeholder="Debian" autocomplete="off" spellcheck="false"${distribution.on}>\
+${distribution.under}</label>
 </div>
 <div class="acts"><button type="button" class="btn" data-add="close">Cancel</button>\
 <button class="btn primary"${disabled(shown.busy)}>Add</button></div>
@@ -194,7 +201,8 @@ data-ask="${escaped(placeRemoveAsk(place.name))}"${disabled(busy)}>${icon('trash
 <form data-typed="${TYPED.shelf}" data-place="${name}">
 <label class="field"><span>Shelf</span><span class="inline">\
 <input class="input mono" name="directory" value="${escaped(place.shelf)}" required \
-autocomplete="off" spellcheck="false" aria-label="The Shelf of ${name}"${shelf.on}${disabled(busy)}>\
+autocomplete="off" spellcheck="false" aria-label="The Shelf of ${name}"\
+${shelf.on}${disabled(busy)}>\
 <button class="btn"${disabled(busy)}>Move</button>${choose}</span>${shelf.under}</label>
 </form>
 </div>`;
@@ -224,7 +232,8 @@ function orderRow(plugin: PluginSeen, position: number, count: number, busy: boo
   const state = plugin.state === 'running' ? '' : STATE_WORDS[plugin.state];
   const button = (by: -1 | 1, where: string, end: boolean) =>
     `<button type="button" class="icon-btn" data-move="${by}" tabindex="-1" \
-aria-label="Move ${name} ${where}"${disabled(busy || end)}>${icon(by < 0 ? 'caret-up' : 'caret-down')}</button>`;
+aria-label="Move ${name} ${where}"${disabled(busy || end)}>\
+${icon(by < 0 ? 'caret-up' : 'caret-down')}</button>`;
   return `<li class="order-row" data-key="order:${name}" data-name="${name}" data-at="${position}" \
 draggable="${!busy}" tabindex="0" aria-label="${name}, number ${position} of ${count}">\
 ${icon('dots-six-vertical', 'grip')}<span class="pos">${position}</span>\
@@ -315,7 +324,8 @@ const showCurrent = () => {
 };
 const busyNow = () => document.querySelector('main[aria-busy]') !== null;
 const orderRows = () => Array.from(document.querySelectorAll('.order-row'));
-const rowOf = (event) => (event.target instanceof Element ? event.target.closest('.order-row') : null);
+const rowOf = (event) =>
+  event.target instanceof Element ? event.target.closest('.order-row') : null;
 let moving;
 const move = (row, position) => {
   if (busyNow() || position < 1 || position > orderRows().length) return;
@@ -475,7 +485,9 @@ function styles(): string {
   .pane section { padding: 18px 0 8px; scroll-margin-top: 52px; }
   .pane h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--ink); }
   .pane .hint { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; }
-  .group { border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--raised); }
+  .group {
+    border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--raised);
+  }
   .group > :not([hidden]) ~ :not([hidden]) { border-top: 1px solid var(--line); }
   .place { padding: 12px 14px; }
   .place .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; min-width: 0; }
@@ -501,7 +513,9 @@ function styles(): string {
   }
   .input.mono { font: 12.5px var(--mono); }
   .input:hover { border-color: var(--faint); }
-  .input:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: 0; }
+  .input:focus-visible {
+    border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: 0;
+  }
   .input[aria-invalid="true"] { border-color: var(--stopped); }
   .btn {
     height: 32px; padding: 0 12px; border-radius: var(--radius-control);
@@ -512,21 +526,29 @@ function styles(): string {
   .btn:hover { background: var(--hover); border-color: var(--faint); color: var(--ink); }
   .btn:active { transform: scale(.97); background: var(--press); }
   .btn.primary {
-    background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600;
+    background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+    font-weight: 600;
   }
   .btn.primary:hover { filter: brightness(1.08); }
-  .btn.quiet { border-color: transparent; background: none; color: var(--text); height: 26px; padding: 0 8px; }
+  .btn.quiet {
+    border-color: transparent; background: none; color: var(--text); height: 26px;
+    padding: 0 8px;
+  }
   .btn.quiet:hover { background: var(--hover); }
   .btn.remove { color: var(--muted); }
   .btn.remove:hover { color: var(--stopped); }
-  .btn:disabled, .input:disabled, .switch:disabled { opacity: .5; cursor: default; pointer-events: none; }
+  .btn:disabled, .input:disabled, .switch:disabled {
+    opacity: .5; cursor: default; pointer-events: none;
+  }
   @media (prefers-reduced-motion: no-preference) {
     .btn { transition: background .12s ease, color .12s ease, transform .12s ease-out; }
   }
   .addrow { padding: 10px 14px; }
   .addform { padding: 14px; display: grid; gap: 12px; }
   .addform > b { color: var(--ink); font-weight: 600; }
-  .addform .cols { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 10px; align-items: start; }
+  .addform .cols {
+    display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 10px; align-items: start;
+  }
   .addform .acts { display: flex; gap: 8px; justify-content: flex-end; }
   .toggle-row { display: flex; align-items: center; gap: 16px; padding: 12px 14px; }
   .toggle-row .t b { display: block; font-weight: 500; color: var(--ink); }
@@ -544,18 +566,23 @@ function styles(): string {
   .switch[aria-checked="true"] { background: var(--accent); }
   .switch[aria-checked="true"]::after { transform: translateX(16px); }
   .shortcut {
-    display: grid; grid-template-columns: 190px 1fr; align-items: center; gap: 12px; padding: 10px 14px;
+    display: grid; grid-template-columns: 190px 1fr; align-items: center; gap: 12px;
+    padding: 10px 14px;
   }
-  .shortcut .k { display: flex; gap: 4px; align-items: center; color: var(--faint); font-size: 11px; }
+  .shortcut .k {
+    display: flex; gap: 4px; align-items: center; color: var(--faint); font-size: 11px;
+  }
   .shortcut code i { font-style: normal; color: var(--faint); }
   kbd {
-    display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4px; text-align: center;
+    display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4px;
+    text-align: center;
     border: 1px solid var(--line-2); border-bottom-width: 2px; background: var(--bg);
     font-size: 11px; line-height: 15px; color: var(--text);
   }
   ol.group { list-style: none; margin: 0; padding: 0; }
   .order-row {
-    display: grid; grid-template-columns: 16px 20px 8px minmax(0, 1fr) auto 60px; align-items: center;
+    display: grid; grid-template-columns: 16px 20px 8px minmax(0, 1fr) auto 60px;
+    align-items: center;
     gap: 10px; padding: 6px 8px 6px 10px; cursor: grab; outline: 0; position: relative;
   }
   .order-row:hover { background: var(--hover); }
@@ -564,7 +591,8 @@ function styles(): string {
   .order-row:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
   .order-row .grip { width: 16px; height: 16px; color: var(--faint); }
   .order-row .pos {
-    font: 12px/1 var(--mono); color: var(--faint); text-align: right; font-variant-numeric: tabular-nums;
+    font: 12px/1 var(--mono); color: var(--faint); text-align: right;
+    font-variant-numeric: tabular-nums;
   }
   .order-row .name {
     font: 600 12.5px/1.2 var(--mono); color: var(--ink);
@@ -602,7 +630,9 @@ function styles(): string {
     padding: 18px; border-radius: var(--radius-panel); background: var(--stopped-soft);
     border: 1px solid color-mix(in srgb, var(--stopped) 40%, var(--line-2));
   }
-  .unread b { display: flex; gap: 8px; align-items: center; color: var(--stopped); margin-bottom: 6px; }
+  .unread b {
+    display: flex; gap: 8px; align-items: center; color: var(--stopped); margin-bottom: 6px;
+  }
   .unread p { margin: 0; }
   @media (max-width: 760px) {
     .settings { grid-template-columns: 1fr; }
