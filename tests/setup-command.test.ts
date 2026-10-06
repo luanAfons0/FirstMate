@@ -145,7 +145,7 @@ test('setup takes nothing on the command line, and the help names it', async (t)
   assert.match(extra.stderr, /setup takes nothing/);
 
   const help = await firstmate(home, ['--help']);
-  assert.match(help.stdout, /firstmate setup/);
+  assert.match(help.stdout, /^ {2}setup {2,}\S/m);
 });
 
 test(
