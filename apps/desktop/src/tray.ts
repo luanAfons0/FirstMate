@@ -10,6 +10,9 @@
  * Start at logon is Windows's own entry for the App (`logon.ts`), and it is off
  * until the operator turns it on. The App it starts begins in the
  * Tray, with the window put away, because nobody asked to see it.
+ *
+ * The Tray shows before the Host is ready, and its Plugins say "Starting…"
+ * until the Host first names them.
  */
 import { app, Menu, Tray, type MenuItemConstructorOptions } from 'electron';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
@@ -37,7 +40,8 @@ export type HeldTray = {
 /** Put FirstMate in the notification area. */
 export function holdTray(needs: TrayNeeds): HeldTray {
   const tray = new Tray(markPath('running'));
-  let plugins: Plugins = { kind: 'untold' };
+  /** What the Host last said, or nothing while it still starts. */
+  let plugins: Plugins | undefined;
   /** What the menu was last built from. Building it again unchanged is churn. */
   let built = '';
 
@@ -70,7 +74,7 @@ export function holdTray(needs: TrayNeeds): HeldTray {
  * Quit never moves under the pointer when a Plugin is added or taken away.
  */
 function menu(
-  plugins: Plugins,
+  plugins: Plugins | undefined,
   logon: boolean,
   needs: TrayNeeds,
   draw: () => void,
@@ -99,7 +103,8 @@ function menu(
  * would not say and a Registry with nothing in it get different sentences,
  * because they are different states (#44).
  */
-function pluginItems(plugins: Plugins, needs: TrayNeeds): MenuItemConstructorOptions[] {
+function pluginItems(plugins: Plugins | undefined, needs: TrayNeeds): MenuItemConstructorOptions[] {
+  if (plugins === undefined) return [{ label: 'Starting…', enabled: false }];
   if (plugins.kind === 'untold') return [{ label: 'The Host would not say', enabled: false }];
   if (plugins.plugins.length === 0) return [{ label: 'No Plugin is registered', enabled: false }];
   return plugins.plugins.map((plugin) => ({
@@ -116,8 +121,8 @@ function pluginLabel(plugin: PluginSeen): string {
   return plugin.state === 'running' ? plugin.name : `${plugin.name} — ${STATE_WORDS[plugin.state]}`;
 }
 
-function stoppedCount(plugins: Plugins): number {
-  return plugins.kind === 'told'
+function stoppedCount(plugins: Plugins | undefined): number {
+  return plugins?.kind === 'told'
     ? plugins.plugins.filter((plugin) => plugin.state === 'stopped').length
     : 0;
 }
@@ -131,7 +136,8 @@ function tooltip(stopped: number): string {
 }
 
 /** What a menu is built from, as one string. */
-function signature(plugins: Plugins): string {
+function signature(plugins: Plugins | undefined): string {
+  if (plugins === undefined) return 'starting';
   return plugins.kind === 'untold'
     ? 'untold'
     : plugins.plugins.map((p) => `${p.name}/${p.hasPage}/${p.state}`).join(',');

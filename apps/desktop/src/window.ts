@@ -17,6 +17,13 @@
  *
  * The window shows the Host and nothing else. A link to anywhere else, in a new
  * window or the same one, opens in the operator's own browser.
+ *
+ * The window is made before the Host is ready, so that it and the Tray show
+ * while the Host still starts every Plugin Server. Until `ready`, the strip
+ * says "Starting…" and no view below it loads; what the operator opened in that
+ * time loads when the Host is ready. An App started hidden loads no page at
+ * all until the window is first revealed or opened, or a Popup asks for the
+ * cookie.
  */
 import { fileURLToPath } from 'node:url';
 import { app, BaseWindow, ipcMain, shell, WebContentsView, type IpcMainEvent } from 'electron';
@@ -70,6 +77,8 @@ export type Shown = {
   open(path: string): void;
   /** Bring the window up, as it was. */
   reveal(): void;
+  /** The Host is ready: load what is wanted, and stop saying "Starting…". */
+  ready(host: HostAt): void;
   /** What the Host now says about its Plugins. */
   told(plugins: Plugins): void;
   /**
@@ -85,13 +94,12 @@ export type Shown = {
 export type SettingsNeeds = Omit<ChangeNeeds, 'window'>;
 
 /**
- * Open the window on the Index Page, shown unless `hidden` says the App starts
- * in the Tray. `refresh` asks the Host for its Plugins again; the answer comes
- * back through `told`, and it is asked after every change the Settings View
- * makes, so the Tray shows it too.
+ * Open the window, shown unless `hidden` says the App starts in the Tray. It
+ * shows the Index Page once the Host is `ready`. `refresh` asks the Host for
+ * its Plugins again; the answer comes back through `told`, and it is asked
+ * after every change the Settings View makes, so the Tray shows it too.
  */
 export function openWindow(
-  host: HostAt,
   refresh: () => void,
   hidden: boolean,
   settingsNeeds: SettingsNeeds,
@@ -147,6 +155,13 @@ export function openWindow(
   let plugins: Plugins = { kind: 'untold' };
   /** One view for each owner the operator has opened. */
   const contents = new Map<string, WebContentsView>();
+  /** The Host, once it is ready. Until then no view below the strip loads. */
+  let host: HostAt | undefined;
+  /** Whether a page is wanted yet. An App started hidden wants none until
+   *  the window is first revealed or opened. */
+  let woken = !hidden;
+  /** What to show when the Host is ready. */
+  let waiting = '/';
 
   // The order of the children is the order they are drawn in: the strip, the
   // content views, the Settings View, and the switcher on top of them all.
@@ -188,7 +203,12 @@ export function openWindow(
   };
 
   const redraw = (): void => {
-    const said = stripPage({ here: here(), switcher: switching, fault });
+    const said = stripPage({
+      here: here(),
+      switcher: switching,
+      fault,
+      starting: host === undefined,
+    });
     if (said !== stripSaid) {
       stripSaid = said;
       loadPage(strip, said);
@@ -212,6 +232,9 @@ export function openWindow(
   };
 
   const reveal = (): void => {
+    woken = true;
+    // A window started hidden loads the Index Page the first time it shows.
+    if (host !== undefined && admission === undefined) open('/');
     if (window.isMinimized()) window.restore();
     window.show();
     window.focus();
@@ -230,7 +253,7 @@ export function openWindow(
   };
 
   /** A view for one owner, made the first time the operator opens it. */
-  const contentView = (owner: string): WebContentsView => {
+  const contentView = (owner: string, host: HostAt): WebContentsView => {
     const view = new WebContentsView({
       webPreferences: {
         sandbox: true,
@@ -273,7 +296,7 @@ export function openWindow(
    * token, so no Plugin Page ever finds the token in its own address.
    */
   let admission: Promise<void> | undefined;
-  const loadContent = (view: WebContentsView, path: string): void => {
+  const loadContent = (view: WebContentsView, path: string, host: HostAt): void => {
     const first = admission === undefined;
     const loading = (admission ?? Promise.resolve()).then(() =>
       view.webContents.loadURL(first ? admitted(host, path) : onHost(host, path)),
@@ -295,13 +318,23 @@ export function openWindow(
    * it holds.
    */
   const open = (path: string, how: 'load' | 'as-it-is' = 'load'): void => {
+    if (host === undefined) {
+      // Asked for before the Host is ready: shown when it is.
+      woken = true;
+      waiting = path;
+      setting = false;
+      switching = false;
+      fault = undefined;
+      redraw();
+      return;
+    }
     const owner = ownerOf(host, path) ?? INDEX;
     const known = contents.get(owner);
-    const view = known ?? contentView(owner);
+    const view = known ?? contentView(owner, host);
     // The Index Page is the Host's own and keeps nothing, so it is loaded
     // again each time, to show the Plugins as they are now.
     const again = how === 'load' && !isOwnStart(owner, path);
-    if (known === undefined || owner === INDEX || again) loadContent(view, path);
+    if (known === undefined || owner === INDEX || again) loadContent(view, path, host);
     current = owner;
     setting = false;
     switching = false;
@@ -318,6 +351,7 @@ export function openWindow(
     if (asked.kind === 'plugin-list') {
       open('/');
     } else if (asked.kind === 'open-in-browser') {
+      if (host === undefined) return;
       const shown = setting ? undefined : contents.get(current)?.webContents.getURL();
       openOutside(browserAddress(host, shown)).catch(() =>
         complain('The system browser would not open this page.'),
@@ -388,7 +422,7 @@ export function openWindow(
     }
   });
 
-  open('/');
+  redraw();
   if (!hidden) window.show();
 
   return {
@@ -398,7 +432,28 @@ export function openWindow(
       reveal();
     },
     reveal,
-    admitted: () => admission ?? Promise.resolve(),
+    ready: (at) => {
+      host = at;
+      if (!woken) {
+        redraw();
+        return;
+      }
+      // An operator who went to the Settings View while the Host started
+      // stays there; the page loads behind it.
+      const stay = setting;
+      open(waiting);
+      if (stay) {
+        setting = true;
+        redraw();
+        settings.webContents.focus();
+      }
+    },
+    admitted: () => {
+      // A Popup opened before the window ever showed needs the cookie too,
+      // so the Index Page loads, hidden, to trade the token for it.
+      if (host !== undefined && admission === undefined) open('/');
+      return admission ?? Promise.resolve();
+    },
     toBrowser,
     told: (now) => {
       plugins = now;
