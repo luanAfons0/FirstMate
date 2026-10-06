@@ -38,18 +38,18 @@
  * On Linux outside WSL the App is the AppImage, one file, put at
  * `~/Applications/FirstMate.AppImage`, where `setup` and the logon entry look
  * for it (ADR-0026). It is written beside itself and renamed into place, so a
- * running App keeps the file it started from. Nothing records an AppImage's
- * version, so this command writes it in `FirstMate.version` beside it. The
- * App updates itself by replacing the AppImage, after that file was written:
- * an AppImage newer than its version file has updated itself past the version
- * it names, and is opened and not replaced. An AppImage with no version file
- * was put there by hand, and this version replaces it. Anywhere else, on
- * macOS, there is no App to install.
+ * running App keeps the file it started from. Its version is the one the
+ * AppImage itself carries: its runtime extracts its desktop entry, which
+ * names it as X-AppImage-Version, and runs nothing of the App. So an AppImage
+ * that updated itself is read as the version it is now, and no file beside it
+ * can go out of date. One whose version cannot be read was not packaged as
+ * FirstMate, and this version replaces it. Anywhere else, on macOS, there is
+ * no App to install.
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { statSync } from 'node:fs';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { AT_LOGON, LOGON_NAME, RUN_KEY } from '@firstmate/core/logon';
@@ -83,10 +83,11 @@ export function appImagePath(): string {
   return join(homedir(), 'Applications', 'FirstMate.AppImage');
 }
 
-/** The file beside the AppImage that says which version it is. */
-function versionFileOf(program: string): string {
-  return join(dirname(program), 'FirstMate.version');
-}
+/** The files an AppImage's runtime is asked to extract: its desktop entry. */
+const DESKTOP_ENTRY = '*.desktop';
+
+/** How long an AppImage has to extract its desktop entry. */
+const EXTRACT_TIMEOUT_MS = 10_000;
 
 /** A folder as Windows names it, and as this process reaches it. */
 type Folder = { readonly windows: string; readonly here: string };
@@ -99,7 +100,7 @@ type Windows = {
   readonly here: (path: string) => Promise<string>;
 };
 
-/** The App as it is installed: its version, and its program as this process and Windows reach it. */
+/** The App as it is installed: its version, and its program here and as Windows names it. */
 type Installed = {
   readonly version: string;
   readonly program: string;
@@ -188,7 +189,8 @@ function isLinuxDesktop(env: NodeJS.ProcessEnv): boolean {
 function openedSentence(installed: string, version: string): string {
   return installed === version
     ? `firstmate: opened FirstMate ${version}.`
-    : `firstmate: opened FirstMate ${installed}, which is newer than this command line, ${version}.`;
+    : `firstmate: opened FirstMate ${installed}, which is newer than this command line, ` +
+        `${version}.`;
 }
 
 /** Install the AppImage of this version unless it is there already, then open it. */
@@ -196,12 +198,7 @@ async function installAppImage(env: NodeJS.ProcessEnv): Promise<number> {
   const version = ownVersion();
   const program = appImagePath();
 
-  const installed = await installedAppImage(program);
-  if (installed === 'updated itself') {
-    await open(program);
-    console.log(`firstmate: opened FirstMate, which has updated itself since it was installed.`);
-    return 0;
-  }
+  const installed = await appImageVersion(program);
   if (installed !== undefined && compareVersions(installed, version) >= 0) {
     await open(program);
     console.log(openedSentence(installed, version));
@@ -217,26 +214,38 @@ async function installAppImage(env: NodeJS.ProcessEnv): Promise<number> {
   } finally {
     await rm(part, { force: true });
   }
-  await writeFile(versionFileOf(program), `${version}\n`);
   await open(program);
   console.log(`firstmate: installed FirstMate ${version} at ${program}, and opened it.`);
   return 0;
 }
 
 /**
- * The version of the AppImage at this path, as its version file says it;
- * `updated itself` when the AppImage changed after that file was written; or
- * nothing when there is no AppImage, or no version file beside it.
+ * The version the AppImage at this path carries, or nothing when there is no
+ * AppImage there, or its version cannot be read. Its runtime extracts its
+ * desktop entry into a folder of this command's own, which is then removed.
  */
-async function installedAppImage(program: string): Promise<string | 'updated itself' | undefined> {
-  const [app, record] = await Promise.all([
-    stat(program).catch(() => undefined),
-    stat(versionFileOf(program)).catch(() => undefined),
-  ]);
-  if (app === undefined || !app.isFile() || record === undefined) return undefined;
-  if (app.mtimeMs > record.mtimeMs) return 'updated itself';
-  const version = (await readFile(versionFileOf(program), 'utf8')).trim();
-  return version === '' ? undefined : version;
+async function appImageVersion(program: string): Promise<string | undefined> {
+  if (!isFile(program)) return undefined;
+  const scratch = await mkdtemp(join(tmpdir(), 'firstmate-appimage-'));
+  try {
+    const answer = await run(program, ['--appimage-extract', DESKTOP_ENTRY], {
+      cwd: scratch,
+      timeout: EXTRACT_TIMEOUT_MS,
+    });
+    if (answer.code !== 0) return undefined;
+    const extracted = join(scratch, 'squashfs-root');
+    const entry = (await readdir(extracted).catch(() => [])).find((name) =>
+      name.endsWith('.desktop'),
+    );
+    if (entry === undefined) return undefined;
+    const text = await readFile(join(extracted, entry), 'utf8');
+    return /^X-AppImage-Version=(\S+)\s*$/m.exec(text)?.[1];
+  } catch {
+    // A program that cannot be run there is no AppImage this command knows.
+    return undefined;
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -414,10 +423,17 @@ async function open(program: string): Promise<void> {
 /** What one run of a Windows tool said, and how it ended. */
 type Answer = { readonly code: number | null; readonly stdout: Buffer; readonly stderr: Buffer };
 
-/** Run a tool and wait for its answer. A tool that is not there is a sentence. */
-function run(program: string, argv: readonly string[]): Promise<Answer> {
+/**
+ * Run a tool and wait for its answer, in `cwd` when given, and ended after
+ * `timeout` milliseconds when given. A tool that is not there is a sentence.
+ */
+function run(
+  program: string,
+  argv: readonly string[],
+  options: { readonly cwd?: string; readonly timeout?: number } = {},
+): Promise<Answer> {
   return new Promise((done, fail) => {
-    const child = spawn(program, argv, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(program, argv, { ...options, stdio: ['ignore', 'pipe', 'pipe'] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => out.push(chunk));

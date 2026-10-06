@@ -478,11 +478,11 @@ npx @luan-afonso/firstmate desktop
 It downloads `FirstMate-<version>.AppImage` of its own version and its
 checksum, refuses an AppImage whose SHA-256 does not match and runs nothing,
 puts it at `~/Applications/FirstMate.AppImage`, makes it executable, and opens
-it. It writes the version it installed beside it, in
-`~/Applications/FirstMate.version`. When that version, or a newer one, is
-there, it only opens it. An AppImage that updated itself after that file was
-written is newer too, and is only opened. An AppImage with no such file, put
-there by hand, is replaced.
+it. When an AppImage of that version, or a newer one, is there already, it
+only opens it, and an older one it replaces. The version is the one the
+AppImage carries itself, which its runtime reads out of it without starting
+the App, so an AppImage that updated itself counts as the version it is now.
+A file there whose version cannot be read, put there by hand, is replaced.
 
 To install by hand, download one from the
 [GitHub Release](https://github.com/luanAfons0/FirstMate/releases), with its
