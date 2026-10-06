@@ -61,3 +61,7 @@ The GitHub Release is no longer written by hand. The workflow writes it with gen
 The betas are unsigned, and Windows may warn before the installer runs. The certificate is decided before 2.0.0 final; signing changes the workflow and none of these names.
 
 A Release whose App failed to package is not published, and neither is its command line. Running the failed job again finishes the release.
+
+## Amended: Linux files (ADR-0026)
+
+ADR-0026 amends this ADR: Linux gets an AppImage and a deb. Their rows in the table above, and the Linux leg of the workflow, come with the release ticket (#177).

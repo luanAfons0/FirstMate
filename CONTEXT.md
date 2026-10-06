@@ -32,7 +32,7 @@ _Avoid_: preferences, options, config page, settings page
 
 **Place**:
 A named location where Plugins are installed and their Plugin Servers run, such
-as this Windows machine or one WSL distribution. A Plugin is in one Place.
+as this machine or one WSL distribution (WSL on Windows only). A Plugin is in one Place.
 _Avoid_: environment, target, runtime, machine, host
 
 **Shelf**:
@@ -45,7 +45,7 @@ The App's notification-area icon and its menu.
 _Avoid_: systray, notification icon, menu bar
 
 **Shortcut**:
-A key combination the App holds for all of Windows, bound from a terminal to
+A key combination the App holds for the whole desktop, bound from a terminal to
 one address of one Plugin. Pressing it opens that address in a Popup.
 _Avoid_: hotkey, keybinding, accelerator, bind
 
@@ -56,7 +56,7 @@ when its page leaves its own address.
 _Avoid_: quick window, overlay, modal, dialog
 
 **Notice**:
-A short message the App shows in a Windows pop-up, sent by a Plugin Server or
+A short message the App shows as a desktop pop-up, sent by a Plugin Server or
 by the Host itself. It names who sent it, and a click opens the sender's
 address. It has no severity: good news and bad news are both Notices.
 _Avoid_: notification, warning, alert, toast
