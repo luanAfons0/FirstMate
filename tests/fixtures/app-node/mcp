@@ -1,0 +1,6 @@
+#!/bin/sh
+# A fixture Plugin Server that runs on the Node the Host names in
+# FIRSTMATE_NODE, and on no other: server-only's own server, started by it.
+# Under the App that Node is the App itself, so an answer proves the App runs
+# as Node for a Plugin Server.
+exec "$FIRSTMATE_NODE" "$(dirname "$0")/../server-only/mcp" "$@"

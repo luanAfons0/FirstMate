@@ -8,9 +8,11 @@
 # the other (ADR-0019). Each runner is its own required check, by name, in the
 # repository's ruleset "main stays green".
 #
-# On Windows the tests also package the App, installer and all, and start the
-# packaged program (ADR-0020). The test does that itself, as the build test
-# builds the bundle, so this file names no step for it.
+# On both the tests also package the App, installer and all, and start the
+# packaged program (ADR-0026). The test does that itself, as the build test
+# builds the bundle, so this file names no step for it. On Linux the App needs
+# a display for its window and its Tray, and the runner has none, so the tests
+# run inside xvfb's.
 name: Check
 
 on:
@@ -51,6 +53,10 @@ jobs:
       - run: pnpm knip
 
       - run: pnpm test
+        if: matrix.os != 'ubuntu-latest'
+
+      - run: xvfb-run --auto-servernum pnpm test
+        if: matrix.os == 'ubuntu-latest'
 
       # The installer of this commit, unsigned, kept so that a change to the
       # App can be installed and looked at before any tag releases it. A pull
