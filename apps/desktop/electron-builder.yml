@@ -23,6 +23,9 @@ files:
   - out/**
   - resources/**
   - package.json
+# Only the en-US Chromium locale ships, so the installer and each update are smaller.
+electronLanguages:
+  - en-US
 npmRebuild: false
 # A Plugin Server runs on the App's own executable, told to be Node by
 # ELECTRON_RUN_AS_NODE. The RunAsNode fuse is what lets it, so it is named
