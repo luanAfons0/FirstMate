@@ -113,6 +113,7 @@ export async function start(
     token,
     stateOf: (name) => supervisor.stateOf(name),
     serverOf: (name) => supervisor.serverOf(name),
+    hasPage: (name) => supervisor.hasPage(name),
     shortcuts: () => readSettings(config.home).shortcuts ?? [],
     order: () => readSettings(config.home).order ?? [],
     notices: (after) => notices.after(after),

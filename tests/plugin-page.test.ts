@@ -1,9 +1,9 @@
 /** A Plugin Page: the Plugin's own bytes, and nothing that leaves its folder. */
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHost, fixture } from './helpers/host.ts';
+import { bootHost, fixture, makeHome, type Booted } from './helpers/host.ts';
 
 const REGISTRY = [
   { name: 'both', directory: 'both' },
@@ -125,4 +125,36 @@ test('a missing file inside a Plugin Page is not found', async (t) => {
   const answer = await host.fetch('/p/both/nothing-here.js');
 
   assert.equal(answer.status, 404);
+});
+
+/** Whether /plugins.json says this Plugin ships a Plugin Page. */
+async function listsPage(host: Booted, name: string): Promise<boolean | undefined> {
+  const { plugins } = (await (await host.fetch('/plugins.json')).json()) as {
+    plugins: { name: string; hasPage: boolean }[];
+  };
+  return plugins.find((plugin) => plugin.name === name)?.hasPage;
+}
+
+test('the Host looks for a Plugin Page once, and again at each reload', async (t) => {
+  const directory = await makeHome(t);
+  const host = await bootHost(t, [{ name: 'growing', directory }]);
+  assert.equal(await listsPage(host, 'growing'), false);
+
+  await mkdir(join(directory, 'web'));
+  await writeFile(join(directory, 'web', 'index.html'), '<p>grown</p>');
+  assert.equal(await listsPage(host, 'growing'), false, 'no request looks again');
+  assert.match(await (await host.fetch('/p/growing/')).text(), /ships no Plugin Page/);
+
+  assert.equal((await host.raw({ method: 'POST', path: '/reload' })).status, 200);
+  assert.equal(await listsPage(host, 'growing'), true, 'a reload sees the web directory gained');
+  const page = await host.fetch('/p/growing/');
+  assert.equal(page.status, 200);
+  assert.equal(await page.text(), '<p>grown</p>');
+
+  await rm(join(directory, 'web'), { recursive: true });
+  assert.equal((await host.raw({ method: 'POST', path: '/reload' })).status, 200);
+  assert.equal(await listsPage(host, 'growing'), false, 'and the one it lost');
+  const gone = await host.fetch('/p/growing/');
+  assert.equal(gone.status, 404);
+  assert.equal(await gone.text(), 'The Plugin named growing ships no Plugin Page.\n');
 });
