@@ -45,7 +45,7 @@ On Linux outside WSL, `firstmate desktop` downloads `FirstMate-<version>.AppImag
 
 The same version is only opened, and so is a newer one. The App updates itself, so it is often ahead of a command line installed long ago, and installing the older one would take it back.
 
-From WSL it reaches Windows through interop: `cmd.exe` names the Windows temp folder, `wslpath` turns Windows paths into paths there, and `reg.exe`, the installer and the App run as the Windows programs they are. On Linux outside WSL, and on macOS, it says in one sentence that the App runs on Windows.
+From WSL it reaches Windows through interop: `cmd.exe` names the Windows temp folder, `wslpath` turns Windows paths into paths there, and `reg.exe`, the installer and the App run as the Windows programs they are. On Linux outside WSL it installs the AppImage, as above. On macOS it says in one sentence that the App runs on Windows and Linux.
 
 No command loads the 1.x window since, so ADR-0017's line about its library as a dynamic import no longer holds. The library and the window stay in the package, unused, until the package becomes the command line alone.
 
