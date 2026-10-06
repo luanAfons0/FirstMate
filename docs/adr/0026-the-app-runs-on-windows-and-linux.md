@@ -38,6 +38,6 @@ CI runs `pnpm check` on Linux and Windows, and the packaged-App test on both.
 
 The README and `CONTEXT.md` say Windows only where it is true.
 
-ADR-0023's file table has no Linux rows yet. The release ticket (#177) adds them before any command line that reads them is published, because those names are a contract.
+ADR-0023's file table names the Linux files. The release ticket (#177) added them before any command line that reads them was published, because those names are a contract.
 
 The betas stay unsigned.
