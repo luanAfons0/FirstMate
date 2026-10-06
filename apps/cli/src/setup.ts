@@ -23,6 +23,7 @@ import {
   listPlaces,
   moveShelf,
 } from '@firstmate/core/commands';
+import { canHoldWslPlace } from '@firstmate/core/places';
 import { readConfig } from '@firstmate/core/config';
 import { holdsOneX } from '@firstmate/core/import-1x';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
@@ -109,11 +110,10 @@ async function askShelf(prompt: Prompt, changes: Changes): Promise<void> {
 
 /**
  * Which WSL distributions to add as Places, one after another, until Enter.
- * A distribution is asked about only where there is one to have: on Windows,
- * and inside WSL. Its Place is named after it, as `debian` for `Debian`.
+ * A distribution is asked about only where a `wsl` Place can run: on Windows. Its Place is named after it, as `debian` for `Debian`.
  */
 async function askPlaces(prompt: Prompt, changes: Changes): Promise<void> {
-  if (process.platform !== 'win32' && (process.env['WSL_DISTRO_NAME'] ?? '') === '') return;
+  if (!canHoldWslPlace()) return;
   const { home } = readConfig();
   console.log('The Places:');
   for (const place of listPlaces(home)) console.log(`  ${place.name}  (${place.kind})`);
