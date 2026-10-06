@@ -14,13 +14,20 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHostIn, firstmate, fixture, makeHome, canStart } from './helpers/host.ts';
+import {
+  bootHostIn,
+  firstmate,
+  fixture,
+  makeHome,
+  canStart,
+  DEFAULT_PLACE,
+} from './helpers/host.ts';
 
 async function registry(home: string): Promise<{
-  plugins: { name: string; directory: string; grants: string[] }[];
+  plugins: { name: string; place: string; directory: string; grants: string[] }[];
 }> {
   return JSON.parse(await readFile(join(home, 'registry.json'), 'utf8')) as {
-    plugins: { name: string; directory: string; grants: string[] }[];
+    plugins: { name: string; place: string; directory: string; grants: string[] }[];
   };
 }
 
@@ -48,7 +55,7 @@ test('a directory is copied into the Shelf, registered, and then served', async 
   await readFile(join(landed, 'web', 'index.html'));
 
   assert.deepEqual(await registry(home), {
-    plugins: [{ name: 'both', directory: landed, grants: [] }],
+    plugins: [{ name: 'both', place: DEFAULT_PLACE, directory: landed, grants: [] }],
   });
 
   const host = await bootHostIn(t, home);

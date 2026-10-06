@@ -7,8 +7,9 @@ supervisor, an HTTP server on loopback, a static file server, and a JSON-RPC
 client.
 
 Read [`CONTEXT.md`](CONTEXT.md) first. It defines every word this repo uses —
-Host, Plugin, Plugin Page, Plugin Server, Registry, Plugin Order, Index Page,
-Tray, Settings View, Grant, Tool Bus, Stopped — and the synonyms to avoid. Use its words in code, in
+App, Host, Place, Plugin, Plugin Page, Plugin Server, Registry, Plugin Order,
+Index Page, Tray, Settings View, Grant, Tool Bus, Stopped — and the synonyms to
+avoid. Use its words in code, in
 comments, in tests, in issues and in commit messages.
 
 Read the ADR that covers the area you are about to change:
@@ -38,12 +39,13 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
 | `node apps/cli/src/cli.ts restart <name>`     | Start one Plugin's Plugin Server again.         |
-| `node apps/cli/src/cli.ts add <name> <dir>`   | Register a Plugin. `<dir>` is an absolute path. |
+| `node apps/cli/src/cli.ts place [add <name> <kind> \| remove <name>]` | Say every Place, or add or remove one. |
+| `node apps/cli/src/cli.ts add <name> <dir> [--place <name>]` | Register a Plugin. `<dir>` is an absolute path. |
 | `node apps/cli/src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
 | `node apps/cli/src/cli.ts grant <from> <to>`  | Let `<from>` call `<to>`'s tools: a Grant.      |
 | `node apps/cli/src/cli.ts revoke <from> <to>` | Take that Grant back.                           |
-| `node apps/cli/src/cli.ts shelf [dir]`        | Say where a fetched Plugin lands, or move it.   |
-| `node apps/cli/src/cli.ts install <dir\|url\|official-name> [name]` | Fetch a Plugin into the Shelf and register it. |
+| `node apps/cli/src/cli.ts shelf [dir] [--place <name>]` | Say where a fetched Plugin lands, or move it.   |
+| `node apps/cli/src/cli.ts install <dir\|url\|official-name> [name] [--place <name>]` | Fetch a Plugin into the Shelf and register it. |
 | `node apps/cli/src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
 | `node apps/cli/src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
 | `node apps/cli/src/cli.ts order [<name> <position>]` | Say the Plugin Order, or move one Plugin in it. |
@@ -113,7 +115,10 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   config.ts        FIRSTMATE_HOME, FIRSTMATE_PORT, the handshake and the Shelf.
   registry.ts      read and write registry.json, whole, through a rename.
   runtime.ts       write and remove runtime.json: the port and the token.
-  settings.ts      read and write settings.json: the Shelf and the Shortcuts.
+  settings.ts      read and write settings.json: the Shelf, the Places, the
+                   Shortcuts and the Plugin Order.
+  places.ts        the Places, as data: the default one, the kinds, and how
+                   each is read from the settings file (ADR-0021).
   shortcut.ts      read the keys of a Shortcut into one normal form, for the
                    terminal and the Tray alike.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.

@@ -1,6 +1,6 @@
 /**
- * The Registry: the Host's record of which Plugins exist and where their
- * directories are.
+ * The Registry: the Host's record of which Plugins exist, which Place each is
+ * in, and where their directories are.
  *
  * It is one file in the Host's home directory. There is no scanning and no
  * plugins folder: a Plugin is registered or it does not exist. The Shelf looks
@@ -9,6 +9,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
+import { DEFAULT_PLACE, isPlaceName } from './places.ts';
 
 /** The Registry file, inside the Host's home directory. */
 const REGISTRY_FILE = 'registry.json';
@@ -23,6 +24,11 @@ const PLUGIN_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export type PluginRow = {
   /** The name the Plugin is given when it enters the Registry. */
   readonly name: string;
+  /**
+   * The Place the Plugin is in. A row written before there were Places names
+   * none, and is in the default Place, where a 1.x Plugin always was.
+   */
+  readonly place: string;
   /** The absolute path of the Plugin's directory. It is never copied. */
   readonly directory: string;
   /**
@@ -68,6 +74,7 @@ export function writeRegistry(home: string, rows: readonly PluginRow[]): void {
   const pending = `${path}.pending`;
   const plugins = rows.map((row) => ({
     name: row.name,
+    place: row.place,
     directory: row.directory,
     // A Grant is the operator's to give and to take back, so it is kept
     // untouched through every add and every remove.
@@ -105,9 +112,13 @@ function parseRow(row: unknown, index: number, path: string): PluginRow {
   const record = row as Record<string, unknown> | null;
   const name = record?.['name'];
   const directory = record?.['directory'];
+  const place = record?.['place'] ?? DEFAULT_PLACE;
   const grants = record?.['grants'] ?? [];
   if (typeof name !== 'string' || !isPluginName(name)) {
     throw new Error(`${where} needs a Plugin Name of lower-case letters, digits and hyphens.`);
+  }
+  if (typeof place !== 'string' || !isPlaceName(place)) {
+    throw new Error(`${where} needs a Place Name of lower-case letters, digits and hyphens.`);
   }
   if (typeof directory !== 'string' || !isAbsolute(directory)) {
     throw new Error(`${where} needs an absolute directory path.`);
@@ -118,5 +129,5 @@ function parseRow(row: unknown, index: number, path: string): PluginRow {
   ) {
     throw new Error(`${where} needs its Grants as an array of Plugin Names.`);
   }
-  return { name, directory, grants: grants as string[] };
+  return { name, place, directory, grants: grants as string[] };
 }

@@ -1,14 +1,15 @@
 /**
- * The settings file: the three settings the Host remembers.
+ * The settings file: the four settings the Host remembers.
  *
  * The Host stores a Registry and nothing else, and it keeps no run history, no
- * logs and no settings store of its own. Three settings are the exception: the
+ * logs and no settings store of its own. Four settings are the exception: the
  * Shelf, because nothing can fetch a Plugin without somewhere to put it
- * (ADR-0012), the Shortcuts, because the Tray has to learn them from
- * somewhere that survives a restart (ADR-0013), and the Plugin Order, because
- * the Registry is read only when the Host starts and a new order should not
- * restart every Plugin Server (ADR-0016). All three are written from a
- * terminal and from nowhere else.
+ * (ADR-0012), the Places, because a Plugin has to run somewhere (ADR-0021),
+ * the Shortcuts, because the Tray has to learn them from somewhere that
+ * survives a restart (ADR-0013), and the Plugin Order, because the Registry is
+ * read only when the Host starts and a new order should not restart every
+ * Plugin Server (ADR-0016). All four are written from a terminal and from
+ * nowhere else.
  *
  * It is written the way the runtime file is written: whole, through a rename,
  * for this user alone. A settings file that is not there means nothing has
@@ -17,6 +18,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parsePlaces, type Place } from './places.ts';
 import { isPluginName } from './registry.ts';
 import { isPluginPath, normalKeys, type Shortcut } from './shortcut.ts';
 
@@ -25,8 +27,10 @@ const SETTINGS_FILE = 'settings.json';
 
 /** What the settings file holds. */
 export type Settings = {
-  /** The Shelf the operator chose, absent until one is chosen. */
+  /** The default Place's Shelf, as the operator chose it, absent until one is chosen. */
   readonly shelf?: string;
+  /** The Places the operator added, absent until one is added. */
+  readonly places?: readonly Place[];
   /** The Shortcuts the operator bound, absent until one is bound. */
   readonly shortcuts?: readonly Shortcut[];
   /** The Plugin Order the operator chose, absent until one is chosen. */
@@ -82,10 +86,12 @@ function parseSettings(text: string, path: string): Settings {
   if (shelf !== undefined && typeof shelf !== 'string') {
     throw new Error(`The settings at ${path} need "shelf" to be a path.`);
   }
+  const places = record['places'];
   const shortcuts = record['shortcuts'];
   const order = record['order'];
   return {
     ...(shelf === undefined ? {} : { shelf }),
+    ...(places === undefined ? {} : { places: parsePlaces(places, path) }),
     ...(shortcuts === undefined ? {} : { shortcuts: parseShortcuts(shortcuts, path) }),
     ...(order === undefined ? {} : { order: parseOrder(order, path) }),
   };

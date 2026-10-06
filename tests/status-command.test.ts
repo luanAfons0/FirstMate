@@ -7,7 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHost, firstmate, fixture, makeHome } from './helpers/host.ts';
+import { bootHost, firstmate, fixture, makeHome, DEFAULT_PLACE } from './helpers/host.ts';
 
 /** A port nothing listens on, as a Host that crashed leaves behind. */
 function closedPort(): Promise<number> {
@@ -99,8 +99,8 @@ test('list, order and shelf say what they read as one JSON value', async (t) => 
   assert.equal(listed.code, 0, listed.stderr);
   assert.deepEqual(JSON.parse(listed.stdout), {
     plugins: [
-      { name: 'both', directory: fixture('both'), grants: ['page-only'] },
-      { name: 'page-only', directory: fixture('page-only'), grants: [] },
+      { name: 'both', place: DEFAULT_PLACE, directory: fixture('both'), grants: ['page-only'] },
+      { name: 'page-only', place: DEFAULT_PLACE, directory: fixture('page-only'), grants: [] },
     ],
     shortcuts: [{ keys: 'Ctrl+Alt+N', plugin: 'both', path: 'new', address: '/p/both/new' }],
   });

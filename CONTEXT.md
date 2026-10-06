@@ -6,8 +6,12 @@ FirstMate is a local plugin host. It runs a person's own tools on their own mach
 
 ### The host
 
+**App**:
+The FirstMate program a person installs and runs. It holds the Host, the Tray and the window.
+_Avoid_: desktop, client, application, shell
+
 **Host**:
-The single long-running FirstMate process. It supervises Plugins, serves their pages, and owns the address they are reached at.
+The part of the App that supervises Plugins, serves their pages, and owns the address they are reached at.
 _Avoid_: orchestrator, daemon, server, runtime, engine
 
 **Index Page**:
@@ -15,7 +19,7 @@ The Host's own page. It lists every Plugin, its state, and a link to each Plugin
 _Avoid_: dashboard, home, shell
 
 **Registry**:
-The Host's record of which Plugins exist, where their directories are, and what Grants they hold.
+The Host's record of which Plugins exist, which Place each is in, where their directories are, and what Grants they hold.
 _Avoid_: manifest, catalogue, config, lockfile
 
 **Plugin Order**:
@@ -26,18 +30,22 @@ _Avoid_: sort, ranking, priority
 The window's own page for FirstMate's settings, opened from the gear in the strip. The Host never serves it, so no Plugin Page can reach it.
 _Avoid_: preferences, options, config page, settings page
 
+**Place**:
+A named location where Plugins are installed and their Plugin Servers run, such
+as this Windows machine or one WSL distribution. A Plugin is in one Place.
+_Avoid_: environment, target, runtime, machine, host
+
 **Shelf**:
-The directory a fetched Plugin lands in. The operator chooses it, the Host
-remembers it in its settings file, and nothing ever scans it.
+The directory a fetched Plugin lands in. Each Place has its own. The operator
+chooses it, the Host remembers it in its settings file, and nothing ever scans it.
 _Avoid_: store, library, vendor directory, plugins folder
 
 **Tray**:
-The Windows program that holds FirstMate's notification-area icon and shows the
-Index Page and Plugin Pages in a window of its own.
+The App's notification-area icon and its menu.
 _Avoid_: systray, notification icon, menu bar
 
 **Shortcut**:
-A key combination the Tray holds for all of Windows, bound from a terminal to
+A key combination the App holds for all of Windows, bound from a terminal to
 one address of one Plugin. Pressing it opens that address in a Popup.
 _Avoid_: hotkey, keybinding, accelerator, bind
 
@@ -48,7 +56,7 @@ when its page leaves its own address.
 _Avoid_: quick window, overlay, modal, dialog
 
 **Notice**:
-A short message the Tray shows in a Windows pop-up, sent by a Plugin Server or
+A short message the App shows in a Windows pop-up, sent by a Plugin Server or
 by the Host itself. It names who sent it, and a click opens the sender's
 address. It has no severity: good news and bad news are both Notices.
 _Avoid_: notification, warning, alert, toast
@@ -66,7 +74,7 @@ and once installed it is a Plugin like any other.
 _Avoid_: catalogue, marketplace, store, featured, recommended
 
 **Plugin Name**:
-The name a Plugin is given when it enters the Registry. It identifies the Plugin in every address.
+The name a Plugin is given when it enters the Registry. It is unique across every Place and identifies the Plugin in every address.
 _Avoid_: id, slug, key
 
 **Plugin Page**:

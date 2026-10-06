@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHostIn, firstmate, fixture, makeHome } from './helpers/host.ts';
+import { bootHostIn, firstmate, fixture, makeHome, DEFAULT_PLACE } from './helpers/host.ts';
 
 async function registry(home: string): Promise<{
-  plugins: { name: string; directory: string; grants: string[] }[];
+  plugins: { name: string; place: string; directory: string; grants: string[] }[];
 }> {
   return JSON.parse(await readFile(join(home, 'registry.json'), 'utf8')) as {
-    plugins: { name: string; directory: string; grants: string[] }[];
+    plugins: { name: string; place: string; directory: string; grants: string[] }[];
   };
 }
 
@@ -26,7 +26,9 @@ test('a Plugin is added by name and directory, and the Host then serves it', asy
   );
 
   const written = await registry(home);
-  assert.deepEqual(written.plugins, [{ name: 'both', directory: fixture('both'), grants: [] }]);
+  assert.deepEqual(written.plugins, [
+    { name: 'both', place: DEFAULT_PLACE, directory: fixture('both'), grants: [] },
+  ]);
 
   const host = await bootHostIn(t, home);
   const page = await (await host.fetch('/')).text();
@@ -77,7 +79,7 @@ test('the Registry is listed, and an empty one says nothing', async (t) => {
   const listed = await firstmate(home, ['list']);
 
   assert.equal(listed.code, 0);
-  assert.equal(listed.stdout, `both\t${fixture('both')}\n`);
+  assert.equal(listed.stdout, `both\t${DEFAULT_PLACE}\t${fixture('both')}\n`);
 });
 
 test('a duplicate Plugin Name is refused', async (t) => {
