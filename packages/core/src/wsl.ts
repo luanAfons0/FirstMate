@@ -78,3 +78,36 @@ export async function makeExecutable(distribution: string, directory: string): P
     throw new Error(`${directory}/mcp could not be made executable: ${why(answer)}.`);
   }
 }
+
+/** The systemd user unit a 1.x Host ran as. */
+const ONE_X_UNIT = 'firstmate';
+
+/**
+ * Whether the 1.x Host is a systemd service in this distribution, enabled or
+ * running. A distribution with no systemd has no such service.
+ */
+export async function oneXServiceIn(distribution: string): Promise<boolean> {
+  const asked = (what: string): Promise<Answer> =>
+    ask(['-d', distribution, '--exec', 'systemctl', '--user', what, '--quiet', ONE_X_UNIT]);
+  return (await asked('is-enabled')).code === 0 || (await asked('is-active')).code === 0;
+}
+
+/**
+ * Stop the 1.x Host's service in this distribution and keep it from starting
+ * again, so that it no longer holds the port the App listens on.
+ */
+export async function stopOneXService(distribution: string): Promise<void> {
+  const answer = await ask([
+    '-d',
+    distribution,
+    '--exec',
+    'systemctl',
+    '--user',
+    'disable',
+    '--now',
+    ONE_X_UNIT,
+  ]);
+  if (answer.code !== 0) {
+    throw new Error(`the 1.x service in ${distribution} did not stop: ${why(answer)}.`);
+  }
+}

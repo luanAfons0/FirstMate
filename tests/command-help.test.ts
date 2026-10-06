@@ -15,6 +15,7 @@ const COMMANDS: readonly [string, string][] = [
   ['setup', ''],
   ['desktop', ''],
   ['place', ' [add <name> <kind> [...] | remove <name>]'],
+  ['import', ' <place>'],
   ['add', ' <name> <directory> [--place <name>]'],
   ['remove', ' <name>'],
   ['list', ''],

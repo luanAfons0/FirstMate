@@ -10,6 +10,7 @@
  *   node apps/cli/src/cli.ts setup
  *   node apps/cli/src/cli.ts desktop
  *   node apps/cli/src/cli.ts place [add <name> <kind> [...] | remove <name>] [--json]
+ *   node apps/cli/src/cli.ts import <place>
  *   node apps/cli/src/cli.ts add <name> <directory> [--place <name>]
  *   node apps/cli/src/cli.ts remove <name>
  *   node apps/cli/src/cli.ts list [--json]
@@ -44,6 +45,8 @@ import {
   withShortcuts,
 } from '@firstmate/core/commands';
 import { readConfig, type Config } from '@firstmate/core/config';
+import { importOneX } from '@firstmate/core/import-1x';
+import { oneXServiceIn, stopOneXService } from '@firstmate/core/wsl';
 import { DEFAULT_PLACE } from '@firstmate/core/places';
 import { refusalOf, refuse, type Refusal } from '@firstmate/core/refusal';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
@@ -56,6 +59,7 @@ import {
 import { readSettings, writeSettings } from '@firstmate/core/settings';
 import { STATE_WORDS } from '@firstmate/host/index-page';
 import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
+import { openPrompt } from './prompt.ts';
 import { setup } from './setup.ts';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
@@ -106,6 +110,12 @@ const COMMANDS: readonly Command[] = [
     does: 'say every Place, or add or remove one.',
     json: true,
     run: (argv, json) => place(home(), argv, json),
+  },
+  {
+    name: 'import',
+    takes: '<place>',
+    does: 'bring a 1.x install across from a wsl Place.',
+    run: (argv) => importFrom(home(), argv),
   },
   {
     name: 'add',
@@ -238,6 +248,15 @@ Windows path its files are read through when that is not
 \\\\wsl.localhost\\<distribution>. Its paths are the distribution's own. A Place
 that holds a Plugin cannot be removed, and a Plugin Name is used once across
 every Place.`,
+  },
+  {
+    about: ['import'],
+    text: `import reads the 1.x Registry and settings from ~/.firstmate in a wsl Place's
+distribution, and brings across its Plugins, their Grants, the Shortcuts, the
+Plugin Order and the Shelf. Every Plugin enters that Place where its directory
+already is: nothing is copied or moved. A Plugin Name already in use is refused
+in one sentence, and the rest still come. When the 1.x Host runs there as a
+systemd service, import asks before it turns that service off.`,
   },
   {
     about: ['setup'],
@@ -471,6 +490,64 @@ async function add(home: string, argv: readonly string[], place?: string): Promi
  */
 function inPlace(place: string): string {
   return place === DEFAULT_PLACE ? '' : `, in ${place}`;
+}
+
+/**
+ * Bring a 1.x install across from a `wsl` Place, and offer to turn off the
+ * 1.x service there, which would otherwise hold the port the App listens on.
+ * A refusal of one thing is said, and the rest still comes; the command then
+ * ends with the exit code for a name that is taken.
+ */
+async function importFrom(home: string, argv: readonly string[]): Promise<number> {
+  const [name] = argv;
+  if (name === undefined || argv.length > 1) {
+    return typedWrong('import', 'import takes the name of one wsl Place.');
+  }
+  const place = findPlace(home, name);
+  const imported = importOneX(home, place);
+  for (const row of imported.plugins) {
+    console.log(`firstmate: imported ${row.name} at ${row.directory}, in ${row.place}`);
+  }
+  for (const shortcut of imported.shortcuts) {
+    console.log(`firstmate: bound ${shortcut.keys} to open ${shortcutAddress(shortcut)}`);
+  }
+  if (imported.order !== undefined) {
+    console.log(`firstmate: the Plugin Order is now ${imported.order.join(', ')}`);
+  }
+  if (imported.shelf !== undefined) {
+    console.log(`firstmate: the Shelf of ${place.name} is now ${imported.shelf}`);
+  }
+  for (const sentence of imported.refused) console.error(`firstmate: ${sentence}`);
+  await reloadHost(home);
+  if (place.kind === 'wsl' && (await oneXServiceIn(place.distribution))) {
+    await offerToStop(place.distribution);
+  }
+  return imported.refused.length === 0 ? 0 : exit('taken');
+}
+
+/**
+ * Ask before the 1.x service is turned off, and do nothing to it on no, or
+ * when nobody is there to answer.
+ */
+async function offerToStop(distribution: string): Promise<void> {
+  const prompt = openPrompt(() => process.exit(130));
+  let yes = false;
+  try {
+    yes = await prompt.confirm(
+      `The 1.x Host runs as a service in ${distribution}. Turn it off, so the App can listen?`,
+      true,
+    );
+  } catch {
+    // The input ended before an answer, and no answer is no.
+  } finally {
+    prompt.close();
+  }
+  if (!yes) {
+    console.log(`firstmate: the 1.x service in ${distribution} is left as it is.`);
+    return;
+  }
+  await stopOneXService(distribution);
+  console.log(`firstmate: turned off the 1.x service in ${distribution}.`);
 }
 
 /**

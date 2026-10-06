@@ -42,6 +42,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
 | `node apps/cli/src/cli.ts restart <name>`     | Start one Plugin's Plugin Server again.         |
 | `node apps/cli/src/cli.ts place [add <name> <kind> \| remove <name>]` | Say every Place, or add or remove one. |
+| `node apps/cli/src/cli.ts import <place>`     | Bring a 1.x install across from a wsl Place.    |
 | `node apps/cli/src/cli.ts add <name> <dir> [--place <name>]` | Register a Plugin. `<dir>` is an absolute path. |
 | `node apps/cli/src/cli.ts remove <name>`      | Take a Plugin out of the Registry.              |
 | `node apps/cli/src/cli.ts grant <from> <to>`  | Let `<from>` call `<to>`'s tools: a Grant.      |
@@ -131,6 +132,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   plugin-places.ts each Plugin as the Host holds it: where its files are
                    read, and how its Plugin Server starts.
   wsl.ts           wsl.exe, as the command line asks it about a wsl Place.
+  import-1x.ts     bring a 1.x install across from a wsl Place: Plugins,
+                   Grants, Shortcuts, Plugin Order and Shelf.
   shortcut.ts      read the keys of a Shortcut into one normal form, for the
                    terminal and the Tray alike.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.

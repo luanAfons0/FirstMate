@@ -31,11 +31,22 @@ export type Wsl = {
   calls(): Promise<readonly string[]>;
 };
 
+/** What the fake distribution holds besides its files. */
+type Holding = {
+  /** Whether a 1.x Host runs there as a systemd user service. */
+  readonly service?: boolean;
+};
+
 /**
  * A fake WSL that knows these distributions. A command for any other one is
  * refused, as the real `wsl.exe` refuses a distribution it does not have.
+ * Inside it, `systemctl` is a fake too, which writes down what it was asked.
  */
-export async function fakeWsl(t: TestContext, distributions: readonly string[]): Promise<Wsl> {
+export async function fakeWsl(
+  t: TestContext,
+  distributions: readonly string[],
+  holding: Holding = {},
+): Promise<Wsl> {
   const scratch = await makeHome(t);
   const bin = join(scratch, 'bin');
   const root = join(scratch, 'root');
@@ -65,6 +76,16 @@ exec "$@"
 `;
   await writeFile(join(bin, 'wsl.exe'), script);
   await chmod(join(bin, 'wsl.exe'), 0o755);
+  const running = holding.service === true ? 0 : 3;
+  const systemctl = `#!/bin/sh
+echo "systemctl $*" >> '${log}'
+case "$*" in
+  *is-enabled*|*is-active*) exit ${running} ;;
+esac
+exit 0
+`;
+  await writeFile(join(bin, 'systemctl'), systemctl);
+  await chmod(join(bin, 'systemctl'), 0o755);
   return {
     root,
     home,

@@ -30,6 +30,10 @@ Its default Shelf is the one a 1.x Host kept there, `~/.firstmate/shelf`. `insta
 
 Starting the Host starts every Plugin Server, so a `wsl` Place wakes its distribution. ADR-0007's rule against waking WSL does not hold for the App.
 
+## Moving from 1.x
+
+A 1.x Host ran in WSL, so `firstmate import <place>` reads the 1.x Registry and settings from `~/.firstmate` in a `wsl` Place's distribution, through its root, and never writes them. Every Plugin enters that Place with the directory it already has, its Grants with it, and the Shortcuts, the Plugin Order and the 1.x Shelf follow. A Plugin Name already in use is refused in one sentence, and so is a Shortcut for a Plugin that did not come; the rest still comes, and the command ends with the exit code for a taken name. When the 1.x Host runs there as a systemd service, it would hold the port the App listens on, so `import` asks before it runs `systemctl --user disable --now firstmate`, and does nothing to the service on no.
+
 ## Considered Options
 
 One Registry per Place. A Plugin Name would then have to be checked across files, and the Tool Bus would read Grants from several places at once.
