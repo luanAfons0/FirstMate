@@ -11,6 +11,7 @@
  * Windows the real `wsl.exe` is in System32 and a script cannot stand in for
  * it, so the tests skip there and say so.
  */
+import { existsSync } from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import type { TestContext } from 'node:test';
@@ -20,12 +21,22 @@ import { makeHome } from './host.ts';
 export const NO_FAKE_WSL =
   process.platform === 'win32' && 'the fake wsl.exe is a shell script, and Windows runs none';
 
+/** Whether this environment carries a fake WSL, so a `wsl` Place can run in it. */
+export function holdsFakeWsl(env: NodeJS.ProcessEnv): boolean {
+  const first = (env['PATH'] ?? '').split(delimiter)[0] ?? '';
+  return first !== '' && existsSync(join(first, 'wsl.exe'));
+}
+
+/** A fake WSL: where it keeps its files, and how a test runs with it. */
 export type Wsl = {
   /** The folder that stands for the distribution's `/`, and the Place's root. */
   readonly root: string;
   /** The distribution user's home directory, inside the distribution. */
   readonly home: string;
-  /** The environment that puts the fake first on PATH, and lets a wsl Place be added off Windows. */
+  /**
+   * The environment that puts the fake first on PATH, where the command line
+   * and the Host find it, so a `wsl` Place can be added off Windows.
+   */
   readonly env: Readonly<Record<string, string>>;
   /** Every call the fake took, one line each, in order. */
   calls(): Promise<readonly string[]>;
@@ -89,7 +100,7 @@ exit 0
   return {
     root,
     home,
-    env: { FIRSTMATE_FAKE_WSL: '1', PATH: `${bin}${delimiter}${process.env['PATH'] ?? ''}` },
+    env: { PATH: `${bin}${delimiter}${process.env['PATH'] ?? ''}` },
     calls: async () => {
       const text = await readFile(log, 'utf8').catch(() => '');
       return text.split('\n').filter((line) => line !== '');

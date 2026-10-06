@@ -11,7 +11,7 @@ import { hasGit, officialSources } from './helpers/git.ts';
 import { bootHostIn, firstmate, makeHome, until, type CommandResult } from './helpers/host.ts';
 import { pathWith } from './helpers/path.ts';
 import { fakeWindows } from './helpers/windows.ts';
-import { fakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
+import { fakeWsl, holdsFakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
 
 /**
  * One run of `setup` on a machine of the test's own: git is on `PATH`, and no
@@ -31,7 +31,7 @@ async function setupIn(
   // none. A test that wants one says so.
   const lines = input.split('\n');
   const asked =
-    process.platform === 'win32' || env['FIRSTMATE_FAKE_WSL'] === '1'
+    process.platform === 'win32' || holdsFakeWsl(env)
       ? [...lines.slice(0, shelfAnswers), '', ...lines.slice(shelfAnswers)]
       : lines;
   const user = { HOME: join(home, 'user'), XDG_CONFIG_HOME: '' };

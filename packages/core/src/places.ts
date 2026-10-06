@@ -9,8 +9,10 @@
  * writes no setting, never has to make it, and its Shelf is the one setting
  * 1.x kept, `shelf`, at the top of the settings file (ADR-0012).
  */
-import { join, posix } from 'node:path';
+import { accessSync, constants, statSync } from 'node:fs';
+import { delimiter, join, posix } from 'node:path';
 import { isPluginName } from './registry.ts';
+import { isInsideWsl, WSL_EXE } from './wsl.ts';
 
 /**
  * The default Place: this machine. The App runs on Windows, so there it is
@@ -21,16 +23,31 @@ export const DEFAULT_PLACE = process.platform === 'win32' ? 'windows' : 'local';
 /** Every kind of Place. */
 export const PLACE_KINDS = ['local', 'wsl'] as const;
 
-/** The variable that lets a test add a `wsl` Place off Windows, with a fake `wsl.exe`. */
-const FAKE_WSL_VARIABLE = 'FIRSTMATE_FAKE_WSL';
-
 /**
- * Whether this machine can hold a `wsl` Place: Windows, which is where
- * `wsl.exe` runs a distribution as a Place. Off Windows only a test says yes,
- * with a fake `wsl.exe` it put on `PATH` itself.
+ * Whether this machine can hold a `wsl` Place: one where `wsl.exe` runs a
+ * distribution as a Place. That is Windows, and a system outside WSL with a
+ * `wsl.exe` on PATH, which is how a test stands one in. Inside WSL the
+ * `wsl.exe` on PATH is Windows' own, through interop, and a Host there reads
+ * no Place's files through a Windows path, so the answer is no.
  */
 export function canHoldWslPlace(env: NodeJS.ProcessEnv = process.env): boolean {
-  return process.platform === 'win32' || env[FAKE_WSL_VARIABLE] === '1';
+  if (process.platform === 'win32') return true;
+  return !isInsideWsl(env) && isOnPath(WSL_EXE, env);
+}
+
+/** Whether a program of this name is on PATH, as a file that may be run. */
+function isOnPath(program: string, env: NodeJS.ProcessEnv): boolean {
+  return (env['PATH'] ?? '')
+    .split(delimiter)
+    .filter((directory) => directory !== '')
+    .some((directory) => {
+      try {
+        accessSync(join(directory, program), constants.X_OK);
+        return statSync(join(directory, program)).isFile();
+      } catch {
+        return false;
+      }
+    });
 }
 
 /** One kind of Place. */
