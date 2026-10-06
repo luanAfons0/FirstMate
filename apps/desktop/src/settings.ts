@@ -9,17 +9,19 @@
  * main process only through the preload the App's own views carry (ADR-0012,
  * ADR-0018).
  *
- * It shows the Places with their Shelves, start at logon, and the Shortcuts.
- * Plugins, Grants and the Plugin Order stay in a terminal and the Index Page.
+ * It shows the Places with their Shelves, start at logon, the Shortcuts and
+ * the App's version. Plugins, Grants and the Plugin Order stay in a terminal
+ * and the Index Page. When `core` refuses what the operator typed, the
+ * outcome names the one field it is about, so the page can mark it.
  */
-import { dialog, type BaseWindow } from 'electron';
+import { app, dialog, type BaseWindow } from 'electron';
 import { addPlace, listPlaces, moveShelf, removePlace, shelfOf } from '@firstmate/core/commands';
 import { readConfig } from '@firstmate/core/config';
-import { DEFAULT_PLACE } from '@firstmate/core/places';
+import { canHoldWslPlace, DEFAULT_PLACE, isPlaceKind, isPlaceName } from '@firstmate/core/places';
+import { refusalOf } from '@firstmate/core/refusal';
 import { readRegistry } from '@firstmate/core/registry';
 import { readSettings } from '@firstmate/core/settings';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
-import { shortcutAddress } from '@firstmate/core/shortcut';
 import type { Asked } from './ask.ts';
 import { readLogon, writeLogon } from './logon.ts';
 
@@ -40,8 +42,10 @@ export type PlaceShown = {
 /** One Shortcut, as the Settings View shows it. */
 export type ShortcutShown = {
   readonly keys: string;
-  /** The address it opens, on the Host. */
-  readonly address: string;
+  /** The Plugin whose address it opens. */
+  readonly plugin: string;
+  /** The path under that Plugin's address, with no leading slash. */
+  readonly path: string;
 };
 
 /** Everything the Settings View says. */
@@ -56,6 +60,8 @@ export type SettingsShown = {
     | { readonly kind: 'unread'; readonly why: string };
   /** Whether the App starts at logon. */
   readonly logon: boolean;
+  /** The App's version. */
+  readonly version: string;
   /** What became of the last change asked for, until the next one. */
   readonly outcome?: Outcome;
   /** Whether a change is still being made, such as a distribution being asked. */
@@ -63,11 +69,21 @@ export type SettingsShown = {
 };
 
 /** What became of one change: done, or refused, in one sentence. */
-export type Outcome = { readonly done: boolean; readonly sentence: string };
+export type Outcome = {
+  readonly done: boolean;
+  readonly sentence: string;
+  /** The field a refusal is about, when it is about one the operator typed or chose. */
+  readonly field?: Field;
+};
+
+/** One field of the Settings View: one of Add a Place, or one Place's Shelf. */
+export type Field =
+  | { readonly form: 'place-add'; readonly name: 'name' | 'kind' | 'distribution' }
+  | { readonly form: 'shelf'; readonly place: string };
 
 /** Read what the Settings View shows, now. It never throws. */
-export function readShown(home: string): Pick<SettingsShown, 'saved' | 'logon'> {
-  return { saved: readSaved(home), logon: readLogon() };
+export function readShown(home: string): Pick<SettingsShown, 'saved' | 'logon' | 'version'> {
+  return { saved: readSaved(home), logon: readLogon(), version: app.getVersion() };
 }
 
 function readSaved(home: string): SettingsShown['saved'] {
@@ -84,7 +100,8 @@ function readSaved(home: string): SettingsShown['saved'] {
     }));
     const shortcuts = (readSettings(home).shortcuts ?? []).map((shortcut) => ({
       keys: shortcut.keys,
-      address: shortcutAddress(shortcut),
+      plugin: shortcut.plugin,
+      path: shortcut.path,
     }));
     return { kind: 'read', places, shortcuts };
   } catch (fault: unknown) {
@@ -111,8 +128,27 @@ export async function change(asked: Asked, needs: ChangeNeeds): Promise<Outcome 
     if (sentence === undefined) return undefined;
     return { done: true, sentence };
   } catch (fault: unknown) {
-    return { done: false, sentence: sentenceOf(fault) };
+    const field = refusalOf(fault) === undefined ? undefined : fieldOf(asked, fault);
+    return { done: false, sentence: sentenceOf(fault), ...(field === undefined ? {} : { field }) };
   }
+}
+
+/**
+ * The field a refusal of this ask is about. `core` checks a Place in this
+ * order: its name, its kind, then its distribution; a name already taken is
+ * the name's fault too. A failure, which is no refusal, marks no field.
+ */
+function fieldOf(asked: Asked, fault: unknown): Field | undefined {
+  if (asked.kind === 'shelf' || asked.kind === 'shelf-choose') {
+    return { form: 'shelf', place: asked.place };
+  }
+  if (asked.kind !== 'place-add') return undefined;
+  const at = (name: 'name' | 'kind' | 'distribution'): Field => ({ form: 'place-add', name });
+  if (!isPlaceName(asked.name) || refusalOf(fault) === 'taken') return at('name');
+  if (!isPlaceKind(asked.placeKind) || (asked.placeKind === 'wsl' && !canHoldWslPlace())) {
+    return at('kind');
+  }
+  return asked.placeKind === 'wsl' ? at('distribution') : undefined;
 }
 
 /** The change itself, and its sentence; undefined when nothing changed. */
