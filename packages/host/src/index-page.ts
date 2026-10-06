@@ -20,25 +20,9 @@
  * terminal alone (ADR-0012).
  */
 
-import type { PluginState } from './supervisor.ts';
+import { STATE_WORDS, type PluginView } from '@firstmate/core/plugin-state';
 
 /** One Plugin, as the Index Page and the Tray both see it. */
-export type PluginView = {
-  /** The Plugin Name, which is also its address. */
-  readonly name: string;
-  /** Whether the Plugin ships a Plugin Page for the Host to link to. */
-  readonly hasPage: boolean;
-  /** What the Host knows about this Plugin's Plugin Server right now. */
-  readonly state: PluginState;
-};
-
-/** The one word FirstMate says about a Plugin Server, wherever it says it. */
-export const STATE_WORDS: Readonly<Record<PluginState, string>> = {
-  running: 'Running',
-  stopped: 'Stopped',
-  'no-plugin-server': 'no Plugin Server',
-};
-
 /**
  * From this many Plugins up, the Index Page offers a filter. Below it the
  * whole list is already on screen, and a box that narrows three rows is noise.

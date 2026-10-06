@@ -7,22 +7,30 @@
  * answered, not at the end, so a later failure or Ctrl-C keeps what finished.
  * It adds and never removes: `remove`, `revoke` and `unbind` stay the only
  * ways to take something away.
+ *
+ * It asks, in order: the Shelf and the Places, the import of a 1.x install,
+ * the Official Plugins with a Place for each, Grants, Shortcuts, and whether
+ * the App starts at logon (ADR-0024).
  */
 import {
+  addPlace,
   bindShortcut,
   checkKeys,
   checkKeysFree,
   checkShortcutPath,
   givePermission,
   installPlugin,
+  listPlaces,
   moveShelf,
 } from '@firstmate/core/commands';
 import { readConfig } from '@firstmate/core/config';
+import { holdsOneX } from '@firstmate/core/import-1x';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import { openPrompt, type Prompt } from './prompt.ts';
 import { readRegistry } from '@firstmate/core/registry';
+import { appHere, logonIsOn, turnLogonOn } from './install-app.ts';
+import { bringAcross } from './one-x.ts';
 import { reloadHost } from './running-host.ts';
-import { NO_SYSTEMD, serviceOn, serviceState } from './service.ts';
 import { readSettings } from '@firstmate/core/settings';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
 import { shortcutAddress } from '@firstmate/core/shortcut';
@@ -46,10 +54,12 @@ export async function setup(): Promise<number> {
   });
   try {
     await askShelf(prompt, changes);
+    await askPlaces(prompt, changes);
+    await askImport(prompt, changes);
     await askPlugins(prompt, changes);
     await askGrants(prompt, changes);
     await askShortcuts(prompt, changes);
-    await askService(prompt, changes);
+    await askLogon(prompt, changes);
     await reload(changes);
   } finally {
     prompt.close();
@@ -83,6 +93,57 @@ async function askShelf(prompt: Prompt, changes: Changes): Promise<void> {
 }
 
 /**
+ * Which WSL distributions to add as Places, one after another, until Enter.
+ * A distribution is asked about only where there is one to have: on Windows,
+ * and inside WSL. Its Place is named after it, as `debian` for `Debian`.
+ */
+async function askPlaces(prompt: Prompt, changes: Changes): Promise<void> {
+  if (process.platform !== 'win32' && (process.env['WSL_DISTRO_NAME'] ?? '') === '') return;
+  const { home } = readConfig();
+  console.log('The Places:');
+  for (const place of listPlaces(home)) console.log(`  ${place.name}  (${place.kind})`);
+  for (;;) {
+    const distribution = await prompt.text(
+      'A WSL distribution to add as a Place, as in Debian, or press Enter to finish:',
+      '',
+    );
+    if (distribution === '') return;
+    const name = distribution
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    try {
+      const place = await addPlace(home, name, 'wsl', [distribution]);
+      console.log(`firstmate: added the wsl Place ${place.name}`);
+      changes.done.push(`added the wsl Place ${place.name}`);
+    } catch (fault) {
+      console.error(`firstmate: ${sentence(fault)}`);
+    }
+  }
+}
+
+/**
+ * Whether to bring a 1.x install across, from each `wsl` Place that holds one
+ * and holds no Plugin of 2.0 yet. It is `import`, word for word.
+ */
+async function askImport(prompt: Prompt, changes: Changes): Promise<void> {
+  const { home } = readConfig();
+  const rows = readRegistry(home);
+  for (const place of listPlaces(home)) {
+    if (rows.some((row) => row.place === place.name) || !holdsOneX(place)) continue;
+    if (!(await prompt.confirm(`${place.name} holds a 1.x install. Import it?`, true))) continue;
+    try {
+      const imported = await bringAcross(home, place, (question) => prompt.confirm(question, true));
+      changes.done.push(`imported ${imported.plugins.length} Plugin(s) from ${place.name}`);
+      if (imported.refused.length > 0) changes.failed = true;
+    } catch (fault) {
+      console.error(`firstmate: ${sentence(fault)}`);
+      changes.failed = true;
+    }
+  }
+}
+
+/**
  * Which Official Plugins to fetch. One that is in the Registry already, by
  * Plugin Name alone, is shown as installed and is not offered (ADR-0015). A
  * fetch that fails says which and why, and the others go on.
@@ -109,17 +170,52 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
   for (const at of chosen) {
     const plugin = offered[at];
     if (plugin === undefined) continue;
+    // Only a Place the Plugin runs in is offered, so that nothing is fetched
+    // where it would only go Stopped.
+    const places = listPlaces(readConfig().home).filter((place) =>
+      plugin.places.includes(place.kind),
+    );
+    const place = await askPlace(prompt, plugin.name, places);
+    if (place === undefined) {
+      console.error(
+        `firstmate: ${plugin.name} runs in a ${plugin.places.join(' or ')} Place, and there ` +
+          'is none. Add one, then run setup again.',
+      );
+      changes.failed = true;
+      continue;
+    }
     console.log(`firstmate: fetching ${plugin.name} from ${plugin.url}`);
     try {
       // The config is read again for each one, because the Shelf step can
       // have just moved the Shelf.
-      const row = await installPlugin(readConfig(), plugin.name);
-      console.log(`firstmate: installed ${row.name} at ${row.directory}`);
+      const row = await installPlugin(readConfig(), plugin.name, undefined, place);
+      console.log(`firstmate: installed ${row.name} at ${row.directory}, in ${row.place}`);
       changes.done.push(`installed ${row.name}`);
     } catch (fault) {
       console.error(`firstmate: could not install ${plugin.name}: ${sentence(fault)}`);
       changes.failed = true;
     }
+  }
+}
+
+/**
+ * The Place to install one Official Plugin in: the only one it can run in,
+ * with no question, or the one the operator picks among several.
+ */
+async function askPlace(
+  prompt: Prompt,
+  plugin: string,
+  places: readonly { readonly name: string }[],
+): Promise<string | undefined> {
+  if (places.length < 2) return places[0]?.name;
+  console.log(`The Places ${plugin} can run in:`);
+  for (const [at, place] of places.entries()) {
+    console.log(`  ${String(at + 1).padStart(2)}. ${place.name}`);
+  }
+  for (;;) {
+    const [at] = await prompt.choose(`Which should ${plugin} go in?`, places.length, false);
+    const place = at === undefined ? undefined : places[at];
+    if (place !== undefined) return place.name;
   }
 }
 
@@ -229,21 +325,22 @@ async function askPath(prompt: Prompt, plugin: string): Promise<string> {
 }
 
 /**
- * Whether the Host should run as a systemd user service. A service that runs
- * already is not asked about, and a machine with no systemd is told so in the
- * words `service on` uses, and `setup` goes on.
+ * Whether the App starts at logon. It is asked only where the App is
+ * installed and does not start at logon yet, and it is off until the
+ * operator says yes. It writes the same entry the App's Tray writes.
  */
-async function askService(prompt: Prompt, changes: Changes): Promise<void> {
-  const state = serviceState();
-  if (state === 'active') return;
-  if (state === 'no-systemd') {
-    console.log(`firstmate: ${NO_SYSTEMD}`);
+async function askLogon(prompt: Prompt, changes: Changes): Promise<void> {
+  const here = await appHere();
+  if (here === undefined) return;
+  if (here.installed === undefined) {
+    console.log('firstmate: the App is not installed yet. Run firstmate desktop to install it.');
     return;
   }
-  if (!(await prompt.confirm('Run the Host as a systemd user service?', true))) return;
+  if (await logonIsOn(here)) return;
+  if (!(await prompt.confirm('Start FirstMate at logon?', false))) return;
   try {
-    serviceOn();
-    changes.done.push('the Host runs as a systemd user service');
+    await turnLogonOn(here.installed);
+    changes.done.push('FirstMate starts at logon');
   } catch (fault) {
     console.error(`firstmate: ${sentence(fault)}`);
     changes.failed = true;
@@ -254,8 +351,7 @@ async function askService(prompt: Prompt, changes: Changes): Promise<void> {
  * Ask the running Host to pick up what this run changed, as every plain
  * command does. It asks nothing of the operator: a reload leaves every Plugin
  * Server that was not added or removed alone. With no Host running there is
- * nothing to ask, and a service started a moment ago read the files as they
- * are.
+ * nothing to ask: the App reads the files as they are when it starts.
  */
 async function reload(changes: Changes): Promise<void> {
   if (changes.done.length === 0) return;

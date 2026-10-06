@@ -8,10 +8,8 @@
  * file, so a stale file never turns into an error the operator cannot act on.
  */
 import { refuse } from '@firstmate/core/refusal';
-import { readRuntimeFile } from '@firstmate/core/runtime';
-import type { PluginView } from '@firstmate/host/index-page';
-import type { Restarted } from '@firstmate/host/supervisor';
-import { TOKEN_PARAMETER } from '@firstmate/host/security';
+import type { PluginView, Restarted } from '@firstmate/core/plugin-state';
+import { readRuntimeFile, TOKEN_PARAMETER } from '@firstmate/core/runtime';
 
 /**
  * How long the command line waits for the Host. A reload waits for every

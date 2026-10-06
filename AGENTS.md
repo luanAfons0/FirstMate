@@ -34,7 +34,6 @@ Run every command from the repository root.
 | `pnpm --filter @firstmate/desktop package` | Build the App, and its installer, into `apps/desktop/dist/`. Windows only. |
 | `apps\desktop\dist\win-unpacked\FirstMate.exe` | Run the packaged App without installing it. Set `FIRSTMATE_HOME` first. |
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
-| `node apps/cli/src/cli.ts start`              | The same Host, from the command line.           |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows or WSL. |
 | `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `--help` alone also lists the exit codes. |
@@ -53,8 +52,6 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
 | `node apps/cli/src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
 | `node apps/cli/src/cli.ts order [<name> <position>]` | Say the Plugin Order, or move one Plugin in it. |
-| `node apps/cli/src/cli.ts service on\|off`    | Install or remove the systemd user service.     |
-| `journalctl --user -u firstmate -f`  | Read what the running Host says.                |
 
 Six environment variables move the Host: `FIRSTMATE_HOME` (default
 `~/.firstmate`, and `%APPDATA%\FirstMate` on Windows), `FIRSTMATE_PORT` (default `4747`; zero asks the system for a
@@ -90,14 +87,12 @@ knip and every test.
 - **Biome, Prettier and knip**, as dev dependencies, for the lint, the layout
   and the dead code, and **tsdown** in `apps/cli`, for the bundle. None of them
   runs in the Host or ships in the package.
-- **One runtime dependency, and the Host uses none of it.** The Host speaks MCP
-  over stdio with about 140 lines of its own JSON-RPC (`packages/host/src/mcp.ts`) rather than
-  take a dependency. Keep it that way. The 1.x window draws with
-  `@webviewjs/webview`, in `apps/cli/src/desktop.ts`. No command imports it
-  since `firstmate desktop` installs the App, and #145 removes both; until then
-  `knip.json` names it an entry (ADR-0011). `install` runs the `git`
-  binary to clone a Plugin: an external tool the command line assumes, not a
-  package dependency, and the Host still calls nothing outside Node.
+- **No runtime dependency.** The Host speaks MCP over stdio with about 140
+  lines of its own JSON-RPC (`packages/host/src/mcp.ts`) rather than take a
+  dependency. Keep it that way. The npm package is the command line alone, one
+  bundled file that depends on nothing (ADR-0024). `install` runs the `git`
+  binary to clone a Plugin, and a `wsl` Place runs `wsl.exe`: external tools
+  the command line assumes, not package dependencies.
 - **Electron 44**, in `apps/desktop`, for the App: its main process holds the
   Host, and its executable, told `ELECTRON_RUN_AS_NODE=1`, is the Node every
   Plugin Server gets as `FIRSTMATE_NODE`. Keep Electron's `RunAsNode` fuse on.
@@ -108,19 +103,17 @@ knip and every test.
   Release, then the command line on npm, with one version. The installer's
   and its checksum's names are a contract `firstmate desktop` reads
   (ADR-0023, `.github/workflows/release.yml`).
-- **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
-  removing the logon task, and for the three things the running Tray asks of
-  it: the taskbar button (`apps/cli/src/taskbar.ts`), the
-  helper that holds the Shortcuts (`apps/cli/src/hotkeys.ts`) and the helper that shows
-  the Notices (`apps/cli/src/notice-helper.ts`), **systemd** for the service, **WSL
-  Debian** for the machine it all runs on (ADR-0007). The Tray itself is
-  TypeScript, in `apps/cli/src/desktop*.ts`, and runs on Windows Node.
+- **Windows** for the App, which holds the Tray, the window, Notices and
+  Shortcuts with Electron's own features: no PowerShell helper and no systemd
+  (ADR-0020). **WSL** only as a Place a Plugin can run in (ADR-0021).
 
 ## Project structure
 
-A pnpm workspace. `core` and `host` are private: they are never published, and
-reach the npm package only inside the bundle `apps/cli` builds. `core` imports
-nothing from `host`, and neither imports the window library.
+A pnpm workspace. `core` and `host` are private: they are never published.
+`core` reaches the npm package inside the bundle `apps/cli` builds, and `host`
+reaches the App inside the bundle `apps/desktop` builds; the command line
+carries no Host (ADR-0024). `core` imports nothing from `host`, and `apps/cli`
+imports nothing from `host` either.
 
 ```
 packages/core/src/  what the command line and the Host share. Imports nothing
@@ -144,7 +137,10 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   import-1x.ts     bring a 1.x install across from a wsl Place: Plugins,
                    Grants, Shortcuts, Plugin Order and Shelf.
   shortcut.ts      read the keys of a Shortcut into one normal form, for the
-                   terminal and the Tray alike.
+                   terminal and the App alike.
+  plugin-state.ts  what the Host says about a Plugin Server, in one set of
+                   words for the Index Page, the App and the terminal.
+  logon.ts         the App's logon entry, which the App and setup both write.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
                    a git URL, and run none of what lands.
@@ -167,43 +163,20 @@ packages/host/src/  the Host. Every file is one job.
   notices.ts       hold the Notices for the Tray, and refuse a bad one.
   log.ts           keep the Host's output, Plugin Servers' stderr with it, in
                    one capped file in the home directory (ADR-0022).
-apps/cli/           the npm package, @luan-afonso/firstmate. In 1.x it carries
-                    the Host and the window too.
-  src/cli.ts       the terminal: start, desktop, shelf, install, bind, unbind,
-                   service, and the Registry: add, remove, list, grant, revoke.
-  src/main.ts      the Host's entry point beside cli.ts, in a clone and in the
-                   build: start imports it, and the service unit names it.
+apps/cli/           the npm package, @luan-afonso/firstmate: the command line
+                    alone, with no Host and no window (ADR-0024).
+  src/cli.ts       the terminal: desktop, setup, place, import, shelf, install,
+                   bind, unbind, order, logs, status, restart, and the
+                   Registry: add, remove, list, grant, revoke.
   src/setup.ts     firstmate setup: the conversation, and nothing else. Each
                    step calls commands.ts.
   src/prompt.ts    ask for text, yes or no, or numbers, over node:readline.
   src/running-host.ts the running Host, as the terminal reaches it: over
                    loopback, with the token from the runtime file.
   src/install-app.ts firstmate desktop: download the App of this version from
-                   its GitHub Release, check its SHA-256, install it, open it.
-  src/desktop-state.ts the part that decides: where the Host is, and whether
-                   it is there. Imports nothing native, owns no window.
-  src/desktop.ts   the part that shows: the window, and the one dependency.
-  src/strip.ts     the chrome strip above the content view: the breadcrumb and
-                   the switcher, one file with no assets of its own. The Host
-                   never serves it.
-  src/settings-view.ts the Settings View, the window's own page for
-                   FirstMate's settings, one file with no assets of its own.
-                   The Host never serves it either.
-  src/logon.ts     whether FirstMate starts at logon: one file in Startup.
-  src/service.ts   the Host as a systemd user service: write the unit from a
-                   template of its own, and ask systemctl and loginctl.
-  src/taskbar.ts   the name Windows groups the taskbar button by, so that the
-                   button wears FirstMate's mark and not node.exe's.
-  src/hotkeys.ts   the PowerShell helper that holds the Shortcuts in Windows:
-                   one command per line in, one event per line out.
-  src/notice-helper.ts the PowerShell helper that shows Notices under
-                   FirstMate's own name and mark, and hears a click on one.
-  icons/           the mark, running and stopped. The window wears it; the
-                   Tray draws with both. Packed with the program.
-  windows/         install and remove the logon task that holds the
-                   distribution up: three PowerShell scripts and the VBScript
-                   shim that starts one with no window. Packed with the
-                   program, so an npm install can run it too.
+                   its GitHub Release, check its SHA-256, install it, open it;
+                   and whether it is installed and starts at logon.
+  src/one-x.ts     bring a 1.x install across, as import and setup both do.
   tsdown.config.ts the bundle, which runs on the publish path alone.
 apps/desktop/       the App, @firstmate/desktop: one Electron program for
                     Windows. Private; its release is the installer (ADR-0020).
@@ -292,10 +265,12 @@ and drives it over HTTP, exactly as a browser does.
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
   `notifier`. Add a fixture rather than a mock. A fixture with an `mcp`
   carries its Windows form, `mcp.cmd`, beside it (ADR-0019).
-- `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, as `systemd.ts` fakes
-  `systemctl`, and points a `wsl` Place's root at a folder of the test's own.
+- `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, and points a `wsl`
+  Place's root at a folder of the test's own. `tests/helpers/windows.ts` fakes
+  the Windows programs and a GitHub Release, for `firstmate desktop` and the
+  logon question of `setup`.
 - The suite runs on Linux and on Windows, in CI. A test that only makes sense
-  on one skips on the other and says why, as `desktop-command.test.ts` does.
+  on one skips on the other and says why, as `wsl-place.test.ts` does.
 - A test name is a sentence about behaviour:
   `'a request that leaves the web directory does not'`.
 
@@ -325,8 +300,9 @@ and drives it over HTTP, exactly as a browser does.
   shape of `registry.json`, or an address under `/p/<name>/`.
 - Anything that reverses an ADR, and anything that adds a manifest or a schema
   for Plugins (ADR-0002).
-- Installing, removing or restarting the systemd service or the Tray, and
-  anything that writes inside `~/.firstmate` or `~/.nexus`.
+- Installing, removing or restarting the App, turning its start at logon on
+  or off, and anything that writes inside `%APPDATA%\FirstMate`,
+  `~/.firstmate` or `~/.nexus`.
 
 🚫 **Never**
 

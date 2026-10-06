@@ -9,7 +9,10 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 
 /** The runtime file, inside the Host's home directory. */
-export const RUNTIME_FILE = 'runtime.json';
+const RUNTIME_FILE = 'runtime.json';
+
+/** The query parameter the token arrives on, once, in an address. */
+export const TOKEN_PARAMETER = 'token';
 
 /** The log a running Host keeps, inside its home directory (ADR-0022). */
 const LOG_FILE = 'firstmate.log';

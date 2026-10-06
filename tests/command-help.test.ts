@@ -11,7 +11,6 @@ import { firstmate, fixture, makeHome } from './helpers/host.ts';
 
 /** Every command, with the words its usage line shows after its name. */
 const COMMANDS: readonly [string, string][] = [
-  ['start', ''],
   ['setup', ''],
   ['desktop', ''],
   ['place', ' [add <name> <kind> [...] | remove <name>]'],
@@ -29,7 +28,6 @@ const COMMANDS: readonly [string, string][] = [
   ['bind', ' <keys> <plugin> [path]'],
   ['unbind', ' <keys>'],
   ['order', ' [<name> <position>]'],
-  ['service', ' on|off'],
 ];
 
 test('--help and -h after every command print its usage and do nothing else', async (t) => {

@@ -7,7 +7,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HOST_ERROR, type JsonRpcMessage, type PluginServer } from './mcp.ts';
-import type { PluginState } from './supervisor.ts';
+import type { PluginState } from '@firstmate/core/plugin-state';
 
 /** The largest tool call the Host will read. A tool call is not an upload. */
 const BODY_LIMIT_BYTES = 1_048_576;

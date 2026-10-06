@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 import { readShelf } from './shelf.ts';
 
 /** The environment variable that moves the Host's home directory. */
-export const HOME_VARIABLE = 'FIRSTMATE_HOME';
+const HOME_VARIABLE = 'FIRSTMATE_HOME';
 
 /** The environment variable that moves the Host's port. */
 const PORT_VARIABLE = 'FIRSTMATE_PORT';

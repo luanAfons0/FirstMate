@@ -7,7 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHost, firstmate, fixture, makeHome, DEFAULT_PLACE } from './helpers/host.ts';
+import { bootHost, firstmate, fixture, makeHome, DEFAULT_PLACE, NO_HOST } from './helpers/host.ts';
 
 /** A port nothing listens on, as a Host that crashed leaves behind. */
 function closedPort(): Promise<number> {
@@ -28,7 +28,7 @@ test('status with no Host says so in one sentence, and ends with its own code', 
   const said = await firstmate(home, ['status']);
 
   assert.equal(said.code, 6);
-  assert.equal(said.stdout, 'firstmate: no Host runs.\n');
+  assert.equal(said.stdout, `firstmate: ${NO_HOST}\n`);
   assert.equal(said.stderr, '');
 });
 
@@ -40,7 +40,7 @@ test('a runtime file a crashed Host left behind reads as no Host', async (t) => 
   const said = await firstmate(home, ['status']);
 
   assert.equal(said.code, 6, said.stderr);
-  assert.equal(said.stdout, 'firstmate: no Host runs.\n');
+  assert.equal(said.stdout, `firstmate: ${NO_HOST}\n`);
 });
 
 test('status with a Host shows each Plugin and its state, in the Plugin Order', async (t) => {
@@ -137,5 +137,5 @@ test('a port another Host holds now, under another token, reads as no Host', asy
   const said = await firstmate(home, ['status']);
 
   assert.equal(said.code, 6, said.stderr);
-  assert.equal(said.stdout, 'firstmate: no Host runs.\n');
+  assert.equal(said.stdout, `firstmate: ${NO_HOST}\n`);
 });

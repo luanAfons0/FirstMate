@@ -114,6 +114,16 @@ function play(root: string, name: string, words: readonly string[]): number {
     process.stdout.write(`${here(root, path)}\n`);
     return 0;
   }
+  if (name === 'reg.exe' && words[0] === 'add') {
+    // add <key> /v <name> /t REG_SZ /d <data> /f, as the logon entry is written.
+    const [, key = ''] = words;
+    const value = words[words.indexOf('/v') + 1] ?? '';
+    const data = words[words.indexOf('/d') + 1] ?? '';
+    const registry = readRegistry(root);
+    registry[key] = { ...registry[key], [value]: data };
+    writeFileSync(join(root, 'registry.json'), JSON.stringify(registry, null, 2));
+    return 0;
+  }
   if (name === 'reg.exe') {
     const [verb, key = '', file = ''] = words;
     const values = readRegistry(root)[key];

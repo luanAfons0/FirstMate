@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * FirstMate from a terminal: run the Host, and keep the Registry it reads.
+ * FirstMate from a terminal: install the App, and keep the Registry and the
+ * settings the Host in it reads. It carries no Host of its own (ADR-0024): a
+ * command writes the files, and asks the running Host to read them again.
  *
  * Adding a Plugin neither copies nor symlinks its directory. The Registry
  * holds the path and nothing else, so a Plugin stays in its own repository
  * wherever it already lives.
  *
- *   node apps/cli/src/cli.ts start
  *   node apps/cli/src/cli.ts setup
  *   node apps/cli/src/cli.ts desktop
  *   node apps/cli/src/cli.ts place [add <name> <kind> [...] | remove <name>] [--json]
@@ -24,7 +25,6 @@
  *   node apps/cli/src/cli.ts bind <keys> <plugin> [path]
  *   node apps/cli/src/cli.ts unbind <keys>
  *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
- *   node apps/cli/src/cli.ts service on|off
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import {
@@ -47,8 +47,6 @@ import {
   withShortcuts,
 } from '@firstmate/core/commands';
 import { readConfig, type Config } from '@firstmate/core/config';
-import { importOneX } from '@firstmate/core/import-1x';
-import { oneXServiceIn, stopOneXService } from '@firstmate/core/wsl';
 import { DEFAULT_PLACE } from '@firstmate/core/places';
 import { refusalOf, refuse, type Refusal } from '@firstmate/core/refusal';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
@@ -60,13 +58,13 @@ import {
 } from '@firstmate/core/registry';
 import { logPath, oldLogPath } from '@firstmate/core/runtime';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
-import { STATE_WORDS } from '@firstmate/host/index-page';
+import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
+import { bringAcross } from './one-x.ts';
 import { openPrompt } from './prompt.ts';
 import { setup } from './setup.ts';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
-import { serviceOff, serviceOn } from './service.ts';
 
 const OFFICIAL_NAMES = OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ');
 
@@ -99,7 +97,6 @@ type Command = {
  * here, and the usage, the dispatch and the help are all read off this table.
  */
 const COMMANDS: readonly Command[] = [
-  { name: 'start', takes: '', does: 'run the Host until it is stopped.', run: start },
   {
     name: 'setup',
     takes: '',
@@ -209,12 +206,6 @@ const COMMANDS: readonly Command[] = [
     does: 'say the Plugin Order, or move one Plugin in it.',
     json: true,
     run: (argv, json) => order(home(), argv, json),
-  },
-  {
-    name: 'service',
-    takes: 'on|off',
-    does: 'run the Host as a systemd user service, or stop.',
-    run: service,
   },
 ];
 
@@ -437,27 +428,6 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
 /** The word that names the Place a command acts in, wherever it is typed. */
 const PLACE_WORD = '--place';
 
-/**
- * Run the Host in this process.
- *
- * The Host's entry point starts the Host as it is imported, so importing it is
- * the whole of this command. Nothing is copied out of `packages/host`, which
- * is what keeps `firstmate start` and `node packages/host/src/main.ts` the
- * same Host, reading the same environment variables and printing the same
- * output.
- */
-async function start(argv: readonly string[]): Promise<number | undefined> {
-  if (argv.length > 0) {
-    return typedWrong('start', 'start takes nothing.');
-  }
-
-  await import('./main.ts');
-  // The Host owns the process now, and its exit code with it. It ends on a
-  // signal, and sets its own code when it could not start at all, which may
-  // be before or after this line runs; a code set here would overwrite it.
-  return undefined;
-}
-
 /** Hold the conversation that sets FirstMate up. It takes no words: it asks. */
 function setUp(argv: readonly string[]): Promise<number> | number {
   if (argv.length > 0) {
@@ -470,8 +440,7 @@ function setUp(argv: readonly string[]): Promise<number> | number {
  * Install the App of this command line's version, and open it (ADR-0023).
  *
  * It is imported here rather than at the top of this file, so that no other
- * command loads what only this one needs. The 1.x window, `desktop.ts`, is no
- * longer reached from here; #145 removes it.
+ * command loads what only this one needs.
  */
 async function desktop(argv: readonly string[]): Promise<number> {
   if (argv.length > 0) {
@@ -511,51 +480,24 @@ async function importFrom(home: string, argv: readonly string[]): Promise<number
   if (name === undefined || argv.length > 1) {
     return typedWrong('import', 'import takes the name of one wsl Place.');
   }
-  const place = findPlace(home, name);
-  const imported = importOneX(home, place);
-  for (const row of imported.plugins) {
-    console.log(`firstmate: imported ${row.name} at ${row.directory}, in ${row.place}`);
-  }
-  for (const shortcut of imported.shortcuts) {
-    console.log(`firstmate: bound ${shortcut.keys} to open ${shortcutAddress(shortcut)}`);
-  }
-  if (imported.order !== undefined) {
-    console.log(`firstmate: the Plugin Order is now ${imported.order.join(', ')}`);
-  }
-  if (imported.shelf !== undefined) {
-    console.log(`firstmate: the Shelf of ${place.name} is now ${imported.shelf}`);
-  }
-  for (const sentence of imported.refused) console.error(`firstmate: ${sentence}`);
+  const imported = await bringAcross(home, findPlace(home, name), confirmOnce);
   await reloadHost(home);
-  if (place.kind === 'wsl' && (await oneXServiceIn(place.distribution))) {
-    await offerToStop(place.distribution);
-  }
   return imported.refused.length === 0 ? 0 : exit('taken');
 }
 
 /**
- * Ask before the 1.x service is turned off, and do nothing to it on no, or
- * when nobody is there to answer.
+ * Ask one yes or no question, and take no answer for no: a script that
+ * pipes nothing in has not agreed to anything.
  */
-async function offerToStop(distribution: string): Promise<void> {
+async function confirmOnce(question: string): Promise<boolean> {
   const prompt = openPrompt(() => process.exit(130));
-  let yes = false;
   try {
-    yes = await prompt.confirm(
-      `The 1.x Host runs as a service in ${distribution}. Turn it off, so the App can listen?`,
-      true,
-    );
+    return await prompt.confirm(question, true);
   } catch {
-    // The input ended before an answer, and no answer is no.
+    return false;
   } finally {
     prompt.close();
   }
-  if (!yes) {
-    console.log(`firstmate: the 1.x service in ${distribution} is left as it is.`);
-    return;
-  }
-  await stopOneXService(distribution);
-  console.log(`firstmate: turned off the 1.x service in ${distribution}.`);
 }
 
 /**
@@ -803,7 +745,7 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
 
   const restarted = await restartPlugin(home, name);
   if (restarted === undefined) {
-    console.error('firstmate: no Host runs.');
+    console.error(`firstmate: ${await noHost()}`);
     return exit('no-host');
   }
   if (restarted.state === 'no-plugin-server') {
@@ -859,17 +801,6 @@ function logs(home: string, argv: readonly string[]): number | undefined {
 /** How often logs -f looks for new lines. */
 const FOLLOW_MS = 200;
 
-/** Run the Host as a systemd user service, or stop running it as one. */
-function service(argv: readonly string[]): number {
-  const [what] = argv;
-  if (argv.length !== 1 || (what !== 'on' && what !== 'off')) {
-    return typedWrong('service', 'service takes on or off.');
-  }
-  if (what === 'on') serviceOn();
-  else serviceOff();
-  return 0;
-}
-
 function list(home: string, argv: readonly string[], json: boolean): number {
   if (argv.length > 0) {
     return typedWrong('list', 'list takes nothing.');
@@ -906,7 +837,7 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
   const seen = await readHostStatus(home);
   if (seen === undefined) {
     if (json) printJson({ running: false });
-    else console.log('firstmate: no Host runs.');
+    else console.log(`firstmate: ${await noHost()}`);
     return exit('no-host');
   }
   if (json) {
@@ -916,6 +847,19 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
   console.log(`firstmate: the Host runs at ${seen.address}`);
   for (const plugin of seen.plugins) console.log(`${plugin.name}\t${STATE_WORDS[plugin.state]}`);
   return 0;
+}
+
+/**
+ * Why no Host answers, in the one sentence that says what to do. Where there
+ * is a Windows to hold the App and the App is not on it, the next step is to
+ * install it; anywhere else, the Host is simply not running.
+ */
+async function noHost(): Promise<string> {
+  const { appHere } = await import('./install-app.ts');
+  const here = await appHere();
+  return here !== undefined && here.installed === undefined
+    ? 'the App is not installed. Run firstmate desktop to install it.'
+    : 'no Host runs.';
 }
 
 function describe(row: PluginRow): string {

@@ -23,7 +23,7 @@ export type Shortcut = {
 };
 
 /** What Windows needs to register a Shortcut: modifier flags and one key code. */
-export type KeyChord = {
+type KeyChord = {
   /** The keys, in normal form. */
   readonly keys: string;
   /** `MOD_ALT`, `MOD_CONTROL`, `MOD_SHIFT` and `MOD_WIN`, or-ed together. */
