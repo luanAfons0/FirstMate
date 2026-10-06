@@ -412,7 +412,7 @@ the Plugin Order change from a terminal.
 
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its
-menu opens the Index Page or any Plugin, turns **Start at logon** on and off,
+menu opens the Index Page or any Plugin, restarts a Stopped one, opens the **Settings…** view, turns **Start at logon** on and off,
 and quits. Start at logon is off until you turn it on; the App it starts
 begins in the Tray, with the window put away.
 

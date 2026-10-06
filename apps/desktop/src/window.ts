@@ -80,6 +80,8 @@ export type Shown = {
   open(path: string): void;
   /** Bring the window up, as it was. */
   reveal(): void;
+  /** Bring the window up on the Settings View, whatever it showed. */
+  showSettings(): void;
   /** The Host is ready: load what is wanted, and stop saying "Starting…". */
   ready(host: HostAt): void;
   /** What the Host now says about its Plugins. */
@@ -427,6 +429,10 @@ export function openWindow(
       reveal();
     },
     reveal,
+    showSettings: () => {
+      if (!setting) act({ kind: 'settings' });
+      reveal();
+    },
     ready: (at) => {
       host = at;
       if (!woken) {

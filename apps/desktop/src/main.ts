@@ -28,7 +28,7 @@ import { AT_LOGON } from '@firstmate/core/logon';
 import { flushLog } from '@firstmate/host/log';
 import type { Notice } from '@firstmate/host/notices';
 import { start, type RunningHost } from '@firstmate/host/start';
-import { askForPlugins, askForShortcuts } from './host-lists.ts';
+import { askForPlugins, askForShortcuts, askToRestart } from './host-lists.ts';
 import { nameTheApp, showNotices } from './notices.ts';
 import { guardPermissions } from './permissions.ts';
 import { makePopup } from './popup.ts';
@@ -101,6 +101,15 @@ function main(): void {
       open: (path) => window.open(path),
       reveal: () => window.reveal(),
       changed: () => refresh(),
+      settings: () => window.showSettings(),
+      restart: (name) => {
+        // Before the Host is ready there is no Plugin Server to start again.
+        void host.then(async (running) => {
+          const failed = await askToRestart(running, name);
+          if (failed !== undefined) notices.say(failed);
+          refresh();
+        });
+      },
     });
     notify = (notice) => notices.show(notice);
     for (const notice of early.splice(0)) notices.show(notice);
