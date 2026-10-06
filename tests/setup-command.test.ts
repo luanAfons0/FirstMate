@@ -15,7 +15,9 @@ import { fakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
 
 /**
  * One run of `setup` on a machine of the test's own: git is on `PATH`, and no
- * Windows program is, so no test here reaches the real Windows.
+ * Windows program is, so no test here reaches the real Windows. The user's
+ * home is a folder of the test's own too, so no test reads the App or the
+ * autostart entry of the machine the tests run on.
  */
 async function setupIn(
   t: TestContext,
@@ -31,7 +33,9 @@ async function setupIn(
     process.platform === 'win32'
       ? [...lines.slice(0, shelfAnswers), '', ...lines.slice(shelfAnswers)]
       : lines;
-  return firstmate(home, ['setup'], { PATH: await pathWith(t, ['git']), ...env }, asked.join('\n'));
+  const user = { HOME: join(home, 'user'), XDG_CONFIG_HOME: '' };
+  const path = await pathWith(t, ['git']);
+  return firstmate(home, ['setup'], { PATH: path, ...user, ...env }, asked.join('\n'));
 }
 
 /** A fake WSL, with a `wsl` Place for its Debian, which the Official Plugins run in. */
@@ -468,6 +472,63 @@ test('with no App installed, setup says how to install it', { skip: NO_FAKE_WSL 
   assert.match(run.stdout, /the App is not installed yet\. Run firstmate desktop to install it\./);
   assert.doesNotMatch(run.stdout, /Start FirstMate at logon/);
 });
+
+/** The App on Linux, as `firstmate desktop` installs it: one AppImage in the user's home. */
+async function installAppImage(user: string): Promise<string> {
+  const program = join(user, 'Applications', 'FirstMate.AppImage');
+  await mkdir(join(user, 'Applications'), { recursive: true });
+  await writeFile(program, '#!/bin/sh\n', { mode: 0o755 });
+  return program;
+}
+
+test(
+  'on Linux, setup turns start at logon on with an autostart entry',
+  { skip: process.platform !== 'linux' && 'the autostart entry is the Linux form of it' },
+  async (t) => {
+    const home = await makeHome(t);
+    const user = join(home, 'a mate');
+    const program = await installAppImage(user);
+    const env = { HOME: user, XDG_CONFIG_HOME: join(user, 'config') };
+    const entry = join(user, 'config', 'autostart', 'firstmate.desktop');
+
+    const no = await setupIn(t, home, answers('', '', 'n'), env);
+    assert.equal(no.code, 0, no.stderr);
+    assert.match(no.stdout, /Start FirstMate at logon\? \[y\/N\]/);
+    await assert.rejects(readFile(entry), { code: 'ENOENT' }, 'answered no, there is no entry');
+
+    const yes = await setupIn(t, home, answers('', '', 'y'), env);
+    assert.equal(yes.code, 0, yes.stderr);
+    assert.match(yes.stdout, / {2}FirstMate starts at logon\n/);
+    const written = await readFile(entry, 'utf8');
+    assert.match(written, /^\[Desktop Entry\]$/m);
+    assert.match(written, /^Type=Application$/m);
+    assert.ok(
+      written.split('\n').includes(`Exec="${program}" --at-logon`),
+      `the entry starts the AppImage with --at-logon:\n${written}`,
+    );
+
+    const once = await setupIn(t, home, answers('', '', ''), env);
+    assert.equal(once.code, 0, once.stderr);
+    assert.doesNotMatch(once.stdout, /Start FirstMate at logon/, 'it is on, so it is not asked');
+  },
+);
+
+test(
+  'on Linux, with no App installed, setup says how to install it',
+  { skip: process.platform !== 'linux' && 'the AppImage is the Linux form of the App' },
+  async (t) => {
+    const home = await makeHome(t);
+
+    const run = await setupIn(t, home, answers('', '', ''));
+
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(
+      run.stdout,
+      /the App is not installed yet\. Run firstmate desktop to install it\./,
+    );
+    assert.doesNotMatch(run.stdout, /Start FirstMate at logon/);
+  },
+);
 
 test('a run that changes the Registry reloads the running Host, and asks nothing', async (t) => {
   const home = await makeHome(t);
