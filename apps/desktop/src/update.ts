@@ -13,7 +13,7 @@
  * the smoke test starts one, has quit long before then and downloads nothing.
  */
 import { app } from 'electron';
-import electronUpdater from 'electron-updater';
+import type { AppUpdater as AutoUpdater } from 'electron-updater';
 
 /** How long after the App starts it first looks for an update. */
 const FIRST_LOOK_MS = 5 * 60 * 1000;
@@ -28,6 +28,25 @@ const LOOK_EVERY_MS = 6 * 60 * 60 * 1000;
  */
 export function keepUpdated(say: (sentence: string) => void): void {
   if (!app.isPackaged) return;
+  // Loaded at the first look, so starting the App does not evaluate the
+  // updater. The bundle still carries it, as a chunk of its own (ADR-0020).
+  let started: Promise<AutoUpdater> | undefined;
+  const updater = (): Promise<AutoUpdater> => {
+    started ??= prepare(say);
+    return started;
+  };
+  const look = (): void => {
+    updater()
+      .then((autoUpdater) => autoUpdater.checkForUpdates())
+      .catch(() => undefined);
+  };
+  setTimeout(look, FIRST_LOOK_MS).unref();
+  setInterval(look, LOOK_EVERY_MS).unref();
+}
+
+/** Load electron-updater and set it up, once. */
+async function prepare(say: (sentence: string) => void): Promise<AutoUpdater> {
+  const { default: electronUpdater } = await import('electron-updater');
   const { autoUpdater } = electronUpdater;
   autoUpdater.autoDownload = true;
   // Installed when the App quits, so a Plugin Server is never stopped for it.
@@ -42,10 +61,5 @@ export function keepUpdated(say: (sentence: string) => void): void {
     // A missed look is no news: the next one comes in a few hours.
     console.error(`FirstMate: could not look for an update: ${fault.message}`);
   });
-
-  const look = (): void => {
-    autoUpdater.checkForUpdates().catch(() => undefined);
-  };
-  setTimeout(look, FIRST_LOOK_MS).unref();
-  setInterval(look, LOOK_EVERY_MS).unref();
+  return autoUpdater;
 }
