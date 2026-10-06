@@ -305,7 +305,7 @@ async function startOne(
   };
   const say = onceOnly(plugin.name, (why) => {
     run.why = why;
-    if (!run.quiet) notices.fromHost(`${plugin.name} is Stopped`, why);
+    if (!run.quiet) notices.fromHost(`${plugin.name} is Stopped`, stoppedBody(plugin.name, why));
   });
 
   if (plugin.runner.kind === 'nowhere') {
@@ -482,6 +482,23 @@ async function handshake(server: PluginServer, handshakeMs: number): Promise<voi
  * however many ways the Host learns of it. It is news, not a failure of the
  * Host: every other Plugin keeps serving.
  */
+/**
+ * What a Stopped Notice says: what happened, in words a person reads, and the
+ * two commands that come next. The reason itself stays short, because
+ * `/plugins.json` and `firstmate status` say it as it is.
+ */
+function stoppedBody(name: string, why: string): string {
+  const exit = /^exit (\d+)\.$/.exec(why);
+  const signal = /^(SIG[A-Z0-9]+)\.$/.exec(why);
+  const what =
+    exit !== null
+      ? `Its Plugin Server ended with exit code ${exit[1]}.`
+      : signal !== null
+        ? `Its Plugin Server was ended by ${signal[1]}.`
+        : `${why.charAt(0).toUpperCase()}${why.slice(1)}`;
+  return `${what} firstmate logs says more, and firstmate restart ${name} starts it again.`;
+}
+
 function onceOnly(name: string, stopped: (why: string) => void): (why: string) => void {
   let said = false;
   return (why) => {

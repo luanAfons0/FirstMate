@@ -264,7 +264,12 @@ test('a Plugin that goes Stopped gets a Notice from the Host', async (t) => {
   const [notice] = (await noticesOf(host)).notices;
 
   assert.equal(notice?.title, 'FirstMate: quitter is Stopped');
-  assert.equal(notice?.body, 'exit 3.', 'the body says why');
+  assert.equal(
+    notice?.body,
+    'Its Plugin Server ended with exit code 3. firstmate logs says more, and ' +
+      'firstmate restart quitter starts it again.',
+    'the body says why, and what to run next',
+  );
   assert.equal(notice?.address, '/', 'a click opens the Index Page');
 });
 
@@ -276,7 +281,7 @@ test('an mcp that cannot be run says why in its Stopped Notice', async (t) => {
   assert.equal(notice?.title, 'FirstMate: unrunnable is Stopped');
   // Windows runs no `mcp` alone, and says which file it needs instead.
   const why =
-    process.platform === 'win32' ? /it needs mcp\.cmd or mcp\.exe\.$/ : /is not executable\.$/;
+    process.platform === 'win32' ? /it needs mcp\.cmd or mcp\.exe\. / : /is not executable\. /;
   assert.match(notice?.body ?? '', why);
 });
 
