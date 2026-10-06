@@ -244,11 +244,19 @@ export async function build(t: TestContext): Promise<string> {
 }
 
 /**
- * One run of pnpm. On Windows pnpm is `pnpm.cmd`, which Node starts only
- * through cmd.exe, so the command is one line with every word quoted. No word
- * a test passes holds a quote or a `%`.
+ * One run of pnpm. Under `pnpm test` it is the pnpm running the tests, which
+ * names itself in `npm_execpath`: a runner's PATH can hold a stale shim. With
+ * no such pnpm, it is the one on PATH, which on Windows is `pnpm.cmd`, and
+ * Node starts that only through cmd.exe. No word a test passes holds a quote
+ * or a `%`.
  */
 export function pnpm(argv: readonly string[], options: SpawnOptions): ChildProcess {
+  const running = process.env['npm_execpath'];
+  if (running !== undefined && /pnpm/i.test(running)) {
+    return /\.[cm]?js$/.test(running)
+      ? spawn(process.execPath, [running, ...argv], options)
+      : spawn(running, argv, options);
+  }
   if (process.platform !== 'win32') return spawn('pnpm', argv, options);
   const line = ['pnpm', ...argv].map((word) => `"${word}"`).join(' ');
   return spawn(line, { ...options, shell: true });
