@@ -9,13 +9,26 @@
  * main process only through the preload the App's own views carry (ADR-0012,
  * ADR-0018).
  *
- * It shows the Places with their Shelves, start at logon, the Shortcuts and
- * the App's version. Plugins, Grants and the Plugin Order stay in a terminal
+ * It shows the Places with their Shelves, the Plugin Order, start at logon,
+ * the Shortcuts and the App's version. Plugins and Grants stay in a terminal
  * and the Index Page. When `core` refuses what the operator typed, the
  * outcome names the one field it is about, so the page can mark it.
+ *
+ * A move in the Plugin Order is `core`'s `movePlugin`, as `firstmate order`
+ * is. The Host reads the order on every request, so a move needs no reload.
+ * The rows the page then shows are the order `/plugins.json` gives back,
+ * read again before the page is drawn, never the order a drop made on the
+ * page (ADR-0016, as ADR-0026 amends it).
  */
 import { app, dialog, type BaseWindow } from 'electron';
-import { addPlace, listPlaces, moveShelf, removePlace, shelfOf } from '@firstmate/core/commands';
+import {
+  addPlace,
+  listPlaces,
+  movePlugin,
+  moveShelf,
+  removePlace,
+  shelfOf,
+} from '@firstmate/core/commands';
 import { readConfig } from '@firstmate/core/config';
 import { canHoldWslPlace, DEFAULT_PLACE, isPlaceKind, isPlaceName } from '@firstmate/core/places';
 import { refusalOf } from '@firstmate/core/refusal';
@@ -23,6 +36,7 @@ import { readRegistry } from '@firstmate/core/registry';
 import { readSettings } from '@firstmate/core/settings';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
 import type { Asked } from './ask.ts';
+import type { Plugins } from './host-lists.ts';
 import { readLogon, writeLogon } from './logon.ts';
 
 /** One Place, as the Settings View shows it. */
@@ -62,6 +76,8 @@ export type SettingsShown = {
   readonly logon: boolean;
   /** The App's version. */
   readonly version: string;
+  /** Every Plugin, in the Plugin Order, as `/plugins.json` last said it. */
+  readonly plugins: Plugins;
   /** What became of the last change asked for, until the next one. */
   readonly outcome?: Outcome;
   /** Whether a change is still being made, such as a distribution being asked. */
@@ -116,6 +132,8 @@ export type ChangeNeeds = {
   readonly reload: () => Promise<void>;
   /** The window a folder dialog belongs to. */
   readonly window: () => BaseWindow | undefined;
+  /** Ask the Host for its Plugins again, and hold the answer for the page. */
+  readonly readBack: () => Promise<void>;
 };
 
 /**
@@ -123,6 +141,14 @@ export type ChangeNeeds = {
  * Nothing it is asked for that is not a setting changes anything.
  */
 export async function change(asked: Asked, needs: ChangeNeeds): Promise<Outcome | undefined> {
+  const outcome = await outcomeOf(asked, needs);
+  // Done or refused, the rows show what the Host says now, so a refused move
+  // puts them back where they are kept.
+  if (asked.kind === 'plugin-move') await needs.readBack();
+  return outcome;
+}
+
+async function outcomeOf(asked: Asked, needs: ChangeNeeds): Promise<Outcome | undefined> {
   try {
     const sentence = await changed(asked, needs);
     if (sentence === undefined) return undefined;
@@ -168,6 +194,10 @@ async function changed(asked: Asked, needs: ChangeNeeds): Promise<string | undef
     removePlace(home, asked.name);
     await needs.reload();
     return `Removed the Place ${asked.name}. Nothing on disk was touched.`;
+  }
+  if (asked.kind === 'plugin-move') {
+    const moved = movePlugin(home, asked.name, asked.position);
+    return `${asked.name} is now number ${moved.indexOf(asked.name) + 1} in the Plugin Order.`;
   }
   if (asked.kind === 'shelf') return shelfMoved(asked.place, asked.directory, needs);
   if (asked.kind === 'shelf-choose') {
