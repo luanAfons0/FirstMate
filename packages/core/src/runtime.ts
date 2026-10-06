@@ -11,6 +11,19 @@ import { join } from 'node:path';
 /** The runtime file, inside the Host's home directory. */
 export const RUNTIME_FILE = 'runtime.json';
 
+/** The log a running Host keeps, inside its home directory (ADR-0022). */
+const LOG_FILE = 'firstmate.log';
+
+/** The path of the log in a home directory. */
+export function logPath(home: string): string {
+  return join(home, LOG_FILE);
+}
+
+/** The path of the log before the last one, which the cap keeps. */
+export function oldLogPath(home: string): string {
+  return `${logPath(home)}.old`;
+}
+
 /** What the runtime file holds. */
 export type Runtime = {
   /** The port the Host listened on, which is never zero. */

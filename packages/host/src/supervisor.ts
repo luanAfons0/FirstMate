@@ -340,6 +340,7 @@ async function startOne(
   }
 
   const child = launch(file.path, plugin);
+  child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
   // The calling Plugin Name is this pipe's, closed over here and never taken
   // from anything the Plugin Server says.
   const server = speak(child, plugin.name, answering);
@@ -430,8 +431,9 @@ async function isFile(path: string): Promise<boolean> {
  *
  * It runs in its own Plugin's directory, so that it reaches its own files by
  * the relative paths its author already wrote. stdin and stdout carry MCP.
- * stderr is the Plugin Server's own output and goes straight to the Host's,
- * which under systemd is the journal.
+ * stderr is the Plugin Server's own output, and the Host writes it as its
+ * own, so it reaches the terminal and the log alike (log.ts). It is piped
+ * rather than inherited because the App has no console to inherit.
  */
 function launch(path: string, plugin: HeldPlugin): ChildProcess {
   const options = {
@@ -442,7 +444,7 @@ function launch(path: string, plugin: HeldPlugin): ChildProcess {
       // In the App, process.execPath is the App, which runs as Node only when told (ADR-0020).
       ...(process.versions.electron === undefined ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
     },
-    stdio: ['pipe', 'pipe', 'inherit'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   } satisfies SpawnOptions;
   if (plugin.runner.kind === 'wsl') {
     // The distribution starts it in its own directory, by its own path, so
@@ -491,7 +493,7 @@ async function handshake(server: PluginServer, handshakeMs: number): Promise<voi
 }
 
 /**
- * One Plugin becoming Stopped is one line in the journal and one Notice,
+ * One Plugin becoming Stopped is one line in the log and one Notice,
  * however many ways the Host learns of it. It is news, not a failure of the
  * Host: every other Plugin keeps serving.
  */

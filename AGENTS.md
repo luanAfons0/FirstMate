@@ -41,6 +41,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
 | `node apps/cli/src/cli.ts restart <name>`     | Start one Plugin's Plugin Server again.         |
+| `node apps/cli/src/cli.ts logs [-f]`          | What the Host and its Plugin Servers said.      |
 | `node apps/cli/src/cli.ts place [add <name> <kind> \| remove <name>]` | Say every Place, or add or remove one. |
 | `node apps/cli/src/cli.ts import <place>`     | Bring a 1.x install across from a wsl Place.    |
 | `node apps/cli/src/cli.ts add <name> <dir> [--place <name>]` | Register a Plugin. `<dir>` is an absolute path. |
@@ -156,6 +157,8 @@ packages/host/src/  the Host. Every file is one job.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
   notices.ts       hold the Notices for the Tray, and refuse a bad one.
+  log.ts           keep the Host's output, Plugin Servers' stderr with it, in
+                   one capped file in the home directory (ADR-0022).
 apps/cli/           the npm package, @luan-afonso/firstmate. In 1.x it carries
                     the Host and the window too.
   src/cli.ts       the terminal: start, desktop, shelf, install, bind, unbind,

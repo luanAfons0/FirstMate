@@ -174,8 +174,9 @@ test('a Notice leaves nothing in the home directory', async (t) => {
   await until(host, /notifier: sent every notice/);
   assert.equal((await noticesOf(host)).latest, 2, 'a Plugin Notice and a Host Notice');
 
-  // What the Host writes for any run, and nothing for a Notice (ADR-0005).
-  assert.deepEqual(await filesUnder(host.home), ['registry.json', 'runtime.json']);
+  // What the Host writes for any run, its own log among them, and nothing
+  // for a Notice (ADR-0005).
+  assert.deepEqual(await filesUnder(host.home), ['firstmate.log', 'registry.json', 'runtime.json']);
 });
 
 test('each bad Notice is refused with a sentence, and never listed', async (t) => {

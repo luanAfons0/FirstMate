@@ -16,6 +16,7 @@
  *   node apps/cli/src/cli.ts list [--json]
  *   node apps/cli/src/cli.ts status [--json]
  *   node apps/cli/src/cli.ts restart <name>
+ *   node apps/cli/src/cli.ts logs [-f]
  *   node apps/cli/src/cli.ts grant <from> <to>
  *   node apps/cli/src/cli.ts revoke <from> <to>
  *   node apps/cli/src/cli.ts shelf [directory] [--place <name>] [--json]
@@ -25,6 +26,7 @@
  *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
  *   node apps/cli/src/cli.ts service on|off
  */
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import {
   addPlace,
   addPlugin,
@@ -56,6 +58,7 @@ import {
   writeRegistry,
   type PluginRow,
 } from '@firstmate/core/registry';
+import { logPath, oldLogPath } from '@firstmate/core/runtime';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
 import { STATE_WORDS } from '@firstmate/host/index-page';
 import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
@@ -149,6 +152,12 @@ const COMMANDS: readonly Command[] = [
     takes: '<name>',
     does: "start one Plugin's Plugin Server again, after you fix it.",
     run: (argv) => restart(home(), argv),
+  },
+  {
+    name: 'logs',
+    takes: '[-f]',
+    does: 'print what the Host and its Plugin Servers said. -f follows it.',
+    run: (argv) => logs(home(), argv),
   },
   {
     name: 'grant',
@@ -295,6 +304,13 @@ The Host picks up a new order with no restart.`,
     text: `status, list, order and shelf say what they read as one JSON value with
 --json, and print nothing else. A command that changes something prints no JSON.
 status reads the running Host, and ends with exit code 6 when none answers.`,
+  },
+  {
+    about: ['logs'],
+    text: `logs prints the Host's log: what the Host said, and what every Plugin Server
+wrote to stderr. It is one file in the home directory, and it never grows past
+its cap: the older half is kept beside it, and printed first. With -f it keeps
+printing new lines until you stop it with Ctrl-C.`,
   },
   {
     about: ['restart'],
@@ -809,6 +825,47 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
   console.log(`firstmate: restarted ${name}. It is ${STATE_WORDS[restarted.state]}.`);
   return 0;
 }
+
+/**
+ * Print the Host's log, the older file first, and with -f keep printing what
+ * is added until the operator stops it. A file that rolls over to the older
+ * one is read again from its start.
+ */
+function logs(home: string, argv: readonly string[]): number | undefined {
+  const follow = argv.length === 1 && (argv[0] === '-f' || argv[0] === '--follow');
+  if (argv.length > 0 && !follow) return typedWrong('logs', 'logs takes -f, or nothing.');
+  const path = logPath(home);
+  const old = oldLogPath(home);
+  if (!existsSync(path) && !existsSync(old)) {
+    console.error(`firstmate: there is no log yet, at ${path}.`);
+    return exit('missing');
+  }
+  for (const file of [old, path]) {
+    if (existsSync(file)) process.stdout.write(readFileSync(file));
+  }
+  if (!follow) return 0;
+
+  let at = statSync(path, { throwIfNoEntry: false })?.size ?? 0;
+  setInterval(() => {
+    const size = statSync(path, { throwIfNoEntry: false })?.size ?? 0;
+    if (size < at) at = 0;
+    if (size === at) return;
+    const added = Buffer.alloc(size - at);
+    const file = openSync(path, 'r');
+    try {
+      readSync(file, added, 0, added.length, at);
+    } finally {
+      closeSync(file);
+    }
+    process.stdout.write(added);
+    at = size;
+  }, FOLLOW_MS);
+  // The process now lives until it is stopped, and Ctrl-C ends it.
+  return undefined;
+}
+
+/** How often logs -f looks for new lines. */
+const FOLLOW_MS = 200;
 
 /** Run the Host as a systemd user service, or stop running it as one. */
 function service(argv: readonly string[]): number {

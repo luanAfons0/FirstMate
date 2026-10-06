@@ -376,6 +376,33 @@ export function firstmate(
   });
 }
 
+/** A run of the command line that keeps going until the test stops it. */
+export type Running = {
+  /** Everything it has written to stdout so far. */
+  output(): string;
+};
+
+/**
+ * Start the command line and leave it running, as `logs -f` runs. It is
+ * stopped when the test ends, whatever the test did.
+ */
+export function firstmateRunning(t: TestContext, home: string, argv: readonly string[]): Running {
+  const child = spawn(
+    process.execPath,
+    [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), ...argv],
+    {
+      cwd: REPOSITORY,
+      env: { ...process.env, FIRSTMATE_HOME: home },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  let stdout = '';
+  collectText(child.stdout, (chunk) => (stdout += chunk));
+  collectText(child.stderr, () => undefined);
+  atEnd(t, () => stop(child));
+  return { output: () => stdout };
+}
+
 /** The cookie the Host admits an already-admitted browser with. */
 export function cookieFor(token: string): string {
   return `firstmate_token=${token}`;

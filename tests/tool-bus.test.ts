@@ -5,7 +5,8 @@
  * record of any of it (ADR-0005).
  */
 import assert from 'node:assert/strict';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import { bootHost, until, type Booted } from './helpers/host.ts';
 
@@ -305,6 +306,9 @@ test('the Host keeps no record of a call it carried', async (t) => {
   await ask(host, 'asker', 'reach', { plugin: 'server-only', tool: 'ping' });
   const home = (await readdir(host.home)).sort();
 
-  // No run history, no log of what was called, no cached result (ADR-0005).
-  assert.deepEqual(home, ['registry.json', 'runtime.json']);
+  // No run history, no cached result, and nothing of the call in the Host's
+  // own log, which holds what the Host and the Plugin Servers say (ADR-0005).
+  assert.deepEqual(home, ['firstmate.log', 'registry.json', 'runtime.json']);
+  const log = await readFile(join(host.home, 'firstmate.log'), 'utf8');
+  assert.doesNotMatch(log, /reach|ping/);
 });

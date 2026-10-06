@@ -123,7 +123,7 @@ The shebang of `mcp` decides the language, so a Plugin Server can be written in
 anything. Windows reads no shebang, so there the Host runs `mcp.exe`, or else
 `mcp.cmd` (ADR-0019). Every Plugin Server receives `FIRSTMATE_NODE`, the Node
 that runs the Host, so a Node Plugin needs no Node of its own. Its output goes
-to the Host's own output, which under systemd is the journal.
+to the Host's own output and its log: `firstmate logs` prints it (ADR-0022).
 
 A Plugin is in one of three states, and the Index Page shows which:
 
@@ -279,6 +279,19 @@ runs.` and ends with exit code `6`.
 `status`, `list`, `order` and `shelf` say what they read as one JSON value with
 `--json`, and print nothing else, so a script can read them. A command that
 changes something prints no JSON, and refuses `--json` as typed wrong.
+
+## Read the log
+
+```sh
+node apps/cli/src/cli.ts logs      # what the Host and its Plugin Servers said
+node apps/cli/src/cli.ts logs -f   # and keep printing new lines
+```
+
+The Host keeps its output, and every Plugin Server's stderr with it, in
+`firstmate.log` in its home directory
+([ADR-0022](docs/adr/0022-the-host-keeps-one-log.md)). The file never grows past
+two megabytes: the older half is kept as `firstmate.log.old`, and `logs` prints
+it first. The token never reaches either file.
 
 ## Help and exit codes
 
