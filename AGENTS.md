@@ -119,6 +119,9 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    Shortcuts and the Plugin Order.
   places.ts        the Places, as data: the default one, the kinds, and how
                    each is read from the settings file (ADR-0021).
+  plugin-places.ts each Plugin as the Host holds it: where its files are
+                   read, and how its Plugin Server starts.
+  wsl.ts           wsl.exe, as the command line asks it about a wsl Place.
   shortcut.ts      read the keys of a Shortcut into one normal form, for the
                    terminal and the Tray alike.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
@@ -252,6 +255,8 @@ and drives it over HTTP, exactly as a browser does.
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
   `notifier`. Add a fixture rather than a mock. A fixture with an `mcp`
   carries its Windows form, `mcp.cmd`, beside it (ADR-0019).
+- `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, as `systemd.ts` fakes
+  `systemctl`, and points a `wsl` Place's root at a folder of the test's own.
 - The suite runs on Linux and on Windows, in CI. A test that only makes sense
   on one skips on the other and says why, as `desktop-command.test.ts` does.
 - A test name is a sentence about behaviour:

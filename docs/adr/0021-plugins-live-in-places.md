@@ -20,6 +20,16 @@ A Registry row with no `place` was written by 1.x, and is in the default Place, 
 - A Plugin whose Place changes is a removed Plugin and an added one under the same name, as a Plugin whose directory changes already is (ADR-0018).
 - There is no `move` command. Moving a Plugin's data is the Plugin's own job (ADR-0005): remove it from one Place and install it in the other.
 
+## The wsl Place
+
+A `wsl` Place is one WSL distribution. It stores the distribution, the Windows path its files are read through (`\\wsl.localhost\<distribution>` unless the operator gives another, which is also how a test points it at a folder of its own), and the home directory of the distribution's user, which `place add` asks `wsl.exe` for. A distribution that does not answer is refused before anything is written.
+
+Its Plugins keep their `mcp` file unchanged. The Host starts one as `wsl.exe -d <distribution> --cd <directory> -- ./mcp`, and reads its files, its Plugin Page among them, through the root. The directory in the Registry is the distribution's own path. `FIRSTMATE_NODE` is not handed across: it names a Windows program. A root that cannot be read is a distribution that is missing or will not start, so the Plugin is Stopped with one sentence that says so, and nothing is started to retry it.
+
+Its default Shelf is the one a 1.x Host kept there, `~/.firstmate/shelf`. `install` writes into it through the root, and then asks the distribution to make `mcp` executable again, because a file written from Windows arrives without the bit. That runs nothing the Plugin ships.
+
+Starting the Host starts every Plugin Server, so a `wsl` Place wakes its distribution. ADR-0007's rule against waking WSL does not hold for the App.
+
 ## Considered Options
 
 One Registry per Place. A Plugin Name would then have to be checked across files, and the Tool Bus would read Grants from several places at once.

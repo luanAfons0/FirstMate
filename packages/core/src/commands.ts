@@ -8,7 +8,7 @@
  * the sentence that says why it did none of it. Nothing here prints.
  */
 import { mkdirSync, statSync } from 'node:fs';
-import { basename, isAbsolute } from 'node:path';
+import { basename, isAbsolute, join, posix } from 'node:path';
 import type { Config } from './config.ts';
 import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
 import { refuse } from './refusal.ts';
@@ -17,15 +17,18 @@ import {
   allPlaces,
   DEFAULT_PLACE,
   defaultShelfOf,
+  filesOf,
   isPlaceKind,
   isPlaceName,
   PLACE_KINDS,
+  rootOf,
   type Place,
 } from './places.ts';
 import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
 import { inPluginOrder, readSettings, writeSettings, type Settings } from './settings.ts';
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
+import { homeIn, makeExecutable } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
 export function notAPluginName(name: string): string {
@@ -54,15 +57,26 @@ export function findPlace(home: string, name: string): Place {
  * The Shelf of a Place in force. The default Place's comes from the
  * environment, then the settings file, then the home directory, as the one
  * Shelf of 1.x did (ADR-0012). Any other Place's is the one chosen for it, or
- * a directory of its own beside the default Place's.
+ * its kind's default. A `wsl` Place's Shelf is a path inside its distribution.
  */
 export function shelfOf(config: Config, place: Place): string {
   if (place.name === DEFAULT_PLACE) return config.shelf;
-  return place.shelf ?? defaultShelfOf(config.home, place.name);
+  return place.shelf ?? defaultShelfOf(config.home, place);
 }
 
-/** Add a Place, and give back the Place written. */
-export function addPlace(home: string, name: string, kind: string): Place {
+/**
+ * Add a Place, and give back the Place written. A local Place needs nothing
+ * more. A `wsl` Place needs its distribution, and takes the Windows path its
+ * files are read through when that is not `\\wsl.localhost\<distribution>`;
+ * the distribution is asked for its home directory, so a distribution that
+ * does not answer is refused before anything is written.
+ */
+export async function addPlace(
+  home: string,
+  name: string,
+  kind: string,
+  needs: readonly string[] = [],
+): Promise<Place> {
   if (!isPlaceName(name)) throw refuse('invalid', notAPlaceName(name));
   if (!isPlaceKind(kind)) {
     throw refuse(
@@ -70,11 +84,28 @@ export function addPlace(home: string, name: string, kind: string): Place {
       `${kind} is not a kind of Place. The kinds are ${PLACE_KINDS.join(', ')}.`,
     );
   }
-  const settings = readSettings(home);
-  if (allPlaces(settings.places).some((place) => place.name === name)) {
+  if (allPlaces(readSettings(home).places).some((place) => place.name === name)) {
     throw refuse('taken', `a Place named ${name} is there already.`);
   }
-  const place: Place = { name, kind };
+  const [distribution, root, ...more] = needs;
+  let place: Place;
+  if (kind === 'local') {
+    if (needs.length > 0) throw refuse('invalid', 'a local Place needs nothing more.');
+    place = { name, kind };
+  } else {
+    if (distribution === undefined || more.length > 0) {
+      throw refuse('invalid', 'a wsl Place needs its distribution, and may take its Windows path.');
+    }
+    place = {
+      name,
+      kind,
+      distribution,
+      root: root ?? rootOf(distribution),
+      home: await homeIn(distribution),
+    };
+  }
+  // Read again: the distribution may have taken its time to answer.
+  const settings = readSettings(home);
   writeSettings(home, { ...settings, places: [...(settings.places ?? []), place] });
   return place;
 }
@@ -114,11 +145,13 @@ export type ShelfMoved = {
 /**
  * Remember this directory as a Place's Shelf, the default Place's unless
  * another is named. It is checked before it is remembered, and what is
- * remembered is the real path.
+ * remembered is the real path. A `wsl` Place's Shelf is checked through the
+ * Place's root, and remembered as the distribution's own path.
  */
 export function moveShelf(home: string, directory: string, placeName = DEFAULT_PLACE): ShelfMoved {
   const place = findPlace(home, placeName);
-  const shelf = checkShelf(directory, home);
+  const shelf =
+    place.kind === 'wsl' ? wslShelf(place, directory, home) : checkShelf(directory, home);
   const settings = readSettings(home);
   if (place.name !== DEFAULT_PLACE) {
     const places = (settings.places ?? []).map((one) =>
@@ -133,8 +166,22 @@ export function moveShelf(home: string, directory: string, placeName = DEFAULT_P
 }
 
 /**
+ * A Shelf inside a distribution, checked as every Shelf is, through the
+ * Place's root, and given back as the distribution's own path.
+ */
+function wslShelf(place: Place, directory: string, home: string): string {
+  if (!directory.startsWith('/')) {
+    throw refuse('invalid', `${directory} is not a path inside ${place.name}. Start it with /.`);
+  }
+  checkShelf(filesOf(place, directory), home);
+  return posix.normalize(directory);
+}
+
+/**
  * Register a Plugin whose directory is already where it will stay, and give
- * back the row written. Nothing is copied: the Registry holds the path.
+ * back the row written. Nothing is copied: the Registry holds the path. A
+ * `wsl` Plugin's directory is the distribution's own path, read through the
+ * Place's root.
  */
 export function addPlugin(
   home: string,
@@ -144,8 +191,9 @@ export function addPlugin(
 ): PluginRow {
   if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
   const place = findPlace(home, placeName);
-  if (!isAbsolute(directory)) throw refuse('invalid', `${directory} is not an absolute path.`);
-  const found = statSync(directory, { throwIfNoEntry: false });
+  const absolute = place.kind === 'wsl' ? directory.startsWith('/') : isAbsolute(directory);
+  if (!absolute) throw refuse('invalid', `${directory} is not an absolute path.`);
+  const found = statSync(filesOf(place, directory), { throwIfNoEntry: false });
   if (found === undefined || !found.isDirectory()) {
     throw refuse('invalid', `${directory} is not a directory.`);
   }
@@ -172,8 +220,9 @@ function refuseTaken(rows: readonly PluginRow[], name: string): void {
 
 /**
  * Fetch a Plugin into a Place's Shelf and register it in that Place, the
- * default Place unless another is named, and give back the row written. A source is a git URL, an absolute directory, or the Plugin Name of
- * an Official Plugin, in that order (ADR-0015).
+ * default Place unless another is named, and give back the row written. A
+ * source is a git URL, an absolute directory, or the Plugin Name of an
+ * Official Plugin, in that order (ADR-0015).
  *
  * It follows `add` step for step once the files have landed, because a Plugin
  * that was fetched is a Plugin like any other. Nothing the Plugin ships runs
@@ -209,14 +258,20 @@ export async function installPlugin(
   // Shelf the operator named is theirs to make, so that a typo is refused
   // rather than created.
   const chosen = shelfOf(config, place);
-  if (chosen === defaultShelf(config.home) || chosen === defaultShelfOf(config.home, place.name)) {
-    mkdirSync(chosen, { recursive: true, mode: 0o700 });
+  if (chosen === defaultShelf(config.home) || chosen === defaultShelfOf(config.home, place)) {
+    mkdirSync(filesOf(place, chosen), { recursive: true, mode: 0o700 });
   }
   // Checked on every run. The remembered Shelf is never trusted as already
   // checked, because a path that was a directory yesterday can be a symlink
   // today.
-  const shelf = checkShelf(chosen, config.home);
-  const directory = await fetchPlugin(from, shelf, name);
+  const shelf = checkShelf(filesOf(place, chosen), config.home);
+  const landed = await fetchPlugin(from, shelf, name);
+  // A `wsl` Plugin is registered by the distribution's own path, and the
+  // files written from Windows lost the executable bit on their way in.
+  const directory = place.kind === 'wsl' ? posix.join(chosen, name) : landed;
+  if (place.kind === 'wsl' && statSync(join(landed, 'mcp'), { throwIfNoEntry: false })?.isFile()) {
+    await makeExecutable(place.distribution, directory);
+  }
 
   // Read again, because a clone can take minutes, and a row another command
   // wrote in the meantime must not be lost to the rows read before it.

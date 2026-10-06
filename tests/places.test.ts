@@ -150,7 +150,7 @@ test('an unknown Place, a bad name, an unknown kind and a taken name are each re
 
   const kind = await firstmate(home, ['place', 'add', 'work', 'mars']);
   assert.equal(kind.code, 3);
-  assert.equal(kind.stderr, 'firstmate: mars is not a kind of Place. The kinds are local.\n');
+  assert.equal(kind.stderr, 'firstmate: mars is not a kind of Place. The kinds are local, wsl.\n');
 
   const taken = await firstmate(home, ['place', 'add', DEFAULT_PLACE, 'local']);
   assert.equal(taken.code, 5);

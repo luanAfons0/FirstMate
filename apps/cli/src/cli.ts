@@ -9,7 +9,7 @@
  *   node apps/cli/src/cli.ts start
  *   node apps/cli/src/cli.ts setup
  *   node apps/cli/src/cli.ts desktop
- *   node apps/cli/src/cli.ts place [add <name> <kind> | remove <name>] [--json]
+ *   node apps/cli/src/cli.ts place [add <name> <kind> [...] | remove <name>] [--json]
  *   node apps/cli/src/cli.ts add <name> <directory> [--place <name>]
  *   node apps/cli/src/cli.ts remove <name>
  *   node apps/cli/src/cli.ts list [--json]
@@ -102,7 +102,7 @@ const COMMANDS: readonly Command[] = [
   { name: 'desktop', takes: '', does: 'open the FirstMate window. Windows only.', run: desktop },
   {
     name: 'place',
-    takes: '[add <name> <kind> | remove <name>]',
+    takes: '[add <name> <kind> [...] | remove <name>]',
     does: 'say every Place, or add or remove one.',
     json: true,
     run: (argv, json) => place(home(), argv, json),
@@ -232,8 +232,12 @@ moves it for good, and that directory has to be there already.`,
     text: `A Place is where Plugins are installed and their Plugin Servers run. The
 default Place is this machine, and it is always there. add, install and shelf
 act in it unless --place names another. Each Place has its own Shelf. A local
-Place runs its Plugin Servers on this machine. A Place that holds a Plugin
-cannot be removed, and a Plugin Name is used once across every Place.`,
+Place runs its Plugin Servers on this machine. A wsl Place is one WSL
+distribution: add it with place add <name> wsl <distribution>, and give the
+Windows path its files are read through when that is not
+\\\\wsl.localhost\\<distribution>. Its paths are the distribution's own. A Place
+that holds a Plugin cannot be removed, and a Plugin Name is used once across
+every Place.`,
   },
   {
     about: ['setup'],
@@ -474,7 +478,7 @@ function inPlace(place: string): string {
  * terminal and from nowhere else, like the Shelf it carries (ADR-0021).
  */
 async function place(home: string, argv: readonly string[], json: boolean): Promise<number> {
-  const [what, name, kind] = argv;
+  const [what, name, kind, ...needs] = argv;
   if (what === undefined || (what === 'list' && argv.length === 1)) {
     const config = readConfig();
     const places = listPlaces(home).map((one) => ({ ...one, shelf: shelfOf(config, one) }));
@@ -483,8 +487,8 @@ async function place(home: string, argv: readonly string[], json: boolean): Prom
     return 0;
   }
   if (json) return typedWrong('place', 'place prints JSON only when it changes nothing.');
-  if (what === 'add' && name !== undefined && kind !== undefined && argv.length === 3) {
-    const added = addPlace(home, name, kind);
+  if (what === 'add' && name !== undefined && kind !== undefined) {
+    const added = await addPlace(home, name, kind, needs);
     console.log(`firstmate: added the ${added.kind} Place ${added.name}`);
     await reloadHost(home);
     return 0;
@@ -495,7 +499,10 @@ async function place(home: string, argv: readonly string[], json: boolean): Prom
     await reloadHost(home);
     return 0;
   }
-  return typedWrong('place', 'place takes nothing, add <name> <kind>, or remove <name>.');
+  return typedWrong(
+    'place',
+    'place takes nothing, add <name> <kind> and what the kind needs, or remove <name>.',
+  );
 }
 
 async function remove(home: string, argv: readonly string[]): Promise<number> {

@@ -4,7 +4,9 @@
  *
  * At start, every Registry row whose directory holds an executable named `mcp`
  * is spawned and kept until the Plugin leaves the Registry or the Host stops.
- * On Windows the executable is `mcp.exe` or `mcp.cmd` instead (ADR-0019).
+ * On Windows the executable is `mcp.exe` or `mcp.cmd` instead (ADR-0019). A
+ * Plugin in a `wsl` Place keeps its `mcp`, and runs inside its distribution
+ * through `wsl.exe` (ADR-0021).
  * A reload starts the Plugins added and stops the ones removed, and leaves
  * every other one alone. A Plugin Server that exits leaves its Plugin Stopped
  * and is never started again on the Host's own account: a broken Plugin must
@@ -17,9 +19,10 @@ import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { WSL_EXE } from '@firstmate/core/wsl';
 import { speak, type Answering, type PluginServer } from './mcp.ts';
 import { SEND_NOTICE, type Notices } from './notices.ts';
-import type { PluginRow } from '@firstmate/core/registry';
+import type { HeldPlugin } from '@firstmate/core/plugin-places';
 import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */
@@ -63,7 +66,7 @@ export type PluginState =
 /** The Plugin Servers of one run, and the way to change them or stop them all. */
 export type Supervisor = {
   /** Every Plugin the Host holds now, in the order the Registry gave them. */
-  plugins(): readonly PluginRow[];
+  plugins(): readonly HeldPlugin[];
   stateOf(name: string): PluginState;
   serverOf(name: string): PluginServer | null;
   /**
@@ -72,7 +75,7 @@ export type Supervisor = {
    * or not: a reload is never how a broken Plugin is started again. It
    * resolves once each added Plugin Server has answered or failed.
    */
-  hold(plugins: readonly PluginRow[]): Promise<void>;
+  hold(plugins: readonly HeldPlugin[]): Promise<void>;
   /**
    * Stop one Plugin's Plugin Server, whatever its state, and start it again.
    * This is the operator's restart, and the only way a Stopped Plugin runs
@@ -107,7 +110,7 @@ export type Waits = {
 /** One start of one Plugin's Plugin Server, and what became of it. */
 type Run = {
   /** The Registry row it was started from. */
-  readonly row: PluginRow;
+  readonly row: HeldPlugin;
   /** The Plugin Server, once it has answered the handshake. */
   server: PluginServer | null;
   /** The Plugin ships no Plugin Server at all, which is no failure. */
@@ -128,11 +131,11 @@ type Run = {
 
 /** Start every Plugin Server in the Registry, and resolve once each has answered or failed. */
 export async function superviseAll(
-  plugins: readonly PluginRow[],
+  plugins: readonly HeldPlugin[],
   waits: Waits,
   notices: Notices,
 ): Promise<Supervisor> {
-  let held: readonly PluginRow[] = [];
+  let held: readonly HeldPlugin[] = [];
   const runs = new Map<string, Run>();
 
   const stateOf = (name: string): PluginState => {
@@ -150,7 +153,7 @@ export async function superviseAll(
   // however they were ordered at start.
   const bus = openToolBus(held, { stateOf, serverOf }, waits.maxCallMs);
 
-  const start = (plugin: PluginRow): Promise<Run> => {
+  const start = (plugin: HeldPlugin): Promise<Run> => {
     const toolBus = bus.answering(plugin.name);
     // A Notice is not a Tool Bus call, so it never passes the Grant check:
     // every Plugin may send one, under the gap between two (ADR-0014).
@@ -192,14 +195,20 @@ export async function superviseAll(
     return done;
   };
 
-  const hold = (next: readonly PluginRow[]): Promise<void> =>
+  const hold = (next: readonly HeldPlugin[]): Promise<void> =>
     inTurn(async () => {
       // A Plugin is the same Plugin while its name, its Place and its
       // directory are. One moved to another directory, or to another Place,
-      // is another Plugin under an old name.
-      const same = (row: PluginRow): boolean => {
+      // or whose Place now reads it from elsewhere, is another Plugin under
+      // an old name.
+      const same = (row: HeldPlugin): boolean => {
         const held = runs.get(row.name)?.row;
-        return held?.directory === row.directory && held.place === row.place;
+        return (
+          held?.directory === row.directory &&
+          held.place === row.place &&
+          held.files === row.files &&
+          JSON.stringify(held.runner) === JSON.stringify(row.runner)
+        );
       };
       const staying = next.filter(same);
       const leaving = held.filter((row) => !staying.some((kept) => kept.name === row.name));
@@ -294,7 +303,7 @@ function ended(run: Run): Promise<boolean> {
 }
 
 async function startOne(
-  plugin: PluginRow,
+  plugin: HeldPlugin,
   handshakeMs: number,
   answering: Answering,
   notices: Notices,
@@ -314,7 +323,11 @@ async function startOne(
     if (!run.quiet) notices.fromHost(`${plugin.name} is Stopped`, why);
   });
 
-  const file = await serverFile(plugin.directory);
+  if (plugin.runner.kind === 'nowhere') {
+    say(plugin.runner.why);
+    return run;
+  }
+  const file = await serverFile(plugin);
   if (file.found === 'none') {
     // No Plugin Server file: this Plugin ships no Plugin Server, which is
     // allowed and is not a failure.
@@ -326,7 +339,7 @@ async function startOne(
     return run;
   }
 
-  const child = launch(file.path, plugin.directory);
+  const child = launch(file.path, plugin);
   // The calling Plugin Name is this pipe's, closed over here and never taken
   // from anything the Plugin Server says.
   const server = speak(child, plugin.name, answering);
@@ -367,9 +380,25 @@ type ServerFile =
   /** A file the Host can start. */
   | { readonly found: 'runnable'; readonly path: string };
 
-/** Find the file a Plugin ships its Plugin Server as, on the platform the Host runs on. */
-async function serverFile(directory: string): Promise<ServerFile> {
+/** Find the file a Plugin ships its Plugin Server as, where its Plugin Server runs. */
+async function serverFile(plugin: HeldPlugin): Promise<ServerFile> {
+  const directory = plugin.files;
   const shell = join(directory, SERVER_FILE);
+  if (plugin.runner.kind === 'wsl') {
+    // The files are read through the Place's root, and a root that cannot be
+    // read is a distribution that is missing or will not start. Its `mcp` is
+    // run inside the distribution, which alone knows its executable bit.
+    const reached = await stat(directory).catch(() => null);
+    if (reached === null) {
+      return {
+        found: 'unrunnable',
+        why:
+          `${directory} cannot be read. Is the distribution ` +
+          `${plugin.runner.distribution} there, and does it start?`,
+      };
+    }
+    return (await isFile(shell)) ? { found: 'runnable', path: shell } : { found: 'none' };
+  }
   if (ON_WINDOWS) {
     for (const name of WINDOWS_SERVER_FILES) {
       const path = join(directory, name);
@@ -404,16 +433,26 @@ async function isFile(path: string): Promise<boolean> {
  * stderr is the Plugin Server's own output and goes straight to the Host's,
  * which under systemd is the journal.
  */
-function launch(path: string, directory: string): ChildProcess {
+function launch(path: string, plugin: HeldPlugin): ChildProcess {
   const options = {
-    cwd: directory,
+    cwd: plugin.files,
     env: { ...process.env, [NODE_VARIABLE]: process.execPath },
     stdio: ['pipe', 'pipe', 'inherit'],
   } satisfies SpawnOptions;
+  if (plugin.runner.kind === 'wsl') {
+    // The distribution starts it in its own directory, by its own path, so
+    // wsl.exe needs no working directory of the Host's. The Node the Host
+    // names is a Windows program, and is not handed across (ADR-0021).
+    return spawn(
+      WSL_EXE,
+      ['-d', plugin.runner.distribution, '--cd', plugin.directory, '--', `./${SERVER_FILE}`],
+      { ...options, cwd: undefined },
+    );
+  }
   if (!path.endsWith('.cmd')) return spawn(path, [], options);
   // Node starts a `.cmd` file only through cmd.exe, and only when asked to
   // (CVE-2024-27980). cmd.exe reads a command line by rules of its own, so it
-  // is handed no path to read: from the Plugin's own directory, `.\mcp.cmd`
+  // is handed no path to read: from the Plugin's own directory, `.\\mcp.cmd`
   // holds no space and nothing cmd.exe treats as special (ADR-0019).
   return spawn('.\\mcp.cmd', [], { ...options, shell: true });
 }
