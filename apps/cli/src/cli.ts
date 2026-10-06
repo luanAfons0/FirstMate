@@ -525,7 +525,8 @@ function help(argv: readonly string[]): number {
 function typedWrong(name: string, sentence: string): number {
   const command = COMMANDS.find((row) => row.name === name);
   console.error(
-    `firstmate: ${sentence}\n\n${command === undefined ? shortHelp(process.stderr) : helpOf(command)}`,
+    `firstmate: ${sentence}\n\n` +
+      (command === undefined ? shortHelp(process.stderr) : helpOf(command)),
   );
   return exit('typed-wrong');
 }

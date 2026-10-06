@@ -107,7 +107,8 @@ ${tokens(DARK, '  ')}
   --radius-control: 6px;
   --radius-panel: 8px;
   --radius-window: 10px;
-  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue",
+    sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   --ease: cubic-bezier(.16, 1, .3, 1);
 }
@@ -198,5 +199,8 @@ export function sprite(names: readonly IconName[]): string {
 /** One icon, drawn from the sprite. It says nothing: the words beside it do. */
 export function icon(name: IconName, kind = ''): string {
   const classes = kind === '' ? 'i' : `i ${kind}`;
-  return `<svg class="${classes}" aria-hidden="true" focusable="false"><use href="#i-${name}"/></svg>`;
+  return (
+    `<svg class="${classes}" aria-hidden="true" focusable="false">` +
+    `<use href="#i-${name}"/></svg>`
+  );
 }

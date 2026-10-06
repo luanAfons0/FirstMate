@@ -187,8 +187,8 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
     const place = await askPlace(prompt, plugin.name, places);
     if (place === undefined) {
       console.error(
-        `${refusalPrefix()} ${plugin.name} runs in a ${plugin.places.join(' or ')} Place, and there ` +
-          'is none. Add one, then run setup again.',
+        `${refusalPrefix()} ${plugin.name} runs in a ${plugin.places.join(' or ')} Place, ` +
+          'and there is none. Add one, then run setup again.',
       );
       changes.failed = true;
       continue;
