@@ -17,17 +17,17 @@ to build a runtime of its own.
 ## Install it
 
 FirstMate is an App for Windows and Linux: one program that holds the Host, the
-Tray and the window. On Linux, install the AppImage or the deb from the GitHub
-Release, as [The App on Linux](#the-app-on-linux) says. On Windows, install it
-with the command line, from Windows or from inside WSL:
+Tray and the window. Install it with the command line, on Windows, inside WSL,
+or on Linux:
 
 ```sh
 npx @luan-afonso/firstmate desktop
 ```
 
-`desktop` downloads the App installer of its own version from the GitHub
-Release, checks its SHA-256, installs it for you alone with no administrator,
-and opens it ([The App](#the-app)). The npm package is the command line and
+`desktop` downloads the App of its own version from the GitHub Release, checks
+its SHA-256, installs it for you alone with no administrator, and opens it
+([The App](#the-app)). On Linux it installs the AppImage; to install the deb
+instead, see [The App on Linux](#the-app-on-linux). The npm package is the command line and
 nothing more: it holds no Host
 ([ADR-0024](docs/adr/0024-the-npm-package-is-the-command-line-only.md)). To keep
 the command around:
@@ -366,9 +366,10 @@ alone, with no administrator, and opens it. When that version is installed
 already, or a newer one the App updated itself to, it only opens it. It
 downloads when you run it, never when the package is installed. From WSL it
 saves the installer in the Windows temp folder and runs it, and the App,
-through WSL's interop with Windows. Anywhere else it says the App runs on
-Windows. It reads which version is installed where the installer records it
-for Windows: the App's uninstall key in `HKCU`. `FIRSTMATE_RELEASES_URL` moves
+through WSL's interop with Windows. It reads which version is installed where
+the installer records it for Windows: the App's uninstall key in `HKCU`. On
+Linux it installs the AppImage instead, as
+[The App on Linux](#the-app-on-linux) says. `FIRSTMATE_RELEASES_URL` moves
 where it downloads from.
 
 To build it yourself from a clone, on Windows, see
@@ -467,7 +468,23 @@ then asks which screen or window to give.
 
 Each Release carries the App for Linux on x64 twice: as an AppImage,
 `FirstMate-<version>.AppImage`, and as a deb, `firstmate_<version>_amd64.deb`,
-each with its SHA-256 beside it (ADR-0023). Download one from the
+each with its SHA-256 beside it (ADR-0023). `firstmate desktop` installs the
+AppImage:
+
+```sh
+npx @luan-afonso/firstmate desktop
+```
+
+It downloads `FirstMate-<version>.AppImage` of its own version and its
+checksum, refuses an AppImage whose SHA-256 does not match and runs nothing,
+puts it at `~/Applications/FirstMate.AppImage`, makes it executable, and opens
+it. It writes the version it installed beside it, in
+`~/Applications/FirstMate.version`. When that version, or a newer one, is
+there, it only opens it. An AppImage that updated itself after that file was
+written is newer too, and is only opened. An AppImage with no such file, put
+there by hand, is replaced.
+
+To install by hand, download one from the
 [GitHub Release](https://github.com/luanAfons0/FirstMate/releases), with its
 `.sha256` file, and check it before you install it:
 
@@ -485,7 +502,7 @@ sudo apt install ./firstmate_<version>_amd64.deb
 
 The AppImage is one file that updates itself. Keep it at
 `~/Applications/FirstMate.AppImage`, which is where `firstmate setup` looks for
-the App, and make it executable:
+the App, and make it executable, as `firstmate desktop` does:
 
 ```sh
 mkdir -p ~/Applications
@@ -529,7 +546,7 @@ Other things differ from Windows:
 | `FIRSTMATE_MAX_CALL_MS` | `600000`       | The longest a Tool Bus call may ask the Host to wait. |
 | `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for `/notices.json`. |
 | `FIRSTMATE_SHELF`       | `$FIRSTMATE_HOME/shelf` | The Shelf: where a fetched Plugin lands. With the default home, `~/.firstmate/shelf`, or `%APPDATA%\FirstMate\shelf` on Windows. |
-| `FIRSTMATE_RELEASES_URL`| `https://github.com/luanAfons0/FirstMate/releases/download` | Where `firstmate desktop` downloads the App from: `<url>/v<version>/FirstMate-Setup-<version>.exe` and its `.sha256`. |
+| `FIRSTMATE_RELEASES_URL`| `https://github.com/luanAfons0/FirstMate/releases/download` | Where `firstmate desktop` downloads the App from: `<url>/v<version>/FirstMate-Setup-<version>.exe`, or `FirstMate-<version>.AppImage` on Linux, and its `.sha256`. |
 
 A `_MS` variable is a whole number of milliseconds, from 1 to 2147483647 (about
 24 days, the longest wait a Node timer holds). The Host refuses to start on any
