@@ -35,14 +35,7 @@ npm install -g @luan-afonso/firstmate
 firstmate desktop
 ```
 
-From a clone instead, which is how you work on FirstMate itself, the Host runs
-on plain Node 24 with no build step:
-
-```sh
-git clone https://github.com/luanAfons0/FirstMate.git
-cd FirstMate
-node packages/host/src/main.ts
-```
+To work on FirstMate itself, see [Work on FirstMate](#work-on-firstmate).
 
 Coming from 1.x? See [Moving from 1.x](#moving-from-1x) and the
 [2.0.0 release notes](docs/releases/2.0.0.md).
@@ -150,15 +143,15 @@ contract: what the Host enforces, and what it only advises.
 ## Add a Plugin
 
 ```sh
-node apps/cli/src/cli.ts add <name> /absolute/path/to/the/directory
-node apps/cli/src/cli.ts install /absolute/path/to/the/directory [name]
-node apps/cli/src/cli.ts install https://example.com/someone/a-plugin.git [name]
-node apps/cli/src/cli.ts install worklog [name]
-node apps/cli/src/cli.ts remove <name>
-node apps/cli/src/cli.ts list
-node apps/cli/src/cli.ts grant <from> <to>
-node apps/cli/src/cli.ts revoke <from> <to>
-node apps/cli/src/cli.ts order [<name> <position>]
+firstmate add <name> /absolute/path/to/the/directory
+firstmate install /absolute/path/to/the/directory [name]
+firstmate install https://example.com/someone/a-plugin.git [name]
+firstmate install worklog [name]
+firstmate remove <name>
+firstmate list
+firstmate grant <from> <to>
+firstmate revoke <from> <to>
+firstmate order [<name> <position>]
 ```
 
 `add` and `install` take `--place <name>` to put the Plugin in a Place other
@@ -215,17 +208,17 @@ machine: `windows` on Windows, `local` anywhere else. It is always there, and
 `add`, `install` and `shelf` act in it unless `--place` names another.
 
 ```sh
-node apps/cli/src/cli.ts place                       # every Place, its kind and its Shelf
-node apps/cli/src/cli.ts place add <name> <kind>     # add a Place
-node apps/cli/src/cli.ts place remove <name>         # take an empty Place away
+firstmate place                       # every Place, its kind and its Shelf
+firstmate place add <name> <kind>     # add a Place
+firstmate place remove <name>         # take an empty Place away
 ```
 
 A `local` Place runs its Plugin Servers on this machine. A `wsl` Place is one
 WSL distribution, and its Plugins keep their `mcp` file as it is:
 
 ```sh
-node apps/cli/src/cli.ts place add debian wsl Debian [windows-path]
-node apps/cli/src/cli.ts add worklog /home/me/.worklog --place debian
+firstmate place add debian wsl Debian [windows-path]
+firstmate add worklog /home/me/.worklog --place debian
 ```
 
 The Host starts a `wsl` Plugin as `wsl.exe -d <distribution> --cd <directory>
@@ -246,8 +239,8 @@ that holds a Plugin is not removed, and removing one touches nothing on disk.
 ### Moving from 1.x
 
 ```sh
-node apps/cli/src/cli.ts place add debian wsl Debian
-node apps/cli/src/cli.ts import debian
+firstmate place add debian wsl Debian
+firstmate import debian
 ```
 
 `import` reads the 1.x Registry and settings from `~/.firstmate` in that
@@ -264,9 +257,9 @@ wrote it, is in the default Place.
 ## Ask the running Host
 
 ```sh
-node apps/cli/src/cli.ts status
-node apps/cli/src/cli.ts status --json
-node apps/cli/src/cli.ts restart <name>
+firstmate status
+firstmate status --json
+firstmate restart <name>
 ```
 
 `status` says whether the Host runs, and the state of each Plugin in the Plugin
@@ -290,8 +283,8 @@ changes something prints no JSON, and refuses `--json` as typed wrong.
 ## Read the log
 
 ```sh
-node apps/cli/src/cli.ts logs      # what the Host and its Plugin Servers said
-node apps/cli/src/cli.ts logs -f   # and keep printing new lines
+firstmate logs      # what the Host and its Plugin Servers said
+firstmate logs -f   # and keep printing new lines
 ```
 
 The Host keeps its output, and every Plugin Server's stderr with it, in
@@ -303,8 +296,8 @@ it first. The token never reaches either file.
 ## Help and exit codes
 
 ```sh
-node apps/cli/src/cli.ts --help
-node apps/cli/src/cli.ts <command> --help
+firstmate --help
+firstmate <command> --help
 ```
 
 `--help` or `-h` after any command says how that command is typed and what
@@ -323,17 +316,6 @@ refusal from another without reading the sentence:
 | `4`  | It refused a Plugin or a Shortcut that is not there.                  |
 | `5`  | It refused a name, keys or a directory that is taken already.         |
 | `6`  | It needs a running Host, and none answers.                            |
-
-## Run the Host
-
-```sh
-node packages/host/src/main.ts
-```
-
-The App runs the Host in its own process. From a clone, this runs the same Host
-on plain Node, which is how you work on it and how every test runs it. It
-listens on `http://127.0.0.1:4747/` and on no other address, and the same
-environment variables move it.
 
 ## The App
 
@@ -360,17 +342,9 @@ Windows. It reads which version is installed where the installer records it
 for Windows: the App's uninstall key in `HKCU`. `FIRSTMATE_RELEASES_URL` moves
 where it downloads from.
 
-Build it yourself from a clone, on Windows:
-
-```sh
-pnpm install
-pnpm --filter @firstmate/desktop package
-```
-
-That writes `apps/desktop/dist/FirstMate-Setup-<version>.exe`, a one-click
-installer for you alone that needs no administrator, and the same App,
-uninstalled, in `apps/desktop/dist/win-unpacked/`. Both are unsigned, so
-Windows may warn before they run.
+To build it yourself from a clone, on Windows, see
+[Work on FirstMate](#work-on-firstmate). Both the installer and the App it
+holds are unsigned, so Windows may warn before they run.
 
 To try a change to the App before it is released, you need no clone on
 Windows: the Windows check of every pull request keeps the installer it built,
@@ -384,7 +358,7 @@ gh run download <run-id> --name FirstMate-Setup
 It installs over the App you have, keeps your settings, and is replaced by the
 next release when the App updates itself.
 
-The App's Host is the Host above: the same home, `%APPDATA%\FirstMate` unless
+The App's Host is the one the App runs in its own process: the same home, `%APPDATA%\FirstMate` unless
 `FIRSTMATE_HOME` moves it, the same port and the same runtime file, so the
 command line reaches it as it reaches any other. Only one App runs for one
 home; a second start shows the first window. When another program holds the
@@ -452,8 +426,8 @@ then asks which screen or window to give.
 | `FIRSTMATE_PORT`        | `4747`         | The port. Zero asks the system for a free one.    |
 | `FIRSTMATE_HANDSHAKE_MS`| `10000`        | How long a Plugin Server has to answer the handshake. |
 | `FIRSTMATE_MAX_CALL_MS` | `600000`       | The longest a Tool Bus call may ask the Host to wait. |
-| `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for the Tray to read. |
-| `FIRSTMATE_SHELF`       | `~/.firstmate/shelf` | The Shelf: where a fetched Plugin lands. |
+| `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for `/notices.json`. |
+| `FIRSTMATE_SHELF`       | `$FIRSTMATE_HOME/shelf` | The Shelf: where a fetched Plugin lands. With the default home, `~/.firstmate/shelf`, or `%APPDATA%\FirstMate\shelf` on Windows. |
 | `FIRSTMATE_RELEASES_URL`| `https://github.com/luanAfons0/FirstMate/releases/download` | Where `firstmate desktop` downloads the App from: `<url>/v<version>/FirstMate-Setup-<version>.exe` and its `.sha256`. |
 
 A `_MS` variable is a whole number of milliseconds, from 1 to 2147483647 (about
@@ -467,8 +441,8 @@ and this section is about the default Place's; `--place <name>` says or moves
 another's. Say where it is, or move it:
 
 ```sh
-node apps/cli/src/cli.ts shelf                      # where a fetched Plugin lands
-node apps/cli/src/cli.ts shelf /absolute/directory  # move it, and remember it
+firstmate shelf                      # where a fetched Plugin lands
+firstmate shelf /absolute/directory  # move it, and remember it
 ```
 
 The directory has to be there already, and it may not be, hold, or lead to the
@@ -492,10 +466,10 @@ Plugin. The Tray holds it, and pressing it opens that address in a Popup: a
 small window with no frame, on top of every other window.
 
 ```sh
-node apps/cli/src/cli.ts bind Ctrl+Alt+N worklog new.html  # open /p/worklog/new.html
-node apps/cli/src/cli.ts bind Ctrl+Alt+W worklog           # open the Plugin Page
-node apps/cli/src/cli.ts unbind Ctrl+Alt+N
-node apps/cli/src/cli.ts list                              # the Shortcuts follow the Plugins
+firstmate bind Ctrl+Alt+N worklog new.html  # open /p/worklog/new.html
+firstmate bind Ctrl+Alt+W worklog           # open the Plugin Page
+firstmate unbind Ctrl+Alt+N
+firstmate list                              # the Shortcuts follow the Plugins
 ```
 
 The keys are one or more of `Ctrl`, `Alt`, `Shift` and `Win`, and one key: a
@@ -520,8 +494,8 @@ Every list of Plugins shows them in the Plugin Order: the Index Page,
 `/plugins.json`, the window's switcher and the Tray menu. You choose it.
 
 ```sh
-node apps/cli/src/cli.ts order            # every Plugin, with its position
-node apps/cli/src/cli.ts order worklog 1  # move worklog to the top
+firstmate order            # every Plugin, with its position
+firstmate order worklog 1  # move worklog to the top
 ```
 
 A position counts from 1 at the top, and the other Plugins keep their order. A
@@ -648,25 +622,41 @@ The migration is finished. What moved, and what it proved, is written down in
 [`docs/nexus-migration.md`](docs/nexus-migration.md). What it taught the next
 Plugin is in [`docs/plugin-guide.md`](docs/plugin-guide.md).
 
-## Test it
+## Work on FirstMate
+
+Everything here runs in a clone. In a clone, `node apps/cli/src/cli.ts` takes
+the place of `firstmate` in every command above.
+
+```sh
+git clone https://github.com/luanAfons0/FirstMate.git
+cd FirstMate
+pnpm install
+node packages/host/src/main.ts
+```
+
+The Host runs on plain Node 24 with no build step. It is the Host the App runs
+in its own process, and how every test runs it. It listens on
+`http://127.0.0.1:4747/` and on no other address, and the same environment
+variables move it.
 
 ```sh
 node --test
-```
-
-Every test boots a real Host against a temporary home directory and drives it
-over HTTP. No test imports a module of the Host.
-
-## Check it
-
-```sh
-pnpm install
 pnpm check
+pnpm build
+pnpm --filter @firstmate/desktop package
 ```
+
+`node --test` boots a real Host against a temporary home directory and drives it
+over HTTP, and no test imports a module of the Host.
 
 `pnpm check` checks the types, lints with Biome, checks the layout with
 Prettier, looks for dead code with knip, and runs every test. CI runs the same
 command. `pnpm typecheck` checks the types alone.
+
+`pnpm build` makes the bundle of `apps/cli` that goes to npm, by hand. The last
+command, on Windows, writes `apps/desktop/dist/FirstMate-Setup-<version>.exe`, a
+one-click installer for you alone that needs no administrator, and the same App,
+uninstalled, in `apps/desktop/dist/win-unpacked/`.
 
 The repository is a pnpm workspace: `packages/core` and `packages/host` are
 private, and `apps/cli` is the package on npm. Node 24 runs TypeScript without a
