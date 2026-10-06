@@ -181,8 +181,17 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
 apps/desktop/       the App, @firstmate/desktop: one Electron program for
                     Windows. Private; its release is the installer (ADR-0020).
   src/main.ts      the main process: start the Host, hold the one-App lock,
-                   show the Index Page in the window, stop the Host on Quit.
-  electron.vite.config.ts the build: the main process, with core and host in.
+                   wire the parts below together, stop the Host on Quit.
+  src/window.ts    the window: the strip, the switcher, the Settings View,
+                   and one view for the Index Page and each Plugin Page.
+  src/pages.ts     the App's own pages, written as data addresses. The Host
+                   never serves them (ADR-0008).
+  src/preload.ts   the one preload, on the App's own views and never on a
+                   Plugin Page. `ask.ts` reads what it sends.
+  src/addresses.ts the Host's addresses, and which owner each belongs to.
+  src/host-lists.ts what /plugins.json says, as the App reads it.
+  electron.vite.config.ts the build: the main process, with core and host
+                   in, and the preload.
   electron-builder.yml the package: FirstMate.exe and its per-user installer.
   build/           what packaging reads: the mark, as icon.ico.
 tests/       one file per behaviour, plus fixtures/ and helpers/, for every
