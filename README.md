@@ -16,8 +16,10 @@ to build a runtime of its own.
 
 ## Install it
 
-FirstMate is an App for Windows: one program that holds the Host, the Tray and
-the window. Install it with the command line, from Windows or from inside WSL:
+FirstMate is an App for Windows and Linux: one program that holds the Host, the
+Tray and the window. On Linux, install the AppImage or the deb from the GitHub
+Release, as [The App on Linux](#the-app-on-linux) says. On Windows, install it
+with the command line, from Windows or from inside WSL:
 
 ```sh
 npx @luan-afonso/firstmate desktop
@@ -96,14 +98,15 @@ Evidence, not a promise. "Proved" means someone has run it.
 | --------------- | ----------- | ------------- | ------------------------------------ | ------------ |
 | Windows         | proved      | proved        | proved, from `mcp.cmd` or `mcp.exe`  | proved       |
 | WSL, as a Place | —           | —             | proved, through `wsl.exe`            | proved       |
-| Linux, native   | not built   | proved by CI  | proved by CI                         | proved by CI |
+| Linux, native   | proved by CI | proved by CI | proved by CI                         | proved by CI |
 | macOS           | not built   | should work, untried | should work, untried          | should work, untried |
 
-**The App is Windows only** (ADR-0020). A Plugin in a `wsl` Place keeps its
+**The App runs on Windows and Linux** (ADR-0026). A Plugin in a `wsl` Place keeps its
 `mcp` file and runs inside its distribution (ADR-0021). On Windows itself a
 Plugin Server starts from `mcp.cmd` or `mcp.exe`, because Windows reads no
 shebang (ADR-0019). The Host runs on plain Node anywhere, which is how the tests
-run it; only the App, the Tray and the window are Windows programs.
+run it; only the App, the Tray and the window are Electron programs, for Windows and
+Linux.
 
 A Plugin is a directory and nothing more. Put a `web/` folder in it and the Host
 serves it as a Plugin Page. Put an executable named `mcp` in it and the Host
@@ -448,7 +451,9 @@ the background. When it is ready, one Notice says so, and it installs when you
 quit FirstMate, never in the middle of work. A stable App follows stable
 Releases; a beta follows the newest Release, beta or stable, so a beta tester
 lands on the stable version and stays there (ADR-0023). An App you build and
-run unpacked from a clone never updates.
+run unpacked from a clone never updates. On Linux the AppImage updates itself
+in the same way, and the deb does not: install the next deb as you installed
+the first.
 
 A Plugin Page may write to the clipboard, so its "copy" buttons work, but never
 read it. It is refused every other permission, camera, location and
@@ -457,6 +462,62 @@ a window with its sound. The first time a Plugin asks for one, the App asks you,
 Plugin, and keeps your answer under `permissions` in `settings.json`. To be
 asked again, take that Plugin out of `permissions`. For a capture, the App
 then asks which screen or window to give.
+
+### The App on Linux
+
+Each Release carries the App for Linux on x64 twice: as an AppImage,
+`FirstMate-<version>.AppImage`, and as a deb, `firstmate_<version>_amd64.deb`,
+each with its SHA-256 beside it (ADR-0023). Download one from the
+[GitHub Release](https://github.com/luanAfons0/FirstMate/releases), with its
+`.sha256` file, and check it before you install it:
+
+```sh
+sha256sum --check firstmate_<version>_amd64.deb.sha256
+```
+
+The deb installs the App into `/opt/FirstMate`, puts `firstmate` on the path,
+and loads an AppArmor profile that lets the App use the Chromium sandbox on
+Ubuntu 24.04 and later:
+
+```sh
+sudo apt install ./firstmate_<version>_amd64.deb
+```
+
+The AppImage is one file that updates itself. Keep it at
+`~/Applications/FirstMate.AppImage`, which is where `firstmate setup` looks for
+the App, and make it executable:
+
+```sh
+mkdir -p ~/Applications
+mv FirstMate-<version>.AppImage ~/Applications/FirstMate.AppImage
+chmod +x ~/Applications/FirstMate.AppImage
+```
+
+On Ubuntu 24.04 and later, AppArmor stops an unknown program from making a user
+namespace, which the Chromium sandbox needs, and the AppImage then does not
+start. The AppImage cannot load a profile itself, so give it one, once, as root:
+
+```sh
+sudo tee /etc/apparmor.d/firstmate-appimage > /dev/null <<'PROFILE'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile firstmate-appimage /home/*/Applications/FirstMate.AppImage flags=(unconfined) {
+  userns,
+  include if exists <local/firstmate-appimage>
+}
+PROFILE
+sudo apparmor_parser --replace /etc/apparmor.d/firstmate-appimage
+```
+
+Other things differ from Windows:
+
+- **The Tray** is an AppIndicator. GNOME shows none without the AppIndicator
+  extension: Ubuntu turns it on, and elsewhere it is the package
+  `gnome-shell-extension-appindicator`. Without it the App still runs, and a
+  second start of the App shows its window.
+- **A capture** of a screen or a window is the picture alone. Its sound, the
+  loopback audio, is on Windows only.
 
 ## Configure it
 

@@ -1,8 +1,8 @@
 # One tag releases the App and the command line
 
-FirstMate 2.0 ships two things: the App, which is a Windows installer, and the command line, which is the npm package. `firstmate desktop` installs the App of its own version, so the two must never drift apart. One git tag releases both, and every package in the workspace carries the version the tag names. A tag that disagrees with any `package.json` is refused before anything is built.
+FirstMate 2.0 ships two things: the App, which is a Windows installer and, since ADR-0026, an AppImage and a deb for Linux, and the command line, which is the npm package. `firstmate desktop` installs the App of its own version, so the two must never drift apart. One git tag releases both, and every package in the workspace carries the version the tag names. A tag that disagrees with any `package.json` is refused before anything is built.
 
-The release workflow runs three parts in order. The whole check runs on Linux while the App is packaged on Windows. When both pass, the GitHub Release of the tag is published with the App's files. Only then is the command line published to npm, so a command line on npm never names a Release that is not there.
+The release workflow runs three parts in order. The whole check runs on Linux while the App is packaged on Windows and on Linux, each on a runner of its own. When both pass, the GitHub Release of the tag is published with the App's files. Only then is the command line published to npm, so a command line on npm never names a Release that is not there.
 
 ## What a Release carries
 
@@ -14,8 +14,13 @@ For version `<version>`, the GitHub Release of tag `v<version>` carries exactly 
 | `FirstMate-Setup-<version>.exe.sha256` | Its SHA-256, as `sha256sum` writes it: the hash in lower-case hex, two spaces, the installer's name. |
 | `FirstMate-Setup-<version>.exe.blockmap` | The block map, by which `electron-updater` downloads only the changed parts of an update. |
 | `latest.yml` | The update feed: the version, the installer's name, its SHA-512 and size. |
+| `FirstMate-<version>.AppImage` | The Linux App as one file, for x64. It carries its own block map, and `electron-updater` updates it. |
+| `FirstMate-<version>.AppImage.sha256` | Its SHA-256, in the same form. |
+| `firstmate_<version>_amd64.deb` | The Linux App as a deb, for x64, with the AppArmor profile its install script loads. The package manager updates it; the App does not. |
+| `firstmate_<version>_amd64.deb.sha256` | Its SHA-256, in the same form. |
+| `latest-linux.yml` | The AppImage's update feed: the version, the AppImage's name, and each Linux file's SHA-512 and size. |
 
-These names are a contract. `firstmate desktop` downloads the installer and its checksum by them, from `https://github.com/luanAfons0/FirstMate/releases/download/v<version>/`, and a command line already on npm cannot learn new ones. `electron-builder.yml` names the installer, and the workflow writes the checksum.
+These names are a contract. `firstmate desktop` downloads the installer and its checksum by them, from `https://github.com/luanAfons0/FirstMate/releases/download/v<version>/`, and a command line already on npm cannot learn new ones. `electron-builder.yml` names the installers, and the workflow writes the checksums.
 
 The checksum is SHA-256 in a file of its own, because that is what a person can check by hand on any machine. `latest.yml` carries a SHA-512 as well, and that one is `electron-updater`'s.
 
@@ -64,4 +69,8 @@ A Release whose App failed to package is not published, and neither is its comma
 
 ## Amended: Linux files (ADR-0026)
 
-ADR-0026 amends this ADR: Linux gets an AppImage and a deb. Their rows in the table above, and the Linux leg of the workflow, come with the release ticket (#177).
+ADR-0026 amends this ADR: Linux gets an AppImage and a deb. Their rows are in the table above, and the workflow packages them on a Linux runner beside the Windows one. The Release is published only when both systems packaged, and every file the table names is there.
+
+The deb's name is lower case, with an underscore before the version and the architecture, because that is the form Debian gives a package's file. A version's prerelease part stays in the file name as it is, `firstmate_2.0.0-beta.3_amd64.deb`; inside the deb it is `2.0.0~beta.3`, which `dpkg` sorts before `2.0.0`.
+
+Every Linux Release carries `latest-linux.yml` for the same reason every Release carries `latest.yml`: an App finds its channel from its own version. Only an AppImage reads it. A deb carries the feed too, because packaging writes it into every Linux package, and the App does not look at it: electron-updater would ask for root to install a deb, and the deb belongs to the package manager.

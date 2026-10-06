@@ -71,8 +71,29 @@ jobs:
       - run: pnpm check
 
   app:
-    name: Package the App
-    runs-on: windows-latest
+    name: Package the App (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Packaging makes the packages of the system it runs on, so each system
+      # packages on its own runner (ADR-0026).
+      matrix:
+        include:
+          - system: windows
+            runner: windows-latest
+            # The installer, the block map electron-updater downloads only the
+            # changed parts of an update by, and latest.yml, the update feed.
+            files: |
+              apps/desktop/dist/FirstMate-Setup-*.exe
+              apps/desktop/dist/FirstMate-Setup-*.exe.blockmap
+              apps/desktop/dist/latest.yml
+          - system: linux
+            runner: ubuntu-latest
+            # The AppImage, which carries its block map inside it, the deb,
+            # and latest-linux.yml, the AppImage's update feed.
+            files: |
+              apps/desktop/dist/FirstMate-*.AppImage
+              apps/desktop/dist/firstmate_*.deb
+              apps/desktop/dist/latest-linux.yml
 
     steps:
       - uses: actions/checkout@v7
@@ -93,16 +114,11 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
-      # The installer, the block map electron-updater downloads only the
-      # changed parts of an update by, and latest.yml, the update feed.
       - uses: actions/upload-artifact@v7
         with:
-          name: app
+          name: app-${{ matrix.system }}
           if-no-files-found: error
-          path: |
-            apps/desktop/dist/FirstMate-Setup-*.exe
-            apps/desktop/dist/FirstMate-Setup-*.exe.blockmap
-            apps/desktop/dist/latest.yml
+          path: ${{ matrix.files }}
 
   github:
     name: Publish the GitHub Release
@@ -112,30 +128,43 @@ jobs:
       contents: write
 
     steps:
+      # Both systems' files, in one folder, as the Release carries them.
       - uses: actions/download-artifact@v8
         with:
-          name: app
+          pattern: app-*
+          merge-multiple: true
           path: release
 
-      # The checksum is written here, from the bytes the Release will carry,
+      # The checksums are written here, from the bytes the Release will carry,
       # in the form `sha256sum --check` reads: the hash, two spaces, the name.
-      - name: Every file the Release carries, and the installer's checksum
+      # Each installer gets one of its own.
+      - name: Every file the Release carries, and each installer's checksum
         working-directory: release
         env:
           VERSION: ${{ needs.check.outputs.version }}
         run: |
-          installer="FirstMate-Setup-$VERSION.exe"
-          for file in "$installer" "$installer.blockmap" latest.yml; do
+          windows="FirstMate-Setup-$VERSION.exe"
+          appimage="FirstMate-$VERSION.AppImage"
+          # The runners are x64, which a deb calls amd64.
+          deb="firstmate_${VERSION}_amd64.deb"
+          for file in "$windows" "$windows.blockmap" latest.yml \
+            "$appimage" "$deb" latest-linux.yml; do
             if [ ! -f "$file" ]; then
               echo "Packaging wrote no $file." >&2
               exit 1
             fi
           done
-          if ! grep -q "^path: $installer\$" latest.yml; then
-            echo "latest.yml does not name $installer." >&2
+          if ! grep -q "^path: $windows\$" latest.yml; then
+            echo "latest.yml does not name $windows." >&2
             exit 1
           fi
-          sha256sum "$installer" > "$installer.sha256"
+          if ! grep -q "^path: $appimage\$" latest-linux.yml; then
+            echo "latest-linux.yml does not name $appimage." >&2
+            exit 1
+          fi
+          for installer in "$windows" "$appimage" "$deb"; do
+            sha256sum "$installer" > "$installer.sha256"
+          done
           ls -l
 
       # A Release made by hand for this tag before the tag was pushed keeps its
