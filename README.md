@@ -298,11 +298,24 @@ it first. The token never reaches either file.
 ```sh
 firstmate --help
 firstmate <command> --help
+firstmate help <topic>
 ```
 
+`firstmate --help`, or `firstmate` with no words, prints one screen: every
+command in its group, with a few words each. With no words it ends with exit
+code `2`, because nothing was asked.
+
 `--help` or `-h` after any command says how that command is typed and what
-its words mean, and does nothing else. A command typed wrong says what is
-wrong, then shows that same help.
+its words mean, and does nothing else. `firstmate help <command>` says the
+same. A command typed wrong says what is wrong, then shows that same help.
+
+`firstmate help` lists the help topics, and `firstmate help <topic>` says one:
+
+| Topic         | What it says                                                    |
+| ------------- | --------------------------------------------------------------- |
+| `exit-codes`  | What each exit code means, as in the table below.              |
+| `environment` | The variables the command line reads, and their defaults.      |
+| `places`      | What a Place is, the default Place, and how to add a wsl Place. |
 
 Every command ends with one of these exit codes, so a script can tell one
 refusal from another without reading the sentence:

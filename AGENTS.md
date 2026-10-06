@@ -36,7 +36,9 @@ Run every command from the repository root.
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows or WSL. |
-| `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `--help` alone also lists the exit codes. |
+| `node apps/cli/src/cli.ts --help`             | Every command in its group, in one screen.      |
+| `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `help <command>` says the same. |
+| `node apps/cli/src/cli.ts help [<topic>]`     | The help topics: exit-codes, environment, places. |
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
 | `node apps/cli/src/cli.ts restart <name>`     | Start one Plugin's Plugin Server again.         |

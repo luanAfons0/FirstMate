@@ -8,6 +8,8 @@
  * holds the path and nothing else, so a Plugin stays in its own repository
  * wherever it already lives.
  *
+ *   node apps/cli/src/cli.ts [--help | -h]
+ *   node apps/cli/src/cli.ts help [<command> | <topic>]
  *   node apps/cli/src/cli.ts setup
  *   node apps/cli/src/cli.ts desktop
  *   node apps/cli/src/cli.ts place [add <name> <kind> [...] | remove <name>] [--json]
@@ -68,13 +70,26 @@ import { SHELF_VARIABLE } from '@firstmate/core/shelf';
 
 const OFFICIAL_NAMES = OFFICIAL_PLUGINS.map((plugin) => plugin.name).join(', ');
 
+/**
+ * The groups the short help shows the commands in, in its order. Each one
+ * names what its commands are for.
+ */
+const GROUPS = ['Start', 'Plugins', 'Running', 'Grants and Shortcuts', 'Places'] as const;
+
+/** One of the groups the short help shows the commands in. */
+type Group = (typeof GROUPS)[number];
+
 /** One command: how it is typed, what it does in one line, and what runs it. */
 type Command = {
   /** The word typed after `firstmate`. */
   readonly name: string;
+  /** The group the short help shows it in. */
+  readonly group: Group;
+  /** What it does in a few words, as the short help shows it. */
+  readonly short: string;
   /** What the command takes after its name, as the usage line shows it. */
   readonly takes: string;
-  /** What it does, in one line. */
+  /** What it does, in one line, as its own help shows it. */
   readonly does: string;
   /** Whether it can say what it reads as one JSON value, with --json. */
   readonly json?: true;
@@ -93,37 +108,40 @@ type Command = {
 };
 
 /**
- * Every command, in the order the usage shows them. A command is one row
- * here, and the usage, the dispatch and the help are all read off this table.
+ * Every command, in the order the short help shows them. A command is one row
+ * here, and the short help, the dispatch and each command's help are all read
+ * off this table.
  */
 const COMMANDS: readonly Command[] = [
   {
     name: 'setup',
+    group: 'Start',
+    short: 'answer a few questions, and set FirstMate up',
     takes: '',
     does: 'answer a few questions, and have FirstMate set up.',
     run: setUp,
   },
   {
     name: 'desktop',
+    group: 'Start',
+    short: 'install the App, and open it',
     takes: '',
     does: 'install the App of this version, and open it.',
     run: desktop,
   },
   {
-    name: 'place',
-    takes: '[add <name> <kind> [...] | remove <name>]',
-    does: 'say every Place, or add or remove one.',
-    json: true,
-    run: (argv, json) => place(home(), argv, json),
-  },
-  {
-    name: 'import',
-    takes: '<place>',
-    does: 'bring a 1.x install across from a wsl Place.',
-    run: (argv) => importFrom(home(), argv),
+    name: 'install',
+    group: 'Plugins',
+    short: 'fetch a Plugin into the Shelf, and register it',
+    takes: '<source> [name]',
+    does: 'fetch a Plugin into the Shelf and register it.',
+    place: true,
+    run: (argv, _json, place) => install(readConfig(), argv, place),
   },
   {
     name: 'add',
+    group: 'Plugins',
+    short: 'register a Plugin where its directory already is',
     takes: '<name> <directory>',
     does: 'register a Plugin. The directory is not copied.',
     place: true,
@@ -131,19 +149,34 @@ const COMMANDS: readonly Command[] = [
   },
   {
     name: 'remove',
+    group: 'Plugins',
+    short: 'take a Plugin out of the Registry',
     takes: '<name>',
     does: 'take a Plugin out of the Registry.',
     run: (argv) => remove(home(), argv),
   },
   {
     name: 'list',
+    group: 'Plugins',
+    short: 'say every Plugin in the Registry',
     takes: '',
     does: 'every Plugin in the Registry.',
     json: true,
     run: (argv, json) => list(home(), argv, json),
   },
   {
+    name: 'order',
+    group: 'Plugins',
+    short: 'say the Plugin Order, or move one Plugin in it',
+    takes: '[<name> <position>]',
+    does: 'say the Plugin Order, or move one Plugin in it.',
+    json: true,
+    run: (argv, json) => order(home(), argv, json),
+  },
+  {
     name: 'status',
+    group: 'Running',
+    short: "say whether the Host runs, and each Plugin's state",
     takes: '',
     does: 'say whether the Host runs, and the state of each Plugin.',
     json: true,
@@ -151,30 +184,65 @@ const COMMANDS: readonly Command[] = [
   },
   {
     name: 'restart',
+    group: 'Running',
+    short: "start one Plugin's Plugin Server again",
     takes: '<name>',
     does: "start one Plugin's Plugin Server again, after you fix it.",
     run: (argv) => restart(home(), argv),
   },
   {
     name: 'logs',
+    group: 'Running',
+    short: 'print what the Host and its Plugin Servers said',
     takes: '[-f]',
     does: 'print what the Host and its Plugin Servers said. -f follows it.',
     run: (argv) => logs(home(), argv),
   },
   {
     name: 'grant',
+    group: 'Grants and Shortcuts',
+    short: "let one Plugin call another Plugin's tools",
     takes: '<from> <to>',
     does: "let <from> call <to>'s tools.",
     run: (argv) => grant(home(), argv),
   },
   {
     name: 'revoke',
+    group: 'Grants and Shortcuts',
+    short: 'take a Grant back',
     takes: '<from> <to>',
     does: 'take that Grant back.',
     run: (argv) => revoke(home(), argv),
   },
   {
+    name: 'bind',
+    group: 'Grants and Shortcuts',
+    short: "open a Plugin's address from a Shortcut",
+    takes: '<keys> <plugin> [path]',
+    does: "open a Plugin's address from a Shortcut in Windows.",
+    run: (argv) => bind(home(), argv),
+  },
+  {
+    name: 'unbind',
+    group: 'Grants and Shortcuts',
+    short: "free a Shortcut's keys",
+    takes: '<keys>',
+    does: "free that Shortcut's keys.",
+    run: (argv) => unbind(home(), argv),
+  },
+  {
+    name: 'place',
+    group: 'Places',
+    short: 'say every Place, or add or remove one',
+    takes: '[add <name> <kind> [...] | remove <name>]',
+    does: 'say every Place, or add or remove one.',
+    json: true,
+    run: (argv, json) => place(home(), argv, json),
+  },
+  {
     name: 'shelf',
+    group: 'Places',
+    short: 'say where a fetched Plugin lands, or move it',
     takes: '[directory]',
     does: 'say where a fetched Plugin lands, or move it.',
     json: true,
@@ -182,30 +250,12 @@ const COMMANDS: readonly Command[] = [
     run: (argv, json, place) => shelf(readConfig(), argv, json, place),
   },
   {
-    name: 'install',
-    takes: '<source> [name]',
-    does: 'fetch a Plugin into the Shelf and register it.',
-    place: true,
-    run: (argv, _json, place) => install(readConfig(), argv, place),
-  },
-  {
-    name: 'bind',
-    takes: '<keys> <plugin> [path]',
-    does: "open a Plugin's address from a Shortcut in Windows.",
-    run: (argv) => bind(home(), argv),
-  },
-  {
-    name: 'unbind',
-    takes: '<keys>',
-    does: "free that Shortcut's keys.",
-    run: (argv) => unbind(home(), argv),
-  },
-  {
-    name: 'order',
-    takes: '[<name> <position>]',
-    does: 'say the Plugin Order, or move one Plugin in it.',
-    json: true,
-    run: (argv, json) => order(home(), argv, json),
+    name: 'import',
+    group: 'Places',
+    short: 'bring a 1.x install across from a wsl Place',
+    takes: '<place>',
+    does: 'bring a 1.x install across from a wsl Place.',
+    run: (argv) => importFrom(home(), argv),
   },
 ];
 
@@ -223,14 +273,28 @@ function usageLine(command: Command): string {
   return `${typed}\n${' '.repeat(DOES_COLUMN)}${command.does}`;
 }
 
-/** A paragraph of help, and the commands whose own help shows it too. */
+/**
+ * What a Place is. The commands that act in a Place show it in their help, and
+ * it is the places help topic too.
+ */
+const PLACES_HELP = `A Place is where Plugins are installed and their Plugin Servers run. The
+default Place is this machine, and it is always there. add, install and shelf
+act in it unless --place names another. Each Place has its own Shelf. A local
+Place runs its Plugin Servers on this machine. A wsl Place is one WSL
+distribution: add it with place add <name> wsl <distribution>, and give the
+Windows path its files are read through when that is not
+\\\\wsl.localhost\\<distribution>. Its paths are the distribution's own. A Place
+that holds a Plugin cannot be removed, and a Plugin Name is used once across
+every Place.`;
+
+/** A paragraph of help, and the commands whose own help shows it. */
 type Note = {
   /** The commands this paragraph explains. */
   readonly about: readonly string[];
   readonly text: string;
 };
 
-/** What the usage says after the commands, about the words they take. */
+/** What each command's own help says after its usage line, about the words it takes. */
 const NOTES: readonly Note[] = [
   {
     about: ['shelf', 'install'],
@@ -242,18 +306,7 @@ name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.`,
   },
-  {
-    about: ['place', 'add', 'install', 'shelf'],
-    text: `A Place is where Plugins are installed and their Plugin Servers run. The
-default Place is this machine, and it is always there. add, install and shelf
-act in it unless --place names another. Each Place has its own Shelf. A local
-Place runs its Plugin Servers on this machine. A wsl Place is one WSL
-distribution: add it with place add <name> wsl <distribution>, and give the
-Windows path its files are read through when that is not
-\\\\wsl.localhost\\<distribution>. Its paths are the distribution's own. A Place
-that holds a Plugin cannot be removed, and a Plugin Name is used once across
-every Place.`,
-  },
+  { about: ['place', 'add', 'install', 'shelf'], text: PLACES_HELP },
   {
     about: ['import'],
     text: `import reads the 1.x Registry and settings from ~/.firstmate in a wsl Place's
@@ -355,12 +408,73 @@ ${Object.values(EXIT_CODES)
   .map(({ code, means }) => `  ${code}  ${means}`)
   .join('\n')}`;
 
-const USAGE = `usage:
-${COMMANDS.map(usageLine).join('\n')}
+const ENVIRONMENT_HELP = `The command line reads these environment variables:
 
-${NOTES.map((note) => note.text).join('\n\n')}
+FIRSTMATE_HOME moves the home directory, where the Registry, the settings and
+the log are. Default: ~/.firstmate, or %APPDATA%\\FirstMate on Windows.
 
-${EXIT_HELP}`;
+${SHELF_VARIABLE} moves the Shelf of the default Place, for one run.
+Default: $FIRSTMATE_HOME/shelf, or the directory firstmate shelf moved it to.
+
+FIRSTMATE_RELEASES_URL moves where desktop downloads the App installer from.
+Default: https://github.com/luanAfons0/FirstMate/releases/download
+
+The Host reads FIRSTMATE_PORT and the FIRSTMATE_..._MS variables, and the
+README says what they move.`;
+
+/** A help topic: a general note that is about no one command. */
+type Topic = {
+  /** The word typed after `firstmate help`. */
+  readonly name: string;
+  /** What it explains in a few words, as the topic list shows it. */
+  readonly short: string;
+  readonly text: string;
+};
+
+/** Every help topic, in the order the topic list shows them. */
+const TOPICS: readonly Topic[] = [
+  { name: 'exit-codes', short: 'what each exit code means, for a script', text: EXIT_HELP },
+  { name: 'environment', short: 'the variables the command line reads', text: ENVIRONMENT_HELP },
+  {
+    name: 'places',
+    short: 'where Plugins are installed, and how to add a Place',
+    text: PLACES_HELP,
+  },
+];
+
+/** Every topic's name, as the short help and a refused topic name them. */
+const TOPIC_NAMES = TOPICS.map((topic) => topic.name);
+
+/** One row of the short help or of the topic list: a name, and its few words. */
+function shortLine(name: string, short: string, column: number): string {
+  return `  ${name.padEnd(column)}${short}`;
+}
+
+/**
+ * The help that fits in one screen: what FirstMate is, every command in its
+ * group with its few words, and where the rest of the help is.
+ */
+const SHORT_HELP = `firstmate: run your own tools on your own machine.
+
+usage: firstmate <command> [...]
+
+${GROUPS.map((group) =>
+  [
+    group,
+    ...COMMANDS.filter((command) => command.group === group).map((command) =>
+      shortLine(command.name, command.short, 9),
+    ),
+  ].join('\n'),
+).join('\n')}
+
+firstmate <command> --help   how one command is typed
+firstmate help <topic>       ${TOPIC_NAMES.join(', ')}`;
+
+/** The short help, then every topic with its few words, for `firstmate help`. */
+const TOPIC_LIST = `${SHORT_HELP}
+
+Topics, for firstmate help <topic>:
+${TOPICS.map((topic) => shortLine(topic.name, topic.short, 13)).join('\n')}`;
 
 /** One command's own help: its usage line, and every note about it. */
 function helpOf(command: Command): string {
@@ -369,12 +483,42 @@ function helpOf(command: Command): string {
 }
 
 /**
+ * Say the help `firstmate help` was asked for: the topic list with no word, a
+ * command's own help, or a topic. Anything else is refused in one line.
+ */
+function help(argv: readonly string[]): number {
+  const words = argv.filter((word) => !HELP_WORDS.has(word));
+  const [word] = words;
+  if (word === undefined) {
+    console.log(TOPIC_LIST);
+    return exit('done');
+  }
+  const command = COMMANDS.find((row) => row.name === word);
+  const topic = TOPICS.find((row) => row.name === word);
+  const text = command === undefined ? topic?.text : helpOf(command);
+  if (text === undefined || words.length > 1) {
+    const last = TOPIC_NAMES.at(-1);
+    const rest = TOPIC_NAMES.slice(0, -1).join(', ');
+    const sentence =
+      words.length > 1
+        ? 'help takes one command or one topic.'
+        : `no help topic named ${word}: try ${rest} or ${last}.`;
+    console.error(`firstmate: ${sentence}`);
+    return exit('typed-wrong');
+  }
+  console.log(text);
+  return exit('done');
+}
+
+/**
  * Say how a command was typed wrong, then how it is typed, and give back the
  * exit code for that.
  */
 function typedWrong(name: string, sentence: string): number {
   const command = COMMANDS.find((row) => row.name === name);
-  console.error(`firstmate: ${sentence}\n\n${command === undefined ? USAGE : helpOf(command)}`);
+  console.error(
+    `firstmate: ${sentence}\n\n${command === undefined ? SHORT_HELP : helpOf(command)}`,
+  );
   return exit('typed-wrong');
 }
 
@@ -389,6 +533,9 @@ function printJson(value: unknown): void {
 /** The words that ask for a command's help, wherever they are typed after it. */
 const HELP_WORDS: ReadonlySet<string> = new Set(['-h', '--help']);
 
+/** The word that asks for a command's help or a topic, typed where a command goes. */
+const HELP_WORD = 'help';
+
 /**
  * The Host's home directory, read only by the commands that use it. The Host
  * reads its own, and the window runs on Windows, where this machine's settings
@@ -400,9 +547,10 @@ const home = (): string => readConfig().home;
 async function main(argv: readonly string[]): Promise<number | undefined> {
   const [name, ...rest] = argv;
   if (name === undefined || HELP_WORDS.has(name)) {
-    console.log(USAGE);
+    console.log(SHORT_HELP);
     return exit(name === undefined ? 'typed-wrong' : 'done');
   }
+  if (name === HELP_WORD) return help(rest);
   const command = COMMANDS.find((row) => row.name === name);
   if (command === undefined) return typedWrong(name, `no such command: ${name}`);
   if (rest.some((word) => HELP_WORDS.has(word))) {

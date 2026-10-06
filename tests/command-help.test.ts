@@ -105,15 +105,117 @@ test('a command typed wrong shows its own help, and not every command', async (t
   assert.doesNotMatch(wrong.stderr, /firstmate remove/);
 });
 
-test('the usage names every exit code and what it means', async (t) => {
+test('help exit-codes names every exit code and what it means', async (t) => {
   const home = await makeHome(t);
 
-  const helped = await firstmate(home, ['--help']);
+  const helped = await firstmate(home, ['help', 'exit-codes']);
 
-  assert.equal(helped.code, 0);
+  assert.equal(helped.code, 0, helped.stderr);
   for (const code of [0, 1, 2, 3, 4, 5, 6]) {
     assert.match(helped.stdout, new RegExp(`^  ${code}  it \\w`, 'm'), `exit code ${code}`);
   }
+  assert.equal(helped.stderr, '');
+});
+
+test('firstmate with no words prints the short help, and ends with 2', async (t) => {
+  const home = await makeHome(t);
+
+  const bare = await firstmate(home, []);
+
+  assert.equal(bare.code, 2, 'nothing typed is typed wrong, as it always was');
+  assert.match(bare.stdout, /^firstmate: /);
+  assert.equal(bare.stderr, '');
+  for (const asked of ['--help', '-h']) {
+    const helped = await firstmate(home, [asked]);
+    assert.equal(helped.code, 0, `${asked}: ${helped.stderr}`);
+    assert.equal(helped.stdout, bare.stdout, `${asked} prints the same short help`);
+  }
+});
+
+test('the short help names every command once, and fits in one screen', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['--help']);
+  const lines = helped.stdout.trimEnd().split('\n');
+
+  assert.ok(lines.length < 30, `under 30 lines, not ${lines.length}`);
+  for (const line of lines) assert.ok(line.length <= 80, `under 80 columns: ${line}`);
+  for (const [name] of COMMANDS) {
+    const rows = lines.filter((line) => new RegExp(`^ {2}${name} {2,}\\S`).test(line));
+    assert.equal(rows.length, 1, `${name} has one row`);
+  }
+  for (const group of ['Start', 'Plugins', 'Running', 'Grants and Shortcuts', 'Places']) {
+    assert.ok(lines.includes(group), `the group ${group}`);
+  }
+  assert.match(helped.stdout, /firstmate <command> --help/);
+  assert.match(helped.stdout, /firstmate help <topic> .*exit-codes, environment, places/);
+});
+
+test('help <command> prints the same as <command> --help', async (t) => {
+  const home = await makeHome(t);
+
+  for (const [name] of COMMANDS) {
+    const helped = await firstmate(home, ['help', name]);
+    const asked = await firstmate(home, [name, '--help']);
+
+    assert.equal(helped.code, 0, `help ${name}: ${helped.stderr}`);
+    assert.equal(helped.stdout, asked.stdout, `help ${name}`);
+  }
+});
+
+test('help with no topic prints the short help and the topics', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['help']);
+  const short = await firstmate(home, ['--help']);
+
+  assert.equal(helped.code, 0, helped.stderr);
+  assert.ok(helped.stdout.startsWith(short.stdout.trimEnd()), 'the short help first');
+  for (const topic of ['exit-codes', 'environment', 'places']) {
+    assert.match(helped.stdout, new RegExp(`^ {2}${topic} {2,}\\S`, 'm'), `the topic ${topic}`);
+  }
+});
+
+test('help environment names every variable the command line reads, with its default', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['help', 'environment']);
+
+  assert.equal(helped.code, 0, helped.stderr);
+  for (const [variable, fallback] of [
+    ['FIRSTMATE_HOME', '~/.firstmate'],
+    ['FIRSTMATE_SHELF', '$FIRSTMATE_HOME/shelf'],
+    ['FIRSTMATE_RELEASES_URL', 'https://github.com/luanAfons0/FirstMate/releases/download'],
+  ] as const) {
+    const at = helped.stdout.indexOf(variable);
+    assert.ok(at >= 0, `names ${variable}`);
+    const paragraph = helped.stdout.slice(at).split('\n\n')[0] ?? '';
+    assert.ok(paragraph.includes(`Default: ${fallback}`), `${variable} defaults to ${fallback}`);
+  }
+});
+
+test('help places explains Places, the default Place and a wsl Place', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['help', 'places']);
+
+  assert.equal(helped.code, 0, helped.stderr);
+  assert.match(helped.stdout, /A Place is where Plugins are installed/);
+  assert.match(helped.stdout, /The\s+default Place is this machine/);
+  assert.match(helped.stdout, /place add <name> wsl <distribution>/);
+});
+
+test('an unknown help topic is refused in one sentence that names the topics', async (t) => {
+  const home = await makeHome(t);
+
+  const refused = await firstmate(home, ['help', 'colours']);
+
+  assert.equal(refused.code, 2);
+  assert.equal(refused.stdout, '');
+  const lines = refused.stderr.trimEnd().split('\n');
+  assert.equal(lines.length, 1, `one line: ${refused.stderr}`);
+  assert.match(refused.stderr, /colours/);
+  assert.match(refused.stderr, /exit-codes, environment or places/);
 });
 
 test('each kind of refusal ends with its own exit code', async (t) => {

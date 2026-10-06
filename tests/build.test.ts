@@ -36,6 +36,6 @@ test('the built command line explains itself, and names no start or service', as
   const help = await firstmate('/nowhere', ['--help']);
 
   assert.equal(help.code, 0, help.stderr);
-  assert.match(help.stdout, /firstmate desktop/);
-  assert.doesNotMatch(help.stdout, /firstmate start|firstmate service/);
+  assert.match(help.stdout, /^ {2}desktop {2,}\S/m);
+  assert.doesNotMatch(help.stdout, /^ {2}(start|service) /m);
 });

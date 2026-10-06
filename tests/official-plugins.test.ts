@@ -102,7 +102,7 @@ test('a relative path is still refused as it was', async (t) => {
 test('the help says install takes an Official Plugin name', async (t) => {
   const home = await makeHome(t);
 
-  const help = await firstmate(home, ['--help']);
+  const help = await firstmate(home, ['install', '--help']);
 
   assert.equal(help.code, 0);
   assert.match(help.stdout, /the name of an Official Plugin/);
