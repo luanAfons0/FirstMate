@@ -8,8 +8,15 @@
  * Shortcut is pressed again, and when its page navigates away from its own
  * address: the App refuses that navigation and hides the Popup, which is how a
  * Plugin Page says "I am finished" with no channel into the App.
+ *
+ * The window is made the first time a Shortcut opens it, so an App with no
+ * Shortcut holds no extra renderer. Its corners are round where the platform
+ * rounds a window with no frame, it has the system's own shadow, and its
+ * background is the theme's, following the system. The Plugin Page inside
+ * draws any border of its own: the App frames nothing (ADR-0008).
  */
-import { app, BrowserWindow } from 'electron';
+import { WINDOW_BACKGROUND } from '@firstmate/core/theme';
+import { app, BrowserWindow, nativeTheme } from 'electron';
 import { leavesTheHost, onHost, type HostAt } from './addresses.ts';
 import { markPath } from './marks.ts';
 
@@ -43,79 +50,94 @@ export type PopupNeeds = {
   readonly toBrowser: (address: string) => void;
 };
 
-/** Make the Popup, hidden. */
-export function makePopup(needs: PopupNeeds): Popup {
-  const window = new BrowserWindow({
-    title: 'FirstMate',
-    width: WIDTH,
-    height: HEIGHT,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    show: false,
-    icon: markPath('running'),
-    backgroundColor: '#17181a',
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
-  });
-  const page = window.webContents;
+/** The theme's background for the system's light or dark. */
+function background(): string {
+  return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light;
+}
 
+/** Make the Popup. Its window waits for the first Shortcut. */
+export function makePopup(needs: PopupNeeds): Popup {
   /** The keys that opened it, and its own address, while it is shown. */
   let shown: { readonly keys: string; readonly own: string } | undefined;
-
-  const hide = (): void => {
-    if (shown === undefined) return;
-    shown = undefined;
-    window.hide();
-    // The page goes with the Popup, so the next one loads fresh and never
-    // flashes the last.
-    page.loadURL('about:blank').catch(() => undefined);
-  };
-
-  page.on('will-navigate', (event, url) => {
-    // A link to the web is not the page saying it is finished.
-    if (leavesTheHost(needs.host, url)) {
-      event.preventDefault();
-      needs.toBrowser(url);
-      return;
-    }
-    if (shown === undefined || !leavesPopup(shown.own, url)) return;
-    event.preventDefault();
-    hide();
-  });
-  page.setWindowOpenHandler(({ url }) => {
-    if (leavesTheHost(needs.host, url)) needs.toBrowser(url);
-    return { action: 'deny' };
-  });
-  page.on('before-input-event', (_event, input) => {
-    if (input.type === 'keyDown' && input.key === 'Escape') hide();
-  });
-  window.on('blur', () => {
-    setTimeout(() => {
-      if (shown !== undefined && !window.isFocused()) hide();
-    }, BLUR_GRACE_MS);
-  });
+  let made: BrowserWindow | undefined;
 
   // Alt+F4 puts it away like every other way out of it. Only Quit closes it.
   let quitting = false;
   app.on('before-quit', () => {
     quitting = true;
   });
-  window.on('close', (event) => {
-    if (quitting) return;
-    event.preventDefault();
-    hide();
-  });
+
+  const hide = (): void => {
+    if (shown === undefined || made === undefined) return;
+    shown = undefined;
+    made.hide();
+    // The page goes with the Popup, so the next one loads fresh and never
+    // flashes the last.
+    made.webContents.loadURL('about:blank').catch(() => undefined);
+  };
+
+  const make = (): BrowserWindow => {
+    if (made !== undefined) return made;
+    const window = new BrowserWindow({
+      title: 'FirstMate',
+      width: WIDTH,
+      height: HEIGHT,
+      frame: false,
+      roundedCorners: true,
+      hasShadow: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      show: false,
+      icon: markPath('running'),
+      backgroundColor: background(),
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    });
+    made = window;
+    const page = window.webContents;
+    nativeTheme.on('updated', () => window.setBackgroundColor(background()));
+
+    page.on('will-navigate', (event, url) => {
+      // A link to the web is not the page saying it is finished.
+      if (leavesTheHost(needs.host, url)) {
+        event.preventDefault();
+        needs.toBrowser(url);
+        return;
+      }
+      if (shown === undefined || !leavesPopup(shown.own, url)) return;
+      event.preventDefault();
+      hide();
+    });
+    page.setWindowOpenHandler(({ url }) => {
+      if (leavesTheHost(needs.host, url)) needs.toBrowser(url);
+      return { action: 'deny' };
+    });
+    page.on('before-input-event', (_event, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape') hide();
+    });
+    window.on('blur', () => {
+      setTimeout(() => {
+        if (shown !== undefined && !window.isFocused()) hide();
+      }, BLUR_GRACE_MS);
+    });
+    window.on('close', (event) => {
+      if (quitting) return;
+      event.preventDefault();
+      hide();
+    });
+    return window;
+  };
 
   return {
     show(keys, path) {
       const own = onHost(needs.host, path);
       shown = { keys, own };
+      const window = make();
       void needs
         .admitted()
-        .then(() => page.loadURL(own))
+        .then(() => window.webContents.loadURL(own))
         .catch(() => undefined);
       window.center();
       window.show();

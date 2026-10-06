@@ -64,6 +64,13 @@ const LIGHT = `    --chrome: #eceef1;
     --shadow-window: 0 30px 70px -24px rgba(30, 40, 60, .45), 0 0 0 1px rgba(17, 19, 24, .08);`;
 
 /**
+ * The colour of a window's own background, dark and light, as the tokens say
+ * `--bg`. A window the App makes paints it before its page loads, so no
+ * white flash shows, and it follows the system theme.
+ */
+export const WINDOW_BACKGROUND = { dark: '#17181a', light: '#f8f8f7' } as const;
+
+/**
  * The style every page starts with: the tokens, the radii, the faces, the
  * three state shapes and the size of an icon. A page's own style comes after
  * it and uses its names.
