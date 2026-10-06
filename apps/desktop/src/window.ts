@@ -55,7 +55,7 @@ import {
   type HostAt,
 } from './addresses.ts';
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
-import { askForPlugins, type Plugins } from './host-lists.ts';
+import { askForPlugins, askToRestart, type Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
 import { APP_ID } from './notices.ts';
 import {
@@ -217,6 +217,10 @@ export function openWindow(
   const settingsShown = ownPage(settings);
   /** How many times the switcher has opened, so its page knows a new opening. */
   let opened = 0;
+  /** Whether the switcher last opened from the keyboard, so it shows with no fade. */
+  let instant = false;
+  /** The Plugins whose restart the switcher asked for and the Host has not answered. */
+  const restarting = new Set<string>();
 
   const here = (): Here => {
     if (setting) return { kind: 'settings' };
@@ -258,7 +262,15 @@ export function openWindow(
     );
     // The switcher and the Settings View load the first time they are shown.
     if (switching) {
-      switcherShown.show(switcherPage(current === INDEX ? undefined : current, plugins, opened));
+      switcherShown.show(
+        switcherPage({
+          open: current === INDEX ? undefined : current,
+          plugins,
+          opened,
+          instant,
+          restarting: [...restarting],
+        }),
+      );
     }
     if (setting) {
       // Read again each time, so a change from a terminal or the Tray shows.
@@ -385,17 +397,49 @@ export function openWindow(
   const named = (name: string) =>
     plugins.kind === 'told' ? plugins.plugins.find((plugin) => plugin.name === name) : undefined;
 
+  /**
+   * Start one Stopped Plugin's Plugin Server again, through the Host's restart
+   * address, as `firstmate restart` and the Tray do. Only the operator's ask
+   * does this: the Host never restarts a Plugin Server on its own account. Its
+   * row says Restarting… until the Host answers, and then what the Host says
+   * now; a refusal is the strip's fault line.
+   */
+  const restart = (name: string): void => {
+    if (host === undefined || restarting.has(name) || named(name)?.state !== 'stopped') return;
+    const at = host;
+    restarting.add(name);
+    redraw();
+    void askToRestart(at, name).then(async (failed) => {
+      plugins = await askForPlugins(at);
+      restarting.delete(name);
+      fault = failed;
+      // The Tray shows the new state too.
+      refresh();
+      redraw();
+    });
+  };
+
   const act = (asked: Asked): void => {
     if (asked.kind === 'plugin-list') {
       open('/');
-    } else if (asked.kind === 'switcher' || asked.kind === 'switcher-close') {
-      switching = asked.kind === 'switcher' && !switching;
-      // Counted on every open, so that its page puts the focus on the open
-      // Plugin each time.
-      if (switching) opened += 1;
-      if (switching) refresh();
+    } else if (
+      asked.kind === 'switcher' ||
+      asked.kind === 'switcher-keys' ||
+      asked.kind === 'switcher-close'
+    ) {
+      switching = asked.kind !== 'switcher-close' && !switching;
+      if (switching) {
+        // Counted on every open, so that its page starts again from an empty
+        // filter and the open Plugin each time.
+        opened += 1;
+        instant = asked.kind === 'switcher-keys';
+        refresh();
+      }
       redraw();
+      // The filter takes the focus, so the operator can type at once.
       if (switching) switcher.webContents.focus();
+    } else if (asked.kind === 'restart') {
+      restart(asked.name);
     } else if (asked.kind === 'open') {
       if (named(asked.name)?.hasPage === true) {
         open(pluginPath(asked.name));
@@ -443,6 +487,8 @@ export function openWindow(
     if (!own) return;
     const asked = readAsked(said);
     if (SETTING.has(asked.kind) && event.sender !== settings.webContents) return;
+    // Only the switcher carries a Restart button.
+    if (asked.kind === 'restart' && event.sender !== switcher.webContents) return;
     act(asked);
   };
   ipcMain.on(ASK_CHANNEL, ask);

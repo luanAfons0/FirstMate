@@ -29,10 +29,14 @@ export type Asked =
   | { readonly kind: 'plugin-list' }
   /** Open the switcher, or close it when it is open. */
   | { readonly kind: 'switcher' }
+  /** The same, asked from the keyboard, so the switcher shows with no fade. */
+  | { readonly kind: 'switcher-keys' }
   /** Close the switcher. */
   | { readonly kind: 'switcher-close' }
   /** Show one Plugin Page. */
   | { readonly kind: 'open'; readonly name: string }
+  /** Start one Plugin's Plugin Server again, as `firstmate restart` does. */
+  | { readonly kind: 'restart'; readonly name: string }
   /** Open the Settings View, or close it when it is open. */
   | { readonly kind: 'settings' }
   /** Turn start at logon on or off. */
@@ -59,6 +63,7 @@ export type Asked =
 export const ASK = {
   pluginList: 'plugin-list',
   switcher: 'switcher',
+  switcherKeys: 'switcher-keys',
   switcherClose: 'switcher-close',
   settings: 'settings',
 } as const;
@@ -66,6 +71,11 @@ export const ASK = {
 /** The words that ask to show one Plugin Page. */
 export function openAsk(name: string): string {
   return said('open', name);
+}
+
+/** The words that ask to start one Plugin's Plugin Server again. */
+export function restartAsk(name: string): string {
+  return said('restart', name);
 }
 
 /** The words that ask to turn start at logon on or off. */
@@ -117,7 +127,7 @@ export function readAsked(said: unknown): Asked {
   const [first, second, third, ...more] = parts;
   if (first === undefined || first === '' || more.length > 0) return { kind: 'nothing' };
   if (second === undefined) {
-    if (kind === 'open') return { kind, name: first };
+    if (kind === 'open' || kind === 'restart') return { kind, name: first };
     if (kind === 'logon' && (first === 'on' || first === 'off'))
       return { kind, on: first === 'on' };
     if (kind === 'place-remove') return { kind, name: first };

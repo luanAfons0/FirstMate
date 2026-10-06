@@ -399,7 +399,10 @@ window's own buttons sit at its right end, in its colours, light or dark as
 the system is. It holds FirstMate, which goes to the Plugin list; then what is
 open, which opens the switcher with every Plugin in the Plugin Order; the space
 you drag the window by; "N Stopped" when any Plugin is Stopped, which opens the
-switcher too; and the gear, which opens the Settings View. Each Plugin Page you open has a view of its own and stays
+switcher too; and the gear, which opens the Settings View. In the switcher,
+type to filter the Plugins, use the arrows to move, Enter to open and Esc to
+close. A Stopped Plugin has a Restart button there, which starts its Plugin
+Server again as `firstmate restart` does. Each Plugin Page you open has a view of its own and stays
 loaded until the App quits, so switching to another Plugin and back loses
 nothing. A link that leaves FirstMate opens in your browser.
 
