@@ -10,7 +10,7 @@
  * against a fake Release and a home of their own, `tests/helpers/linux.ts`.
  */
 import assert from 'node:assert/strict';
-import { readdir, readFile, stat, utimes } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import test from 'node:test';
 import { firstmate, makeHome } from './helpers/host.ts';
@@ -129,7 +129,6 @@ test(
       `/v${linux.version}/${appImage}`,
     ]);
     assert.equal((await stat(linux.program)).mode & 0o111, 0o111, 'the AppImage is executable');
-    assert.equal(await readFile(linux.versionFile, 'utf8'), `${linux.version}\n`);
     await linux.until(new RegExp(`^FirstMate\\.AppImage ${linux.version}`));
     assert.match(
       run.stdout,
@@ -137,7 +136,7 @@ test(
     );
     assert.deepEqual(
       await readdir(dirname(linux.program)),
-      ['FirstMate.AppImage', 'FirstMate.version'],
+      ['FirstMate.AppImage'],
       'nothing else is left beside it',
     );
   },
@@ -189,7 +188,6 @@ test(
     assert.deepEqual(linux.asked, []);
     await linux.until(/^FirstMate\.AppImage 999\.0\.0/);
     assert.match(run.stdout, /opened FirstMate 999\.0\.0, which is newer than this command line/);
-    assert.equal(await readFile(linux.versionFile, 'utf8'), '999.0.0\n');
   },
 );
 
@@ -207,30 +205,23 @@ test('on Linux, an older AppImage is replaced by this version', { skip: NOT_LINU
     !(await linux.calls()).some((line) => line.startsWith('FirstMate.AppImage 0.0.1')),
     'the older App was not opened',
   );
-  assert.equal(await readFile(linux.versionFile, 'utf8'), `${linux.version}\n`);
   assert.match(run.stdout, new RegExp(`installed FirstMate ${linux.version}`));
 });
 
 test(
-  'on Linux, an AppImage that updated itself is opened and not replaced',
+  'on Linux, an AppImage whose version cannot be read is replaced by this version',
   { skip: NOT_LINUX },
   async (t) => {
     const linux = await fakeLinux(t);
-    await linux.install('0.0.1');
-    // The App replaced its AppImage after desktop wrote the version beside it.
-    const later = new Date(Date.now() + 60_000);
-    await utimes(linux.program, later, later);
+    await linux.placeByHand();
     const home = await makeHome(t);
 
     const run = await firstmate(home, ['desktop'], linux.env);
 
     assert.equal(run.code, 0, run.stderr);
-    assert.deepEqual(linux.asked, [], 'nothing was downloaded');
-    await linux.until(/^FirstMate\.AppImage 0\.0\.1/);
-    assert.equal(
-      run.stdout,
-      'firstmate: opened FirstMate, which has updated itself since it was installed.\n',
-    );
+    assert.equal(linux.asked.length, 2, 'the checksum and the AppImage were downloaded');
+    await linux.until(new RegExp(`^FirstMate\\.AppImage ${linux.version}`));
+    assert.match(run.stdout, new RegExp(`installed FirstMate ${linux.version}`));
   },
 );
 
