@@ -11,7 +11,9 @@
  * The strip, the switcher and the Settings View are the App's own views, with
  * pages the App writes (`pages.ts`). They are the only views that carry the
  * preload, so they are the only pages that can ask the main process for
- * anything, and the main process checks which view asked. A Plugin Page cannot
+ * anything, and the main process checks which view asked. Each loads its page
+ * once; after that the main process sends it what it shows, and the page puts
+ * it in place, so a change never loads it again. A Plugin Page cannot
  * reach them, and it cannot reach another Plugin's view: a link to another
  * Plugin's address is refused in its own view and opened in the other one.
  *
@@ -39,7 +41,7 @@ import {
   pluginPath,
   type HostAt,
 } from './addresses.ts';
-import { ASK_CHANNEL, readAsked, type Asked } from './ask.ts';
+import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
 import type { Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
 import { APP_ID } from './notices.ts';
@@ -52,6 +54,7 @@ import {
   switcherHeight,
   switcherPage,
   type Here,
+  type Written,
 } from './pages.ts';
 import { change, readShown, type ChangeNeeds, type Outcome } from './settings.ts';
 import { settingsPage } from './settings-view.ts';
@@ -172,11 +175,12 @@ export function openWindow(
   window.contentView.addChildView(settings);
   window.contentView.addChildView(switcher);
 
-  /** What each App view last said. A page that says the same thing again is
-   *  not loaded again: loading it would lose the focus in it. */
-  let stripSaid = '';
-  let switcherSaid = '';
-  let settingsSaid = '';
+  /** Each App view's page, loaded once and then sent what it shows. */
+  const stripShown = ownPage(strip);
+  const switcherShown = ownPage(switcher);
+  const settingsShown = ownPage(settings);
+  /** How many times the switcher has opened, so its page knows a new opening. */
+  let opened = 0;
 
   const here = (): Here => {
     if (setting) return { kind: 'settings' };
@@ -203,30 +207,21 @@ export function openWindow(
   };
 
   const redraw = (): void => {
-    const said = stripPage({
-      here: here(),
-      switcher: switching,
-      fault,
-      starting: host === undefined,
-    });
-    if (said !== stripSaid) {
-      stripSaid = said;
-      loadPage(strip, said);
-    }
+    stripShown.show(
+      stripPage({
+        here: here(),
+        switcher: switching,
+        fault,
+        starting: host === undefined,
+      }),
+    );
+    // The switcher and the Settings View load the first time they are shown.
     if (switching) {
-      const list = switcherPage(current === INDEX ? undefined : current, plugins);
-      if (list !== switcherSaid) {
-        switcherSaid = list;
-        loadPage(switcher, list);
-      }
+      switcherShown.show(switcherPage(current === INDEX ? undefined : current, plugins, opened));
     }
     if (setting) {
       // Read again each time, so a change from a terminal or the Tray shows.
-      const view = settingsPage({ ...readShown(settingsNeeds.home), outcome, busy });
-      if (view !== settingsSaid) {
-        settingsSaid = view;
-        loadPage(settings, view);
-      }
+      settingsShown.show(settingsPage({ ...readShown(settingsNeeds.home), outcome, busy }));
     }
     layout();
   };
@@ -358,9 +353,9 @@ export function openWindow(
       );
     } else if (asked.kind === 'switcher' || asked.kind === 'switcher-close') {
       switching = asked.kind === 'switcher' && !switching;
-      // Written again on every open, so that its script puts the focus on
-      // the open Plugin each time.
-      switcherSaid = '';
+      // Counted on every open, so that its page puts the focus on the open
+      // Plugin each time.
+      if (switching) opened += 1;
       if (switching) refresh();
       redraw();
       if (switching) switcher.webContents.focus();
@@ -485,10 +480,56 @@ function appView(): WebContentsView {
   return view;
 }
 
-function loadPage(view: WebContentsView, html: string): void {
-  // A page written again before the last one loaded aborts it; that is not
-  // a fault.
-  view.webContents.loadURL(dataAddress(html)).catch(() => undefined);
+/** One App view's page, as the main process keeps it. */
+type OwnPage = {
+  /** Show this in the view: load the page the first time, then send the body. */
+  show(written: Written): void;
+};
+
+/**
+ * The page of one App view. The whole page loads once, with the body of that
+ * moment. A body that comes while it loads waits until it has loaded, and only
+ * the last one is sent. A body the page already shows is not sent again. A
+ * page that failed to load, or whose renderer went away, loads again the next
+ * time it is shown.
+ */
+function ownPage(view: WebContentsView): OwnPage {
+  const page = view.webContents;
+  let state: 'unloaded' | 'loading' | 'loaded' = 'unloaded';
+  /** The body the page shows, or will once it has loaded. */
+  let had = '';
+  /** The last page asked for. */
+  let wanted: Written | undefined;
+  const send = (): void => {
+    if (wanted === undefined || wanted.body === had) return;
+    had = wanted.body;
+    page.send(SHOW_CHANNEL, had);
+  };
+  const show = (written: Written): void => {
+    // A change told after the window closed has no page to go to.
+    if (page.isDestroyed()) return;
+    wanted = written;
+    if (state === 'loaded') {
+      send();
+      return;
+    }
+    if (state === 'loading') return;
+    state = 'loading';
+    had = written.body;
+    // A load cut short by the view's close is not a fault.
+    page.loadURL(dataAddress(written.whole(written.body))).catch(() => undefined);
+  };
+  page.on('did-finish-load', () => {
+    state = 'loaded';
+    send();
+  });
+  const lost = (): void => {
+    state = 'unloaded';
+    had = '';
+  };
+  page.on('did-fail-load', lost);
+  page.on('render-process-gone', lost);
+  return { show };
 }
 
 /** Open an address in the operator's browser, when it is one a browser opens. */
