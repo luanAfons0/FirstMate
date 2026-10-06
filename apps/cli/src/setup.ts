@@ -29,7 +29,7 @@ import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import { onTerminal, openPrompt, type Prompt } from './prompt.ts';
 import { refusalPrefix } from './terminal.ts';
 import { readRegistry } from '@firstmate/core/registry';
-import { appHere, logonIsOn, turnLogonOn } from './install-app.ts';
+import { appLogon } from './app-logon.ts';
 import { bringAcross } from './one-x.ts';
 import { reloadHost } from './running-host.ts';
 import { readSettings } from '@firstmate/core/settings';
@@ -330,16 +330,16 @@ async function askPath(prompt: Prompt, plugin: string): Promise<string> {
  * and its Settings View.
  */
 async function askLogon(prompt: Prompt, changes: Changes): Promise<void> {
-  const here = await appHere();
-  if (here === undefined) return;
-  if (here.installed === undefined) {
+  const logon = await appLogon();
+  if (logon === undefined) return;
+  if (!logon.installed) {
     console.log('firstmate: the App is not installed yet. Run firstmate desktop to install it.');
     return;
   }
-  if (await logonIsOn(here)) return;
+  if (await logon.isOn()) return;
   if (!(await prompt.confirm('Start FirstMate at logon?', false))) return;
   try {
-    await turnLogonOn(here.installed);
+    await logon.turnOn();
     changes.done.push('FirstMate starts at logon');
   } catch (fault) {
     console.error(`${refusalPrefix()} ${sentence(fault)}`);

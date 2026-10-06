@@ -71,7 +71,11 @@ It asks, in order:
    path, where `/` is the Plugin Page. Enter at the keys ends the step.
 7. **Start at logon**, where the App is installed and does not start at logon
    yet. It is off until you say yes. Where the App is not installed, `setup`
-   says to run `firstmate desktop`.
+   says to run `firstmate desktop`. On Windows the entry is the Run value
+   `FirstMate`. On Linux it is the autostart entry
+   `$XDG_CONFIG_HOME/autostart/firstmate.desktop` (`~/.config` when the
+   variable is unset), which starts `~/Applications/FirstMate.AppImage` with
+   `--at-logon`. The App's Tray and Settings View write the same entry.
 
 When a Host runs and this run changed something, `setup` asks it to reload, as
 every plain command does, and asks you nothing.
