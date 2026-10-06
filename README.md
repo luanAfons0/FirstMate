@@ -55,8 +55,8 @@ It asks, in order:
 1. **The Shelf** of this machine's Place. Enter keeps the one in force. A path
    it refuses is refused in the words `firstmate shelf` uses, and the question
    comes again.
-2. **Places.** On Windows and inside WSL, it shows the Places and asks for WSL
-   distributions to add as Places, one after another, until Enter. A
+2. **Places.** On Windows, where a `wsl` Place can run, it shows the Places and
+   asks for WSL distributions to add as Places, one after another, until Enter. A
    distribution's Place is named after it, as `debian` for `Debian`.
 3. **The import.** For each `wsl` Place that holds a 1.x install and no Plugin
    yet, it asks whether to bring it across, as `firstmate import` does.
@@ -348,9 +348,10 @@ refusal from another without reading the sentence:
 
 ## The App
 
-FirstMate 2.0 is an App: one Windows program that holds the Host and shows the
-Index Page in its window (ADR-0020). Each release carries its installer,
-`FirstMate-Setup-<version>.exe`, and that file's SHA-256 on the
+FirstMate 2.0 is an App: one program, for Windows and for Linux, that holds the
+Host and shows the Index Page in its window (ADR-0020, ADR-0026). Each release
+carries the Windows installer, `FirstMate-Setup-<version>.exe`, the Linux
+files [The App on Linux](#the-app-on-linux) names, and each file's SHA-256 on the
 [GitHub Release](https://github.com/luanAfons0/FirstMate/releases) of its tag,
 with the same version as the command line on npm (ADR-0023). Install it from a
 terminal on Windows, or inside WSL:
@@ -430,14 +431,14 @@ Page can reach it. Shortcuts, Plugins and Grants change from a terminal.
 
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its
-menu opens the Index Page or any Plugin, restarts a Stopped one, opens the **Settings…** view, turns **Start at logon** on and off,
-and quits. Start at logon is off until you turn it on; the App it starts
+menu opens the Index Page or any Plugin, restarts a Stopped one, opens the
+**Settings…** view, turns **Start at logon** on and off, and quits. Start at logon is off until you turn it on; the App it starts
 begins in the Tray, with the window put away.
 
-A Notice shows as a Windows pop-up under FirstMate's name and mark, and
+A Notice shows as the system's own pop-up under FirstMate's name and mark, and
 a click on it opens the sender's address in the window. Windows takes that
-name from the installer's Start menu entry, so the unpacked App's Notices are
-filed under Electron.
+name from the installer's Start menu entry, so there the unpacked App's
+Notices are filed under Electron.
 
 The App holds every Shortcut you `bind`, and picks up a `bind` or `unbind` at
 once. Pressing one opens its address in the Popup: a small window with no
@@ -513,21 +514,32 @@ chmod +x ~/Applications/FirstMate.AppImage
 ```
 
 On Ubuntu 24.04 and later, AppArmor stops an unknown program from making a user
-namespace, which the Chromium sandbox needs, and the AppImage then does not
-start. The AppImage cannot load a profile itself, so give it one, once, as root:
+namespace, which the Chromium sandbox needs. The AppImage still starts: its
+`AppRun` tries a user namespace first and, refused, starts the App with
+`--no-sandbox`. To keep the sandbox, give the AppImage a profile, once, as root.
+A profile is matched by the path of the program that runs, and an AppImage
+runs from a new mount at each start, `/tmp/.mount_FirstM` and six random
+characters, named after the first six letters of `FirstMate.AppImage`. So the
+profile names `AppRun` and the App inside any such mount, and the namespace
+`AppRun` tries is then allowed too:
 
 ```sh
 sudo tee /etc/apparmor.d/firstmate-appimage > /dev/null <<'PROFILE'
 abi <abi/4.0>,
 include <tunables/global>
 
-profile firstmate-appimage /home/*/Applications/FirstMate.AppImage flags=(unconfined) {
+profile firstmate-appimage /tmp/.mount_FirstM*/{AppRun,firstmate} flags=(unconfined) {
   userns,
   include if exists <local/firstmate-appimage>
 }
 PROFILE
 sudo apparmor_parser --replace /etc/apparmor.d/firstmate-appimage
 ```
+
+With `TMPDIR` set, the mount is under that folder instead of `/tmp`; write that
+folder in the profile. The profile allows any program in such a mount, so keep
+no other AppImage whose name starts with `FirstM`. The deb needs none of this:
+its program has one place, and the deb loads the profile for it.
 
 Other things differ from Windows:
 
@@ -580,7 +592,7 @@ registers it.
 
 ## Shortcuts
 
-A Shortcut is a key combination for all of Windows, bound to one address of one
+A Shortcut is a key combination for the whole desktop, bound to one address of one
 Plugin. The App holds it, and pressing it opens that address in a Popup: a
 small window with no frame, on top of every other window.
 
@@ -604,7 +616,7 @@ holds them. `unbind` of keys that are not bound fails. `remove` takes the
 Plugin's Shortcuts with it and says which. The Shortcuts are kept in
 `settings.json` beside the Shelf, and they are bound from a terminal and from
 nowhere else: a Plugin Page cannot set one, because any Plugin could then take
-a key in all of Windows
+a key of the whole desktop
 ([ADR-0013](docs/adr/0013-shortcuts-are-bound-from-a-terminal-and-held-by-the-tray.md)).
 
 ## The Plugin Order
