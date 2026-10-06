@@ -63,7 +63,8 @@ import { readSettings, writeSettings } from '@firstmate/core/settings';
 import { STATE_WORDS, type PluginState } from '@firstmate/core/plugin-state';
 import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
 import { bringAcross } from './one-x.ts';
-import { openPrompt } from './prompt.ts';
+import { onTerminal, openPrompt } from './prompt.ts';
+import { whileWaiting } from './progress.ts';
 import { setup } from './setup.ts';
 import { bad, good, groupName, printRows, refusalPrefix } from './terminal.ts';
 import { ownVersion } from './version.ts';
@@ -869,7 +870,21 @@ async function install(config: Config, argv: readonly string[], place?: string):
     );
   }
 
-  const row = await installPlugin(config, source, given, place);
+  // On a terminal a spinner turns while it fetches, and git's words are held
+  // until a clone fails, so that the spinner does not draw over them (ADR-0025).
+  let held = '';
+  const hold = (said: string): void => {
+    held = said;
+  };
+  const words = onTerminal() ? hold : 'shown';
+  const row = await whileWaiting(
+    `fetching ${source}`,
+    (fetched) => `fetched ${fetched.name}`,
+    () => installPlugin(config, source, given, place, words),
+  ).catch((fault: unknown) => {
+    process.stderr.write(held);
+    throw fault;
+  });
   console.log(`firstmate: installed ${row.name} at ${row.directory}${inPlace(row.place)}`);
   await reloadHost(config.home);
   return 0;

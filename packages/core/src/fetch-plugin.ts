@@ -29,6 +29,13 @@ import { cp, realpath, rename, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 import { refuse } from './refusal.ts';
 
+/**
+ * Where git's words go while it clones: straight to this process's own
+ * output, or held and handed over only when the clone fails, so that a
+ * spinner on the terminal is not drawn over.
+ */
+export type GitWords = 'shown' | ((held: string) => void);
+
 /** A source git can clone: a URL with a scheme, or the scp-like short form. */
 const GIT_URL = /^(?:https?|ssh|git|ftps?|file|git\+ssh|git\+https):\/\//;
 const GIT_SHORT = /^[^/\\:]+@[^/\\:]+:/;
@@ -43,7 +50,12 @@ export function isGitUrl(source: string): boolean {
  * give back the directory it landed in. A fetch that fails leaves nothing
  * behind, so a caller can write a Registry row knowing the files are there.
  */
-export async function fetchPlugin(source: string, shelf: string, name: string): Promise<string> {
+export async function fetchPlugin(
+  source: string,
+  shelf: string,
+  name: string,
+  words: GitWords = 'shown',
+): Promise<string> {
   const target = join(shelf, name);
   // lstat, not exists: a symlink there that points nowhere is still in the way.
   if (lstatSync(target, { throwIfNoEntry: false }) !== undefined) {
@@ -56,7 +68,7 @@ export async function fetchPlugin(source: string, shelf: string, name: string): 
   const staging = join(shelf, `.${name}.pending`);
   await rm(staging, { recursive: true, force: true });
   try {
-    if (isGitUrl(source)) await clone(source, staging);
+    if (isGitUrl(source)) await clone(source, staging, words);
     else await copyDirectory(source, staging, shelf);
     await rename(staging, target);
   } catch (cause) {
@@ -89,12 +101,21 @@ async function copyDirectory(source: string, staging: string, shelf: string): Pr
  *
  * git writes to this process's own output, so whatever it says about a bad
  * URL or a missing network reaches the operator in git's own words, and a
- * clone that failed is never mistaken for a fault in FirstMate. Cloning runs
- * none of the Plugin's code; its executable runs when the Host starts it.
+ * clone that failed is never mistaken for a fault in FirstMate. When the words
+ * are held, git is quiet and they are handed over only when the clone fails,
+ * before the sentence that says so. Cloning runs none of the Plugin's code;
+ * its executable runs when the Host starts it.
  */
-function clone(url: string, staging: string): Promise<void> {
+function clone(url: string, staging: string, words: GitWords): Promise<void> {
   return new Promise((done, fail) => {
-    const git = spawn('git', ['clone', '--', url, staging], { stdio: 'inherit' });
+    const git =
+      words === 'shown'
+        ? spawn('git', ['clone', '--', url, staging], { stdio: 'inherit' })
+        : spawn('git', ['clone', '--quiet', '--', url, staging], {
+            stdio: ['inherit', 'ignore', 'pipe'],
+          });
+    const held: Buffer[] = [];
+    git.stderr?.on('data', (chunk: Buffer) => held.push(chunk));
     git.once('error', (cause: NodeJS.ErrnoException) => {
       fail(
         cause.code === 'ENOENT'
@@ -104,11 +125,12 @@ function clone(url: string, staging: string): Promise<void> {
           : new Error(`git could not be run: ${cause.message}`, { cause }),
       );
     });
-    git.once('exit', (code, signal) => {
+    git.once('close', (code, signal) => {
       if (code === 0) {
         done();
         return;
       }
+      if (words !== 'shown') words(Buffer.concat(held).toString('utf8'));
       const how = code === null ? `it was stopped by ${signal}` : `it exited ${code}`;
       fail(new Error(`git could not clone ${url}: ${how}.`));
     });

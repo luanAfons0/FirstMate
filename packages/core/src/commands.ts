@@ -10,7 +10,7 @@
 import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, posix } from 'node:path';
 import type { Config } from './config.ts';
-import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
+import { fetchPlugin, isGitUrl, type GitWords } from './fetch-plugin.ts';
 import { refuse } from './refusal.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import {
@@ -226,13 +226,15 @@ function refuseTaken(rows: readonly PluginRow[], name: string): void {
  *
  * It follows `add` step for step once the files have landed, because a Plugin
  * that was fetched is a Plugin like any other. Nothing the Plugin ships runs
- * here: its executable runs later, when the Host starts it.
+ * here: its executable runs later, when the Host starts it. `words` says
+ * where git's words go while it clones.
  */
 export async function installPlugin(
   config: Config,
   source: string,
   given?: string,
   placeName = DEFAULT_PLACE,
+  words: GitWords = 'shown',
 ): Promise<PluginRow> {
   const official = isGitUrl(source) || isAbsolute(source) ? undefined : officialPlugin(source);
   const name = given ?? official?.name ?? nameOf(source);
@@ -265,7 +267,7 @@ export async function installPlugin(
   // checked, because a path that was a directory yesterday can be a symlink
   // today.
   const shelf = checkShelf(filesOf(place, chosen), config.home);
-  const landed = await fetchPlugin(from, shelf, name);
+  const landed = await fetchPlugin(from, shelf, name, words);
   // A `wsl` Plugin is registered by the distribution's own path, and the
   // files written from Windows lost the executable bit on their way in.
   const directory = place.kind === 'wsl' ? posix.join(chosen, name) : landed;

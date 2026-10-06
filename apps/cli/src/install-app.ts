@@ -11,6 +11,10 @@
  * one-click, per-user NSIS installer, so `/S` installs it silently, with no
  * administrator.
  *
+ * On a terminal the download is a progress bar, and the SHA-256 check and the
+ * install each say when they start and end. Piped, it prints the lines it
+ * always has (ADR-0025).
+ *
  * Whether the App is installed, and which version, is read where the
  * installer records it for Windows itself: the App's uninstall key in HKCU,
  * named by the GUID `electron-builder.yml` pins. Its `DisplayVersion` is the
@@ -40,6 +44,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AT_LOGON, LOGON_NAME, RUN_KEY } from '@firstmate/core/logon';
 import { refuse } from '@firstmate/core/refusal';
+import { startWait, whileWaiting } from './progress.ts';
 import { ownVersion } from './version.ts';
 
 /** The variable that points `firstmate desktop` at another place for the Releases. */
@@ -138,18 +143,25 @@ export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<
   const url = `${(env[RELEASES_VARIABLE] || RELEASES_URL).replace(/\/+$/, '')}/v${version}/${name}`;
   const expected = await publishedChecksum(`${url}.sha256`, version);
   console.log(`firstmate: downloading FirstMate ${version} from ${url}`);
-  const bytes = await download(url, version);
+  const bytes = await download(url, version, `downloading FirstMate ${version}`);
+  const check = startWait('checking the SHA-256');
   if (createHash('sha256').update(bytes).digest('hex') !== expected) {
+    check.failed();
     throw refuse(
       'invalid',
       `the installer from ${url} does not match its published SHA-256, so it was not run.`,
     );
   }
+  check.done('the SHA-256 matches');
 
   const installer = join(windows.temp.here, name);
   await writeFile(installer, bytes, { mode: 0o755 });
   try {
-    await runInstaller(installer, version);
+    await whileWaiting(
+      `installing FirstMate ${version}`,
+      () => `installed FirstMate ${version}`,
+      () => runInstaller(installer, version),
+    );
   } finally {
     await removeTemp(installer);
   }
@@ -242,8 +254,12 @@ async function publishedChecksum(url: string, version: string): Promise<string> 
   return hash.toLowerCase();
 }
 
-/** One file of the Release, whole. A Release that does not hold it is a refusal. */
-async function download(url: string, version: string): Promise<Buffer> {
+/**
+ * One file of the Release, whole. A Release that does not hold it is a
+ * refusal. With something it is `doing`, the download is shown as it arrives:
+ * a progress bar when the Release says its length, a spinner when it does not.
+ */
+async function download(url: string, version: string, doing?: string): Promise<Buffer> {
   let response: Response;
   try {
     response = await fetch(url);
@@ -256,7 +272,25 @@ async function download(url: string, version: string): Promise<Buffer> {
     throw refuse('missing', `there is no FirstMate ${version} to install: ${url} is not there.`);
   }
   if (!response.ok) throw new Error(`${url} answered ${response.status}.`);
-  return Buffer.from(await response.arrayBuffer());
+  if (doing === undefined || response.body === null) {
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  const length = Number(response.headers.get('content-length'));
+  const wait = startWait(doing, Number.isSafeInteger(length) ? length : undefined);
+  const chunks: Uint8Array[] = [];
+  try {
+    for await (const chunk of response.body) {
+      chunks.push(chunk);
+      wait.advance(chunk.byteLength);
+    }
+  } catch (fault) {
+    wait.failed();
+    throw fault;
+  }
+  const bytes = Buffer.concat(chunks);
+  wait.done(`downloaded FirstMate ${version}, ${(bytes.length / 1_000_000).toFixed(1)} MB`);
+  return bytes;
 }
 
 /** Run the installer silently, for this user alone, and wait for it to finish. */
