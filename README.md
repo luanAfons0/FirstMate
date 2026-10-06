@@ -332,8 +332,11 @@ installs FirstMate can run what they installed.
 ## The App
 
 FirstMate 2.0 is an App: one Windows program that holds the Host and shows the
-Index Page in its window (ADR-0020). It is not released yet. Build it from a
-clone, on Windows:
+Index Page in its window (ADR-0020). Each release carries its installer,
+`FirstMate-Setup-<version>.exe`, and that file's SHA-256 on the
+[GitHub Release](https://github.com/luanAfons0/FirstMate/releases) of its tag,
+with the same version as the command line on npm (ADR-0022). Build it yourself
+from a clone, on Windows:
 
 ```sh
 pnpm install

@@ -78,8 +78,8 @@ together.
 
 ## Cutting a release
 
-Written down here so that it is not one person's knowledge. It is three
-commands, and a machine does the rest.
+Written down here so that it is not one person's knowledge. It is two
+steps, and a machine does the rest.
 
 The package is `@luan-afonso/firstmate` on npm. The plain `firstmate` is
 refused as too similar to `first-mate`, an unrelated package. The command it
@@ -87,9 +87,11 @@ installs is still `firstmate`, because `bin` is independent of the package
 name.
 
 1. Set the version in every `package.json` (the root, `apps/cli`,
-   `packages/core` and `packages/host`), and commit it with everything else the
-   release carries. They share one version, and a test says so when they do
-   not.
+   `apps/desktop`, `packages/core` and `packages/host`), and commit it with
+   everything else the release carries. They share one version, and a test
+   says so when they do not. A beta is `2.0.0-beta.1`: say `beta`, not
+   `next`, because the App's updater reads any other word as a channel of its
+   own ([ADR-0022](docs/adr/0022-one-tag-releases-the-app-and-the-command-line.md)).
 2. Tag it and push the tag:
 
    ```sh
@@ -98,12 +100,29 @@ name.
    git push origin v1.2.3
    ```
 
-3. Write the GitHub release against that tag. Say what a Plugin is, what the
-   Host does, and what the version still does not do.
-
 Pushing the tag starts the [Release](.github/workflows/release.yml) workflow.
-It refuses a tag that disagrees with any `package.json`, runs `pnpm check`,
-packs `apps/cli` with pnpm, and only then publishes that tarball with npm.
+It refuses a tag that disagrees with any `package.json` and runs `pnpm check`
+on Linux, while it packages the App on Windows. When both pass, it publishes
+the GitHub Release of the tag with these files, for version `<version>`:
+
+| File                                     | What it is                                        |
+| ---------------------------------------- | ------------------------------------------------- |
+| `FirstMate-Setup-<version>.exe`          | The App's installer, unsigned for the betas.      |
+| `FirstMate-Setup-<version>.exe.sha256`   | Its SHA-256, as `sha256sum` writes it.            |
+| `FirstMate-Setup-<version>.exe.blockmap` | What the App's updater downloads parts of it by.  |
+| `latest.yml`                             | The update feed, for every version, a beta's too. |
+
+`firstmate desktop` downloads the installer and its checksum by those names,
+so they do not change. Only after the Release is out does the workflow pack
+`apps/cli` with pnpm and publish that tarball with npm, so a command line on
+npm never names a Release that is not there.
+
+A version with a prerelease part, such as `2.0.0-beta.1`, is a GitHub
+prerelease and goes to npm's `next` tag, which `npx @luan-afonso/firstmate@next`
+runs. Any other version is the latest on both. The workflow writes the
+Release's notes from the merged pull requests. Edit them afterwards: say what
+a Plugin is, what the version does, and what it still does not do. A Release
+you write by hand before you push the tag keeps its notes, and gets the files.
 
 **There is no npm token anywhere.** npm accepts GitHub Actions as a trusted
 publisher over OIDC, so the job asks for an identity token minted for that one
