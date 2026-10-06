@@ -40,6 +40,13 @@ test(
     );
     assert.equal(installers.length, 1, 'packaging makes one installer');
 
+    // The App learns where to look for an update from this file, which
+    // packaging writes from the publish block of electron-builder.yml.
+    const feed = await readFile(join(out, 'win-unpacked', 'resources', 'app-update.yml'), 'utf8');
+    assert.match(feed, /^provider: github$/m);
+    assert.match(feed, /^owner: luanAfons0$/m);
+    assert.match(feed, /^repo: FirstMate$/m);
+
     const app = join(out, 'win-unpacked', 'FirstMate.exe');
     const host = await bootHost(
       t,
