@@ -110,7 +110,8 @@ async function askShelf(prompt: Prompt, changes: Changes): Promise<void> {
 
 /**
  * Which WSL distributions to add as Places, one after another, until Enter.
- * A distribution is asked about only where a `wsl` Place can run: on Windows. Its Place is named after it, as `debian` for `Debian`.
+ * A distribution is asked about only where a `wsl` Place can run: on
+ * Windows. Its Place is named after it, as `debian` for `Debian`.
  */
 async function askPlaces(prompt: Prompt, changes: Changes): Promise<void> {
   if (!canHoldWslPlace()) return;
