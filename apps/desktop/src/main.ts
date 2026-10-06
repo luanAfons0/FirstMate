@@ -13,8 +13,8 @@
  * This file only wires the parts together. The window and its views are
  * `window.ts`, the Tray is `tray.ts`, Notices are `notices.ts`, and the
  * Shortcuts and their Popup are `shortcuts.ts` and `popup.ts`, and what a
- * Plugin Page may use of the machine is `permissions.ts`. Closing the window
- * hides it; Quit, from the Tray, ends the App.
+ * Plugin Page may use of the machine is `permissions.ts`, and updates are
+ * `update.ts`. Closing the window hides it; Quit, from the Tray, ends the App.
  */
 import { join } from 'node:path';
 import { app, dialog, Menu } from 'electron';
@@ -28,6 +28,7 @@ import { guardPermissions } from './permissions.ts';
 import { makePopup } from './popup.ts';
 import { holdShortcuts } from './shortcuts.ts';
 import { holdTray, type HeldTray } from './tray.ts';
+import { keepUpdated } from './update.ts';
 import { openWindow, type Shown } from './window.ts';
 
 /** The window's title, and the name every sentence the App says is signed with. */
@@ -120,6 +121,7 @@ function main(): void {
       };
       refresh();
       reread();
+      keepUpdated((sentence) => notices.say(sentence));
     },
     (fault: unknown) => {
       // The Host did not start, and it has already ended what it started.

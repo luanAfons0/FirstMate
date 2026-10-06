@@ -96,9 +96,10 @@ knip and every test.
 - **Electron 44**, in `apps/desktop`, for the App: its main process holds the
   Host, and its executable, told `ELECTRON_RUN_AS_NODE=1`, is the Node every
   Plugin Server gets as `FIRSTMATE_NODE`. Keep Electron's `RunAsNode` fuse on.
-  **electron-vite** builds it and **electron-builder** packages it as a
-  per-user NSIS installer, unsigned for the betas. All three are dev
-  dependencies of a private package, and the App's build is not on the npm
+  **electron-vite** builds it, **electron-builder** packages it as a
+  per-user NSIS installer, unsigned for the betas, and **electron-updater**
+  keeps it up to date. All four are dev dependencies of a private package, so
+  the bundle carries the updater, and the App's build is not on the npm
   publish path (ADR-0020). One tag releases both: the installer on the GitHub
   Release, then the command line on npm, with one version. The installer's
   and its checksum's names are a contract `firstmate desktop` reads
@@ -196,6 +197,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/popup.ts     the Popup a Shortcut opens.
   src/permissions.ts what a Plugin Page may use: the microphone and a capture,
                    asked once per Plugin, and nothing else.
+  src/update.ts    the App's own updates, with electron-updater: downloaded in
+                   the background, said in one Notice, installed on Quit.
   src/marks.ts     where the running and stopped marks are.
   resources/icons/ the marks, packed with the App.
   electron.vite.config.ts the build: the main process, with core and host

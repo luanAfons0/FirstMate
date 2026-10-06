@@ -407,6 +407,14 @@ Shortcut again, and when its page goes to any address other than its own.
 Keys another program already holds are named in a Notice, never dropped in
 silence.
 
+The App updates itself. Five minutes after it starts, and every six hours
+after, it looks at the GitHub Releases for a newer version and downloads it in
+the background. When it is ready, one Notice says so, and it installs when you
+quit FirstMate, never in the middle of work. A stable App follows stable
+Releases; a beta follows the newest Release, beta or stable, so a beta tester
+lands on the stable version and stays there (ADR-0023). An App you build and
+run unpacked from a clone never updates.
+
 A Plugin Page is refused every permission, camera, location and notifications
 among them, except the microphone and a capture of the screen or a window with
 its sound. The first time a Plugin asks for one, the App asks you, naming the
