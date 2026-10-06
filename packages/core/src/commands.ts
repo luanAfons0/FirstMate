@@ -11,7 +11,7 @@ import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, posix } from 'node:path';
 import type { Config } from './config.ts';
 import { fetchPlugin, isGitUrl, type GitWords } from './fetch-plugin.ts';
-import { refuse } from './refusal.ts';
+import { refusalOf, refuse } from './refusal.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import {
   allPlaces,
@@ -65,6 +65,17 @@ export function shelfOf(config: Config, place: Place): string {
   return place.shelf ?? defaultShelfOf(config.home, place);
 }
 
+/** What `job` gives, with a refusal of it said to be about `word`. */
+async function about<T>(word: string, job: Promise<T>): Promise<T> {
+  try {
+    return await job;
+  } catch (fault) {
+    const kind = refusalOf(fault);
+    if (kind === undefined) throw fault;
+    throw refuse(kind, (fault as Error).message, { cause: fault, about: word });
+  }
+}
+
 /**
  * Add a Place, and give back the Place written. A local Place needs nothing
  * more. A `wsl` Place needs its distribution, and takes the Windows path its
@@ -78,18 +89,22 @@ export async function addPlace(
   kind: string,
   needs: readonly string[] = [],
 ): Promise<Place> {
-  if (!isPlaceName(name)) throw refuse('invalid', notAPlaceName(name));
+  // Each refusal says which word it is about, so the Settings View marks it.
+  if (!isPlaceName(name)) throw refuse('invalid', notAPlaceName(name), { about: 'name' });
   if (!isPlaceKind(kind)) {
     throw refuse(
       'invalid',
       `${kind} is not a kind of Place. The kinds are ${PLACE_KINDS.join(', ')}.`,
+      { about: 'kind' },
     );
   }
   if (kind === 'wsl' && !canHoldWslPlace()) {
-    throw refuse('invalid', 'a wsl Place runs on Windows only, and this machine is not Windows.');
+    throw refuse('invalid', 'a wsl Place runs on Windows only, and this machine is not Windows.', {
+      about: 'kind',
+    });
   }
   if (allPlaces(readSettings(home).places).some((place) => place.name === name)) {
-    throw refuse('taken', `a Place named ${name} is there already.`);
+    throw refuse('taken', `a Place named ${name} is there already.`, { about: 'name' });
   }
   const [distribution, root, ...more] = needs;
   let place: Place;
@@ -98,14 +113,20 @@ export async function addPlace(
     place = { name, kind };
   } else {
     if (distribution === undefined || more.length > 0) {
-      throw refuse('invalid', 'a wsl Place needs its distribution, and may take its Windows path.');
+      throw refuse(
+        'invalid',
+        'a wsl Place needs its distribution, and may take its Windows path.',
+        {
+          about: 'distribution',
+        },
+      );
     }
     place = {
       name,
       kind,
       distribution,
       root: root ?? rootOf(distribution),
-      home: await homeIn(distribution),
+      home: await about('distribution', homeIn(distribution)),
     };
   }
   // Read again: the distribution may have taken its time to answer.
