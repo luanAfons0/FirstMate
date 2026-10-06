@@ -54,6 +54,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { AT_LOGON, LOGON_NAME, RUN_KEY } from '@firstmate/core/logon';
 import { refuse } from '@firstmate/core/refusal';
+import { isInsideWsl } from '@firstmate/core/wsl';
 import { startWait, whileWaiting } from './progress.ts';
 import { ownVersion } from './version.ts';
 
@@ -180,9 +181,12 @@ export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<
   return 0;
 }
 
-/** Whether this is Linux outside WSL, where the App is the AppImage. */
-function isLinuxDesktop(env: NodeJS.ProcessEnv): boolean {
-  return process.platform === 'linux' && (env['WSL_DISTRO_NAME'] ?? '') === '';
+/**
+ * Whether this is Linux outside WSL, where the App is the Linux App. Inside
+ * WSL the App is the Windows one, reached through interop.
+ */
+export function isLinuxDesktop(env: NodeJS.ProcessEnv = process.env): boolean {
+  return process.platform === 'linux' && !isInsideWsl(env);
 }
 
 /** What `desktop` says when the App was there already, of this version or a newer one. */
