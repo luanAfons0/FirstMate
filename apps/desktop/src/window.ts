@@ -249,6 +249,9 @@ export function openWindow(
   };
 
   const redraw = (): void => {
+    // An App started hidden loads no page at all, the strip's neither, until
+    // the window first shows or a Popup asks for the cookie (#171).
+    if (!woken) return;
     stripShown.show(
       stripPage({
         here: here(),
@@ -282,10 +285,33 @@ export function openWindow(
     layout();
   };
 
-  const reveal = (): void => {
+  /**
+   * Show `path` behind whatever shows: an operator on the Settings View stays
+   * there, and the page loads under it.
+   */
+  const behind = (path: string): void => {
+    const stay = setting;
+    open(path);
+    if (stay) {
+      setting = true;
+      redraw();
+      settings.webContents.focus();
+    }
+  };
+
+  /**
+   * Want pages from now on. Once the Host is ready, the first load is the
+   * Index Page, which trades the token for the cookie.
+   */
+  const wake = (): void => {
+    const was = woken;
     woken = true;
-    // A window started hidden loads the Index Page the first time it shows.
-    if (host !== undefined && admission === undefined) open('/');
+    if (host !== undefined && admission === undefined) behind('/');
+    else if (!was) redraw();
+  };
+
+  const reveal = (): void => {
+    wake();
     if (window.isMinimized()) window.restore();
     window.show();
     window.focus();
@@ -522,24 +548,14 @@ export function openWindow(
     },
     ready: (at) => {
       host = at;
-      if (!woken) {
-        redraw();
-        return;
-      }
       // An operator who went to the Settings View while the Host started
-      // stays there; the page loads behind it.
-      const stay = setting;
-      open(waiting);
-      if (stay) {
-        setting = true;
-        redraw();
-        settings.webContents.focus();
-      }
+      // stays there.
+      if (woken) behind(waiting);
     },
     admitted: () => {
       // A Popup opened before the window ever showed needs the cookie too,
       // so the Index Page loads, hidden, to trade the token for it.
-      if (host !== undefined && admission === undefined) open('/');
+      wake();
       return admission ?? Promise.resolve();
     },
     toBrowser,
