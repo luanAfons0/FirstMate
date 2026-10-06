@@ -13,13 +13,29 @@
  * file begins. The token never reaches either: a credential has no place in a
  * file a person may paste into a bug report.
  *
- * A write is held in memory and appended once per tick, asynchronously, so a
+ * A write is held in memory and written once per tick, asynchronously, so a
  * Plugin Server that says a great deal on stderr does not hold up the Host or
  * the App with a write to disk per line. What is still held when the Host
  * stops, when the App quits, when the process exits, and on an uncaught
  * exception is written synchronously, so no line said before the end is lost.
+ *
+ * Every write names the place in the file it goes to, and only one
+ * asynchronous write runs at a time. A synchronous write at the end may come
+ * while that one is still on its way, and the two never meet: the end writes
+ * what is held after the bytes the other carries, and writes those bytes
+ * again at their own place, so they land once whichever write finishes
+ * first, or if the other never does.
  */
-import { appendFile, appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  write,
+  writeSync,
+} from 'node:fs';
 import { logPath, oldLogPath } from '@firstmate/core/runtime';
 
 /** The most bytes one log file holds. Two of them are a few days of a busy Host. */
@@ -52,15 +68,30 @@ export function flushLog(): void {
 export function keepLog(home: string, secret: string): KeptLog {
   mkdirSync(home, { recursive: true, mode: 0o700 });
   const path = logPath(home);
-  // The bytes of the file as it will be once every write handed to it lands.
-  let size = statSync(path, { throwIfNoEntry: false })?.size ?? 0;
+  /**
+   * The open file, and its size once every write handed to it lands. It is
+   * opened without append, so each write goes to the place it names.
+   */
+  let file = openLog(path);
   // Said, and not yet handed to the file.
   let held: Buffer[] = [];
-  // Handed to the file and not yet known to have landed, with the size the
-  // file had before it.
-  let landing: { readonly bytes: Buffer; readonly from: number } | undefined;
+  // The one asynchronous write on its way: its bytes, the file it goes to,
+  // and the place in that file.
+  let landing: { readonly bytes: Buffer; readonly fd: number; readonly at: number } | undefined;
   let soon = false;
   const waiting: (() => void)[] = [];
+
+  /**
+   * Begin a new file in place of a full one. A file an asynchronous write is
+   * still on its way to is closed once that write lands, never before, so its
+   * descriptor is never reused under it.
+   */
+  const rotate = (): void => {
+    renameSync(path, oldLogPath(home));
+    const full = file.fd;
+    if (landing?.fd !== full) closeSync(full);
+    file = openLog(path);
+  };
 
   /** What is held, as one write, ready for a file that keeps under its cap. */
   const take = (): Buffer | undefined => {
@@ -70,10 +101,7 @@ export function keepLog(home: string, secret: string): KeptLog {
     // A write larger than the cap keeps its end, which is the part a person
     // reading the log after a failure needs.
     if (bytes.length > LOG_CAP) bytes = bytes.subarray(bytes.length - LOG_CAP);
-    if (size + bytes.length > LOG_CAP) {
-      renameSync(path, oldLogPath(home));
-      size = 0;
-    }
+    if (file.size + bytes.length > LOG_CAP) rotate();
     return bytes;
   };
 
@@ -84,17 +112,21 @@ export function keepLog(home: string, secret: string): KeptLog {
 
   const drain = (): void => {
     soon = false;
+    // One asynchronous write at a time: the next waits for this one.
     if (landing !== undefined) return;
     const bytes = guarded(take);
     if (bytes === undefined) {
       settled();
       return;
     }
-    landing = { bytes, from: size };
-    size += bytes.length;
-    appendFile(path, bytes, { mode: 0o600 }, () => {
+    const going = { bytes, fd: file.fd, at: file.size };
+    landing = going;
+    file.size += bytes.length;
+    write(going.fd, bytes, 0, bytes.length, going.at, () => {
       // A log that cannot be written must not take the Host down with it.
       landing = undefined;
+      // The file was rotated away while this write was on its way to it.
+      if (going.fd !== file.fd) guarded(() => closeSync(going.fd));
       if (held.length > 0) schedule();
       else settled();
     });
@@ -108,18 +140,18 @@ export function keepLog(home: string, secret: string): KeptLog {
 
   const flush = (): void => {
     guarded(() => {
+      // The asynchronous write on its way may land before this, after it, or
+      // not at all if the process ends first. Its bytes are written again at
+      // their own place, so they are in the file once in every case. It is
+      // still the one write on its way: only its own end clears it.
       if (landing !== undefined) {
-        // The write in flight may have landed, wholly or in part. Only what
-        // the file does not hold yet is written again.
-        const now = statSync(path, { throwIfNoEntry: false })?.size ?? 0;
-        const missing = landing.bytes.subarray(Math.max(0, now - landing.from));
-        if (missing.length > 0) appendFileSync(path, missing, { mode: 0o600 });
-        landing = undefined;
+        writeSync(landing.fd, landing.bytes, 0, landing.bytes.length, landing.at);
       }
+      // What no write has taken goes after it.
       const bytes = take();
       if (bytes !== undefined) {
-        appendFileSync(path, bytes, { mode: 0o600 });
-        size += bytes.length;
+        writeSync(file.fd, bytes, 0, bytes.length, file.size);
+        file.size += bytes.length;
       }
     });
     settled();
@@ -155,6 +187,12 @@ export function keepLog(home: string, secret: string): KeptLog {
   };
   kept.push(log);
   return log;
+}
+
+/** Open the log for writing at named places, and say how big it is. */
+function openLog(path: string): { readonly fd: number; size: number } {
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT, 0o600);
+  return { fd, size: fstatSync(fd).size };
 }
 
 /** What this returns, or nothing when it throws: a log must not take the Host down. */
