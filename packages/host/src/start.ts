@@ -181,8 +181,8 @@ function portTaken(fault: unknown, port: number): Error | undefined {
  * The address, for whoever started the Host.
  *
  * A person at a terminal gets the whole address, token and all, because the
- * token is what admits their browser. A service gets the address alone: its
- * output is the journal, and a journal is no place for a credential. The Tray
+ * token is what admits their browser. Anything else gets the address alone: its
+ * output reaches the log, and a log is no place for a credential. The App
  * reads the token from the runtime file, which is written for this user only.
  * The App has no terminal, so it gets the address alone too.
  */

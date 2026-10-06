@@ -36,7 +36,7 @@ directory nor symlinks it, so a Plugin stays in its own repository wherever
 it already lives:
 
 ```sh
-node src/cli.ts add <name> /absolute/path/to/your/plugin
+firstmate add <name> /absolute/path/to/your/plugin
 ```
 
 A Plugin you do not have on disk yet is fetched and registered in one step. A
@@ -44,9 +44,12 @@ directory is copied and a git URL is cloned; either way the files land in the
 Shelf, and nothing your Plugin ships is run:
 
 ```sh
-node src/cli.ts install /absolute/path/to/a/plugin [name]
-node src/cli.ts install https://example.com/someone/a-plugin.git [name]
+firstmate install /absolute/path/to/a/plugin [name]
+firstmate install https://example.com/someone/a-plugin.git [name]
 ```
+
+In a clone of FirstMate, `node apps/cli/src/cli.ts` takes the place of
+`firstmate` in every command here.
 
 A Plugin Name is lower-case letters and digits, with single hyphens between
 them: `nexus`, `scheduler`, `scheduled-job`. No leading hyphen, no trailing one,
@@ -96,7 +99,8 @@ for the life of the Host.
 - **It must be a file, and it must carry the executable bit.** An `mcp`
   that cannot be run leaves your Plugin **Stopped**, with one line in the
   log and no other symptom. This is the mistake that costs an
-  afternoon. Run `chmod +x mcp`.
+  afternoon. Run `chmod +x mcp`. On Windows there is no executable bit: the
+  cause is a missing `mcp.cmd` or `mcp.exe` (see below).
 - **The shebang chooses the language.** The Host runs the file; it does not
   care what is in it. Python, Node, a shell script, a compiled binary.
 - **On Windows, ship `mcp.cmd` or `mcp.exe` beside it.** Windows reads no
@@ -213,7 +217,7 @@ Plugin's tools. Both hand you the other Plugin's own answer, unchanged.
 
 ## Sending a Notice
 
-Your Plugin Server can ask the Tray to show the operator a Windows pop-up:
+Your Plugin Server can ask the App to show the operator a Windows pop-up:
 a **Notice**. Write one JSON-RPC request on your stdout, on the same pipe
 ([ADR-0014](adr/0014-a-notice-travels-on-the-pipe-and-the-poll.md)):
 
@@ -237,10 +241,12 @@ The Host answers on your stdin with your id and `"result":{}`. That means
   address; a Notice sent less than 5 s after your last one. The Host never
   cuts your text short, and never drops a Notice in silence. A refused
   Notice is not shown.
-- **Nobody may be watching.** A Notice lives for a minute
-  (`FIRSTMATE_NOTICE_MS`). If no Tray reads it in that time, it is gone. A
-  Tray that starts later does not show it. The Host writes nothing of it to
-  disk.
+- **Nobody may be watching.** In 2.0 the App holds the Host, so it hears
+  each Notice the moment the Host takes it, and shows it as a Windows
+  pop-up under FirstMate's own name. The Host also keeps a Notice for a minute
+  (`FIRSTMATE_NOTICE_MS`) at `/notices.json`, for any other reader. When the
+  App is not running, or nobody reads it in that time, it is gone. The Host
+  writes nothing of it to disk.
 - **The handshake tells you it is there.** The `initialize` the Host sends
   you carries `capabilities.experimental.firstmate.notice`.
 - **A Plugin Page cannot send one.** Give your Plugin Server a tool that
@@ -289,7 +295,7 @@ Two things follow, and both are deliberate:
   and debug a broken Plugin Server from it.
 - **The Host will never start it again.** A broken Plugin stays visible
   rather than spinning in a restart loop behind the operator's back. Fix it
-  and restart the Host.
+  and run `firstmate restart <name>`.
 
 One Stopped Plugin leaves every other Plugin serving.
 
@@ -325,7 +331,8 @@ None of this is enforced. All of it is what the first Plugin learned.
 
 - [ ] The directory is at an absolute path you are happy to leave it at.
 - [ ] The name is lower-case letters, digits and single hyphens.
-- [ ] `chmod +x mcp` — check this first when the Plugin is Stopped.
+- [ ] `chmod +x mcp`, or `mcp.cmd` or `mcp.exe` beside it on Windows — check
+  this first when the Plugin is Stopped.
 - [ ] `mcp.cmd` or `mcp.exe` beside it, if it runs on Windows.
 - [ ] `./mcp` runs from the Plugin directory without an import error.
 - [ ] It answers `initialize` within ten seconds.

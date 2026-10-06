@@ -59,7 +59,7 @@ free port), `FIRSTMATE_HANDSHAKE_MS` (default `10000`, how long a Plugin
 Server has to answer the handshake), `FIRSTMATE_MAX_CALL_MS` (default
 `600000`, the longest a Tool Bus call may ask the Host to wait),
 `FIRSTMATE_NOTICE_MS` (default `60000`, how long the Host holds a Notice for
-the Tray) and `FIRSTMATE_SHELF` (default `$FIRSTMATE_HOME/shelf`, the Shelf a
+`/notices.json`) and `FIRSTMATE_SHELF` (default `$FIRSTMATE_HOME/shelf`, the Shelf a
 fetched Plugin lands in). Tests use all six. The Shelf is the one setting that does not come
 from the environment alone: the variable beats the settings file, which beats
 the default (ADR-0012).
@@ -74,11 +74,13 @@ knip and every test.
 
 ## Tech stack
 
-- **Node 24**, which runs TypeScript with no build step. A clone has no
-  bundler, no transpiler and no watcher. Publishing to npm bundles `apps/cli`
-  with `tsdown`, because Node strips no types under `node_modules` and `core`
-  and `host` are never published; that build is on the publish path alone, and
-  a clone never holds its output (ADR-0017).
+- **Node 24**, which runs TypeScript with no build step. The Host and the
+  command line need no bundler, no transpiler and no watcher in a clone.
+  Publishing to npm bundles `apps/cli` with `tsdown`, because Node strips no
+  types under `node_modules` and `core` and `host` are never published; that
+  build is on the publish path (ADR-0017). The one other build is the App's:
+  `electron-vite` bundles `apps/desktop`, and `electron-builder` packs it
+  (ADR-0020).
 - **pnpm**, as a workspace, with no Turbo. `packageManager` in `package.json`
   names the version, and pnpm and CI both switch to it.
 - **TypeScript 5.8**, `strict`, `noUncheckedIndexedAccess`,
@@ -161,7 +163,7 @@ packages/host/src/  the Host. Every file is one job.
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
-  notices.ts       hold the Notices for the Tray, and refuse a bad one.
+  notices.ts       hold the Notices for the App, and refuse a bad one.
   log.ts           keep the Host's output, Plugin Servers' stderr with it, in
                    one capped file in the home directory (ADR-0022).
 apps/cli/           the npm package, @luan-afonso/firstmate: the command line
@@ -330,7 +332,7 @@ and drives it over HTTP, exactly as a browser does.
 
 🚫 **Never**
 
-- Bind anything but `127.0.0.1` (ADR-0007), or weaken a check in
+- Bind anything but `127.0.0.1` (ADR-0020, which carries the rule of ADR-0007), or weaken a check in
   `packages/host/src/security.ts` to make a test pass.
 - Restart a Stopped Plugin on the Host's own account. A broken Plugin stays
   visible instead of spinning in a restart loop, until the operator runs
@@ -340,7 +342,7 @@ and drives it over HTTP, exactly as a browser does.
 - Let a Plugin Page reach another Plugin. The Tool Bus is on the pipe, under
   a Grant, and a browser holds no end of it (ADR-0009).
 - Give the Host a scheduler (ADR-0004), a front-end framework, or a build step
-  anywhere but the publish path (ADR-0017).
+  anywhere but the publish path (ADR-0017) and the App (ADR-0020).
 - Print or commit the token, `runtime.json`, or anything from
   `$FIRSTMATE_HOME`.
 - Rewrite, wrap, inject into or frame a Plugin Page (ADR-0008). The bytes are

@@ -10,14 +10,9 @@
  * The flag and not the config, because tsdown speaks before it reads the
  * config, and `pnpm pack --json` prints its report on the same stdout.
  *
- * Two entries, so that the Host's entry point sits beside the command line in
- * the build as it does in a clone: the service unit names `main.js`, and the
- * Tray reads `cli.js` beside it.
- *
- * `@webviewjs/webview` is a dependency, and tsdown leaves a dependency outside
- * the bundle. It stays the dynamic import `src/desktop.ts` makes, inside the
- * chunk only `firstmate desktop` loads, so every other command still runs where
- * the native binary will not load (ADR-0011).
+ * One entry, `src/cli.ts`: the npm package is the command line alone, and the
+ * Host and the window live in the App (ADR-0024). The bundle carries no window
+ * library and no dependency, so a package install pulls nothing else.
  */
 import { defineConfig } from 'tsdown';
 

@@ -34,6 +34,8 @@ What is stored is the real path, so what the operator reads back is what FirstMa
 
 The Host prints the Shelf it read when it starts, beside the Registry it read. A terminal and a Host that disagree about where a Plugin lands is worth seeing in the journal.
 
+Note: in 2.0 the journal is gone. The Host's output goes to `firstmate.log`, which `firstmate logs` prints (ADR-0022).
+
 Fetching reaches outside Node once, for `git`, which clones a Plugin from a
 URL. It is an external tool the command line assumes rather than a package
 dependency, and the Host itself still calls nothing outside Node. It is worth

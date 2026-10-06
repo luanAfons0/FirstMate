@@ -202,7 +202,7 @@ function receive(
     message = JSON.parse(line) as JsonRpcMessage;
   } catch {
     // A Plugin Server that writes something other than JSON on stdout has
-    // broken the transport. Say so where the journal keeps it.
+    // broken the transport. Say so where the log keeps it.
     console.error(`FirstMate: the Plugin Server of ${name} wrote a line that is not JSON.`);
     return;
   }

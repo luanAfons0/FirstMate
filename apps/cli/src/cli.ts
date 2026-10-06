@@ -265,10 +265,11 @@ systemd service, import asks before it turns that service off.`,
   },
   {
     about: ['setup'],
-    text: `setup asks for the Shelf, the Official Plugins to install, the Grants for those
-that call others, Shortcuts, and whether to run the Host as a service. Each
-answer is written as it is given, by the same code the plain commands use. It
-never removes anything. Answers can be piped in, one per line.`,
+    text: `setup asks, in this order: the Shelf and the Places; whether to import a 1.x
+install, when a wsl Place has one; the Official Plugins to install; the Grants
+for those that call others; Shortcuts; and whether FirstMate starts at logon.
+Each answer is written as it is given, by the same code the plain commands use.
+It never removes anything. Answers can be piped in, one per line.`,
   },
   {
     about: ['desktop'],
@@ -288,7 +289,7 @@ granting <from> the right to call <to> does not let <to> call <from>.`,
     about: ['bind', 'unbind'],
     text: `A Shortcut is one or more of Ctrl, Alt, Shift and Win and one key, joined by
 +, as in Ctrl+Alt+N. The path is relative to the Plugin's address; leave it out
-to open the Plugin Page. The Tray picks up a Shortcut with no restart.`,
+to open the Plugin Page. The App picks up a Shortcut with no restart.`,
   },
   {
     about: ['order'],
@@ -298,8 +299,8 @@ that was never moved follows the ones that were, in the order it was added.
 The Host picks up a new order with no restart.`,
   },
   {
-    about: ['status', 'list', 'order', 'shelf'],
-    text: `status, list, order and shelf say what they read as one JSON value with
+    about: ['status', 'list', 'order', 'place', 'shelf'],
+    text: `status, list, order, place and shelf say what they read as one JSON value with
 --json, and print nothing else. A command that changes something prints no JSON.
 status reads the running Host, and ends with exit code 6 when none answers.`,
   },
@@ -307,7 +308,7 @@ status reads the running Host, and ends with exit code 6 when none answers.`,
     about: ['logs'],
     text: `logs prints the Host's log: what the Host said, and what every Plugin Server
 wrote to stderr. It is one file in the home directory, and it never grows past
-its cap: the older half is kept beside it, and printed first. With -f it keeps
+its cap: the whole log then moves to firstmate.log.old, which is printed first. With -f it keeps
 printing new lines until you stop it with Ctrl-C.`,
   },
   {
@@ -666,7 +667,7 @@ async function install(config: Config, argv: readonly string[], place?: string):
   return 0;
 }
 
-/** Bind keys to one address of one Plugin, for the Tray to hold in all of Windows. */
+/** Bind keys to one address of one Plugin, for the App to hold in all of Windows. */
 async function bind(home: string, argv: readonly string[]): Promise<number> {
   const [typed, plugin, path = ''] = argv;
   if (typed === undefined || plugin === undefined || argv.length > 3) {

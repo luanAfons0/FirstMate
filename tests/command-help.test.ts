@@ -49,6 +49,39 @@ test('--help and -h after every command print its usage and do nothing else', as
   }
 });
 
+test('setup --help lists the questions setup asks, in order, and names no service', async (t) => {
+  const home = await makeHome(t);
+
+  const setup = await firstmate(home, ['setup', '--help']);
+  const order = [
+    'Shelf and the Places',
+    'import',
+    'Official Plugins',
+    'Grants',
+    'Shortcuts',
+    'logon',
+  ];
+  const at = order.map((word) => setup.stdout.indexOf(word));
+  assert.ok(
+    at.every((place) => place >= 0),
+    `setup --help names every question: ${setup.stdout}`,
+  );
+  assert.deepEqual(
+    at,
+    [...at].sort((a, b) => a - b),
+    'in the order setup asks them',
+  );
+  assert.doesNotMatch(setup.stdout, /service/i);
+
+  const bind = await firstmate(home, ['bind', '--help']);
+  assert.match(bind.stdout, /The App picks up a Shortcut/);
+  assert.doesNotMatch(bind.stdout, /Tray/);
+
+  const logs = await firstmate(home, ['logs', '--help']);
+  assert.match(logs.stdout, /firstmate\.log\.old/);
+  assert.match((await firstmate(home, ['place', '--help'])).stdout, /place and shelf say/);
+});
+
 test("a command's help carries the notes about the words it takes", async (t) => {
   const home = await makeHome(t);
 

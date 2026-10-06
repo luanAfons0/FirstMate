@@ -81,7 +81,8 @@ const PLUGINS_PATH = '/plugins.json';
 const SHORTCUTS_PATH = '/shortcuts.json';
 
 /**
- * The Notices, for the Tray, which shows them. It is read-only: a Notice comes
+ * The Notices, for any reader beside the App, which hears each one as the
+ * queue takes it. It is read-only: a Notice comes
  * from a Plugin Server on its pipe or from the Host, and never from a page,
  * because every Plugin Page shares this origin (ADR-0009, ADR-0014).
  */
@@ -343,7 +344,7 @@ async function sendPluginPage(
   }
 }
 
-/** The Tray's cursor. Asking with none is asking from the start of the run. */
+/** The reader's cursor. Asking with none is asking from the start of the run. */
 function readSequence(given: string | null): number | null {
   if (given === null || given === '') return 0;
   const sequence = Number(given);
@@ -386,7 +387,7 @@ function sendText(response: ServerResponse, status: number, text: string): void 
 }
 
 function fail(response: ServerResponse, cause: unknown): void {
-  // The operator reads this in the journal; the caller gets the same sentence.
+  // The operator reads this in the log; the caller gets the same sentence.
   console.error('FirstMate: a request failed.', cause);
   if (!response.headersSent) sendText(response, 500, 'The Host failed to answer that.');
   else response.end();

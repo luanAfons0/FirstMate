@@ -260,7 +260,7 @@ async function askGrants(prompt: Prompt, changes: Changes): Promise<void> {
 /**
  * Shortcuts to bind, one after another, until Enter at the keys. The keys,
  * the Plugin and the path are each checked as `bind` checks them, and a
- * refusal asks for that one answer again. The Tray picks a Shortcut up with
+ * refusal asks for that one answer again. The App picks a Shortcut up with
  * no restart (ADR-0013).
  */
 async function askShortcuts(prompt: Prompt, changes: Changes): Promise<void> {
