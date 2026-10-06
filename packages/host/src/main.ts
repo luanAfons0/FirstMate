@@ -11,14 +11,15 @@ import { randomBytes } from 'node:crypto';
 import { readConfig } from '@firstmate/core/config';
 import { startHost, type Host } from './host.ts';
 import { openNotices } from './notices.ts';
-import { readRegistry, registryPath } from '@firstmate/core/registry';
+import { readPlugins } from '@firstmate/core/plugin-places';
+import { registryPath } from '@firstmate/core/registry';
 import { removeRuntimeFile, runtimePath, writeRuntimeFile } from '@firstmate/core/runtime';
 import { readSettings } from '@firstmate/core/settings';
 import { superviseAll, type Supervisor } from './supervisor.ts';
 
 async function main(): Promise<void> {
   const config = readConfig();
-  const plugins = readRegistry(config.home);
+  const plugins = readPlugins(config.home);
   // The token lives in memory and in the runtime file, and is minted fresh
   // every start, so yesterday's address is worth nothing today.
   const token = randomBytes(32).toString('hex');
@@ -39,7 +40,7 @@ async function main(): Promise<void> {
   let shelf = config.shelf;
   const reload = async (): Promise<void> => {
     // Both are read before either is used, so a damaged file changes nothing.
-    const now = readRegistry(config.home);
+    const now = readPlugins(config.home);
     const moved = readConfig().shelf;
     await supervisor.hold(now);
     shelf = moved;
@@ -89,7 +90,7 @@ async function main(): Promise<void> {
 
   // A command that ran while the Host started found no runtime file, so it
   // asked nobody to reload. Whatever it wrote is read now, once.
-  if (JSON.stringify(safely(() => readRegistry(config.home))) !== JSON.stringify(plugins)) {
+  if (JSON.stringify(safely(() => readPlugins(config.home))) !== JSON.stringify(plugins)) {
     await reload().catch((fault: unknown) => {
       console.error(`FirstMate: ${fault instanceof Error ? fault.message : String(fault)}`);
     });

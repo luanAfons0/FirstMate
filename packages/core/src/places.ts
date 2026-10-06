@@ -9,7 +9,7 @@
  * writes no setting, never has to make it, and its Shelf is the one setting
  * 1.x kept, `shelf`, at the top of the settings file (ADR-0012).
  */
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { isPluginName } from './registry.ts';
 
 /**
@@ -18,8 +18,8 @@ import { isPluginName } from './registry.ts';
  */
 export const DEFAULT_PLACE = process.platform === 'win32' ? 'windows' : 'local';
 
-/** Every kind of Place, and what each one needs. */
-export const PLACE_KINDS = ['local'] as const;
+/** Every kind of Place. */
+export const PLACE_KINDS = ['local', 'wsl'] as const;
 
 /** One kind of Place. */
 export type PlaceKind = (typeof PLACE_KINDS)[number];
@@ -38,8 +38,30 @@ type LocalPlace = {
   readonly shelf?: string;
 };
 
+/**
+ * A Place that is one WSL distribution. Its Plugins keep their `mcp` file as
+ * it is, and run inside the distribution through `wsl.exe`. Its paths are the
+ * distribution's own, and the Host reads its files through `root`, the
+ * Windows path the distribution is reached by.
+ */
+type WslPlace = {
+  readonly name: string;
+  readonly kind: 'wsl';
+  /** The WSL distribution, as `wsl.exe -d` names it. */
+  readonly distribution: string;
+  /**
+   * The Windows path the distribution's files are read through, by default
+   * `\\wsl.localhost\<distribution>`. A test points it at a folder of its own.
+   */
+  readonly root: string;
+  /** The home directory of the distribution's user, asked for when the Place was added. */
+  readonly home: string;
+  /** The Shelf the operator chose, a path inside the distribution. */
+  readonly shelf?: string;
+};
+
 /** A named location where Plugins are installed and their Plugin Servers run. */
-export type Place = LocalPlace;
+export type Place = LocalPlace | WslPlace;
 
 /** Whether this is a Place Name: the same rule as a Plugin Name, for the same reasons. */
 export function isPlaceName(name: string): boolean {
@@ -61,12 +83,27 @@ export function allPlaces(added: readonly Place[] | undefined): Place[] {
 }
 
 /**
- * Where a Place's Shelf is when nobody has chosen one: a directory of its own
- * in the home directory, beside the default Place's `shelf`, so that two
- * Places never share one.
+ * Where a Place's Shelf is when nobody has chosen one. A local Place has a
+ * directory of its own in the home directory, beside the default Place's
+ * `shelf`, so that two Places never share one. A `wsl` Place has the Shelf a
+ * 1.x Host kept in that distribution, `~/.firstmate/shelf`.
  */
-export function defaultShelfOf(home: string, place: string): string {
-  return join(home, 'shelves', place);
+export function defaultShelfOf(home: string, place: Place): string {
+  if (place.kind === 'wsl') return posix.join(place.home, '.firstmate', 'shelf');
+  return join(home, 'shelves', place.name);
+}
+
+/**
+ * The path this machine reads a Place's directory through. A local Place's
+ * paths are this machine's own; a `wsl` Place's are read under its root.
+ */
+export function filesOf(place: Place, directory: string): string {
+  return place.kind === 'wsl' ? join(place.root, directory) : directory;
+}
+
+/** The Windows path a WSL distribution's files are read through, when no other is given. */
+export function rootOf(distribution: string): string {
+  return `\\\\wsl.localhost\\${distribution}`;
 }
 
 /**
@@ -82,7 +119,8 @@ export function parsePlaces(value: unknown, path: string): Place[] {
     if (typeof item !== 'object' || item === null || Array.isArray(item)) {
       throw new Error(`${where} needs to be a JSON object.`);
     }
-    const { name, kind, shelf } = item as Record<string, unknown>;
+    const record = item as Record<string, unknown>;
+    const { name, kind, shelf } = record;
     if (typeof name !== 'string' || !isPlaceName(name)) {
       throw new Error(`${where} needs "name" of lower-case letters, digits and hyphens.`);
     }
@@ -97,7 +135,26 @@ export function parsePlaces(value: unknown, path: string): Place[] {
     if (shelf !== undefined && typeof shelf !== 'string') {
       throw new Error(`${where} needs "shelf" to be a path.`);
     }
-    return { name, kind, ...(shelf === undefined ? {} : { shelf }) };
+    const chosen = shelf === undefined ? {} : { shelf };
+    if (kind === 'local') return { name, kind, ...chosen };
+    const { distribution, root, home } = record;
+    for (const [field, value] of [
+      ['distribution', distribution],
+      ['root', root],
+      ['home', home],
+    ] as const) {
+      if (typeof value !== 'string' || value === '') {
+        throw new Error(`${where} is a wsl Place, and needs "${field}".`);
+      }
+    }
+    return {
+      name,
+      kind,
+      distribution: distribution as string,
+      root: root as string,
+      home: home as string,
+      ...chosen,
+    };
   });
   const seen = new Set<string>();
   for (const { name } of places) {

@@ -213,8 +213,24 @@ node apps/cli/src/cli.ts place add <name> <kind>     # add a Place
 node apps/cli/src/cli.ts place remove <name>         # take an empty Place away
 ```
 
-A `local` Place runs its Plugin Servers on this machine. Each Place has its own
-Shelf: the default Place's is the Shelf below, and any other's is
+A `local` Place runs its Plugin Servers on this machine. A `wsl` Place is one
+WSL distribution, and its Plugins keep their `mcp` file as it is:
+
+```sh
+node apps/cli/src/cli.ts place add debian wsl Debian [windows-path]
+node apps/cli/src/cli.ts add worklog /home/me/.worklog --place debian
+```
+
+The Host starts a `wsl` Plugin as `wsl.exe -d <distribution> --cd <directory>
+-- ./mcp`, and reads its files, its Plugin Page among them, through
+`\\wsl.localhost\<distribution>` or the Windows path you gave. Its paths are the
+distribution's own. A Plugin whose distribution is missing or will not start is
+Stopped with one sentence, and nothing retries it. Its default Shelf is
+`~/.firstmate/shelf` inside the distribution, and `install` makes the fetched
+`mcp` executable there again. `FIRSTMATE_NODE` is not handed across, because it
+names a Windows program.
+
+Each Place has its own Shelf: the default Place's is the Shelf below, and any other's is
 `shelves/<name>` in the home directory until you move it with
 `shelf <directory> --place <name>`. A Plugin Name is used once across every
 Place, so `/p/<name>/` is the same address wherever the Plugin runs. A Place

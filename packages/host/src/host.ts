@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { BIND_ADDRESS } from '@firstmate/core/config';
 import { indexPage, type PluginView } from './index-page.ts';
 import type { NoticesAfter } from './notices.ts';
-import type { PluginRow } from '@firstmate/core/registry';
+import type { HeldPlugin } from '@firstmate/core/plugin-places';
 import { inPluginOrder } from '@firstmate/core/settings';
 import { checkRequest, startedByOwnPage, startedByTerminal } from './security.ts';
 import { shortcutAddress, type Shortcut } from '@firstmate/core/shortcut';
@@ -28,7 +28,7 @@ export type HostOptions = {
   /** The port to listen on. Zero asks the system for a free one. */
   readonly port: number;
   /** The Registry, as the Host last read it: at start, and at each reload. */
-  readonly plugins: () => readonly PluginRow[];
+  readonly plugins: () => readonly HeldPlugin[];
   /** Where the Registry lives, so that an empty Index Page can say so. */
   readonly registryPath: string;
   /** The Shelf in force, which the Index Page shows and never sets. */
@@ -283,7 +283,7 @@ function pluginViews(response: ServerResponse, options: HostOptions): PluginView
   if (order === null) return null;
   return inPluginOrder(options.plugins(), order).map((plugin) => ({
     name: plugin.name,
-    hasPage: existsSync(webRoot(plugin.directory)),
+    hasPage: existsSync(webRoot(plugin.files)),
     state: options.stateOf(plugin.name),
   }));
 }
@@ -313,7 +313,7 @@ function shortcutView(shortcut: Shortcut): {
 
 async function sendPluginPage(
   response: ServerResponse,
-  plugin: PluginRow,
+  plugin: HeldPlugin,
   rest: string | undefined,
   headOnly: boolean,
 ): Promise<void> {
@@ -323,7 +323,8 @@ async function sendPluginPage(
     response.writeHead(308, { location: `/p/${encodeURIComponent(plugin.name)}/` }).end();
     return;
   }
-  const root = webRoot(plugin.directory);
+  // A Plugin in a `wsl` Place is read through its Place's root (ADR-0021).
+  const root = webRoot(plugin.files);
   if (!existsSync(root)) {
     sendText(response, 404, `The Plugin named ${plugin.name} ships no Plugin Page.`);
     return;
