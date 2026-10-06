@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { hasGit, officialSources } from './helpers/git.ts';
 import { bootHostIn, firstmate, makeHome, until, type CommandResult } from './helpers/host.ts';
@@ -34,7 +34,8 @@ async function setupIn(
     process.platform === 'win32' || holdsFakeWsl(env)
       ? [...lines.slice(0, shelfAnswers), '', ...lines.slice(shelfAnswers)]
       : lines;
-  const user = { HOME: join(home, 'user'), XDG_CONFIG_HOME: '' };
+  // No App the machine running the tests has installed is ever found.
+  const user = { HOME: join(home, 'user'), XDG_CONFIG_HOME: '', XDG_DATA_DIRS: join(home, 'none') };
   const path = await pathWith(t, ['git']);
   return firstmate(home, ['setup'], { PATH: path, ...user, ...env }, asked.join('\n'));
 }
@@ -521,6 +522,37 @@ test(
     const once = await setupIn(t, home, answers('', '', ''), env);
     assert.equal(once.code, 0, once.stderr);
     assert.doesNotMatch(once.stdout, /Start FirstMate at logon/, 'it is on, so it is not asked');
+  },
+);
+
+test(
+  'on Linux, with the deb installed and no AppImage, the autostart entry starts the deb',
+  { skip: process.platform !== 'linux' && 'the deb is the Linux form of the App' },
+  async (t) => {
+    const home = await makeHome(t);
+    const user = join(home, 'a mate');
+    // The deb installs its program under /opt and its desktop entry in the
+    // system's applications folder, where the desktop finds it.
+    const system = join(home, 'share');
+    const program = join(home, 'opt', 'FirstMate', 'firstmate');
+    await mkdir(dirname(program), { recursive: true });
+    await writeFile(program, '#!/bin/sh\n', { mode: 0o755 });
+    await mkdir(join(system, 'applications'), { recursive: true });
+    await writeFile(
+      join(system, 'applications', 'firstmate.desktop'),
+      `[Desktop Entry]\nName=FirstMate\nExec=${program} %U\nType=Application\n`,
+    );
+    const env = { HOME: user, XDG_CONFIG_HOME: join(user, 'config'), XDG_DATA_DIRS: system };
+
+    const run = await setupIn(t, home, answers('', '', 'y'), env);
+
+    assert.equal(run.code, 0, run.stderr);
+    assert.match(run.stdout, / {2}FirstMate starts at logon\n/);
+    const written = await readFile(join(user, 'config', 'autostart', 'firstmate.desktop'), 'utf8');
+    assert.ok(
+      written.split('\n').includes(`Exec="${program}" --at-logon`),
+      `the entry starts the deb's program with --at-logon:\n${written}`,
+    );
   },
 );
 

@@ -502,7 +502,9 @@ sudo apt install ./firstmate_<version>_amd64.deb
 
 The AppImage is one file that updates itself. Keep it at
 `~/Applications/FirstMate.AppImage`, which is where `firstmate setup` looks for
-the App, and make it executable, as `firstmate desktop` does:
+the App first, and make it executable, as `firstmate desktop` does. With no
+AppImage there, `setup` finds the deb's program by the desktop entry the deb
+installs:
 
 ```sh
 mkdir -p ~/Applications
