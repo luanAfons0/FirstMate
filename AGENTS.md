@@ -182,6 +182,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
                    step calls commands.ts.
   src/prompt.ts    ask for text, yes or no, or from a list: with clack on a
                    terminal, over node:readline from a pipe (ADR-0025).
+  src/progress.ts  a long wait on a terminal: a spinner, or a progress bar
+                   when its size is known. From a pipe it shows nothing.
   src/running-host.ts the running Host, as the terminal reaches it: over
                    loopback, with the token from the runtime file.
   src/install-app.ts firstmate desktop: download the App of this version from
