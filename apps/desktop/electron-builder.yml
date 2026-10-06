@@ -6,6 +6,13 @@
 # unsigned; the certificate is decided before 2.0.0 final.
 appId: io.github.luanafons0.firstmate
 productName: FirstMate
+# The packed package.json is named FirstMate, not @firstmate/desktop. A per-user
+# installer names the App's folder after the package, so the App lives in
+# %LOCALAPPDATA%\Programs\FirstMate, and Electron calls itself FirstMate too.
+# An update keeps the folder it finds in the registry, so only a fresh install
+# moves to the new name.
+extraMetadata:
+  name: FirstMate
 directories:
   output: dist
   buildResources: build
@@ -28,6 +35,9 @@ win:
 nsis:
   oneClick: true
   perMachine: false
+  # Never turn deleteAppDataOnUninstall on. The data folder it deletes is
+  # %APPDATA%\FirstMate, the Host's home: the Registry, the settings and every
+  # Grant, which outlive the App on purpose.
   # The name `firstmate desktop` downloads the installer by, beside the
   # checksum the release workflow writes for it (ADR-0023).
   artifactName: FirstMate-Setup-${version}.${ext}

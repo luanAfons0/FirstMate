@@ -34,7 +34,7 @@ A prerelease part names `beta` or `alpha`. `electron-updater` reads any other wo
 
 `firstmate desktop` reads its own version from its package's manifest and installs that App. It fetches the checksum, then the installer, from the Release of that version, or from `FIRSTMATE_RELEASES_URL` in its place. An installer whose SHA-256 differs is refused before it is written anywhere, so nothing runs. The installer runs with `/S`, silent and for this user alone, and the App is then opened on its own.
 
-Whether the App is installed, and which version, is read where the installer records it for Windows: the uninstall key `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<guid>`, whose `DisplayVersion` is the version, and `HKCU\Software\<guid>`, whose `InstallLocation` is the folder. `electron-builder.yml` pins the GUID, which is what electron-builder derives from the `appId`. The folder is not guessed: electron-builder names it after the package, `@firstmatedesktop`, inside a folder Windows lets a person move. `reg.exe export` reads the keys, because it writes UTF-16; `reg.exe query` writes the console's code page, and garbles a user name that is not ASCII.
+Whether the App is installed, and which version, is read where the installer records it for Windows: the uninstall key `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<guid>`, whose `DisplayVersion` is the version, and `HKCU\Software\<guid>`, whose `InstallLocation` is the folder. `electron-builder.yml` pins the GUID, which is what electron-builder derives from the `appId`. The folder is not guessed: electron-builder names it after the packed package's name, `FirstMate` (`@firstmatedesktop` up to 2.0.0-beta.2, and kept by an update of such an install), inside a folder Windows lets a person move. `reg.exe export` reads the keys, because it writes UTF-16; `reg.exe query` writes the console's code page, and garbles a user name that is not ASCII.
 
 The same version is only opened, and so is a newer one. The App updates itself, so it is often ahead of a command line installed long ago, and installing the older one would take it back.
 
@@ -44,7 +44,7 @@ No command loads the 1.x window since, so ADR-0017's line about its library as a
 
 ## Considered Options
 
-The App's folder, `%LOCALAPPDATA%\Programs\@firstmatedesktop`, as the record of an install. It needs no registry, but its name comes from the package's name, its parent can be moved, and nothing in it says which version it holds.
+The App's folder, `%LOCALAPPDATA%\Programs\FirstMate`, as the record of an install. It needs no registry, but its name comes from the package's name, its parent can be moved, and nothing in it says which version it holds.
 
 `reg.exe query` for the registry, or PowerShell. The first garbles names that are not ASCII. The second is the kind of helper 2.0 takes out.
 
