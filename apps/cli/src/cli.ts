@@ -60,11 +60,12 @@ import {
 } from '@firstmate/core/registry';
 import { logPath, oldLogPath } from '@firstmate/core/runtime';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
-import { STATE_WORDS } from '@firstmate/core/plugin-state';
+import { STATE_WORDS, type PluginState } from '@firstmate/core/plugin-state';
 import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
 import { bringAcross } from './one-x.ts';
 import { openPrompt } from './prompt.ts';
 import { setup } from './setup.ts';
+import { bad, good, groupName, printRows, refusalPrefix } from './terminal.ts';
 import { ownVersion } from './version.ts';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
@@ -455,13 +456,14 @@ function shortLine(name: string, short: string, column: number): string {
  * The help that fits in one screen: what FirstMate is, every command in its
  * group with its few words, and where the rest of the help is.
  */
-const SHORT_HELP = `firstmate: run your own tools on your own machine.
+function shortHelp(stream: NodeJS.WriteStream): string {
+  return `firstmate: run your own tools on your own machine.
 
 usage: firstmate <command> [...]
 
 ${GROUPS.map((group) =>
   [
-    group,
+    groupName(group, stream),
     ...COMMANDS.filter((command) => command.group === group).map((command) =>
       shortLine(command.name, command.short, 9),
     ),
@@ -470,14 +472,17 @@ ${GROUPS.map((group) =>
 
 firstmate <command> --help   how one command is typed
 firstmate help <topic>       ${TOPIC_NAMES.join(', ')}`;
+}
 
 /** The short help, then every topic with its few words, for `firstmate help`. */
-const TOPIC_LIST = `${SHORT_HELP}
+function topicList(stream: NodeJS.WriteStream): string {
+  return `${shortHelp(stream)}
 
 Topics, for firstmate help <topic>:
 ${TOPICS.map((topic) => shortLine(topic.name, topic.short, 13)).join('\n')}
 
 firstmate --version          which FirstMate this is (-v too)`;
+}
 
 /** One command's own help: its usage line, and every note about it. */
 function helpOf(command: Command): string {
@@ -493,7 +498,7 @@ function help(argv: readonly string[]): number {
   const words = argv.filter((word) => !HELP_WORDS.has(word));
   const [word] = words;
   if (word === undefined) {
-    console.log(TOPIC_LIST);
+    console.log(topicList(process.stdout));
     return exit('done');
   }
   const command = COMMANDS.find((row) => row.name === word);
@@ -506,7 +511,7 @@ function help(argv: readonly string[]): number {
       words.length > 1
         ? 'help takes one command or one topic.'
         : `no help topic named ${word}: try ${rest} or ${last}.`;
-    console.error(`firstmate: ${sentence}`);
+    console.error(`${refusalPrefix()} ${sentence}`);
     return exit('typed-wrong');
   }
   console.log(text);
@@ -520,7 +525,7 @@ function help(argv: readonly string[]): number {
 function typedWrong(name: string, sentence: string): number {
   const command = COMMANDS.find((row) => row.name === name);
   console.error(
-    `firstmate: ${sentence}\n\n${command === undefined ? SHORT_HELP : helpOf(command)}`,
+    `firstmate: ${sentence}\n\n${command === undefined ? shortHelp(process.stderr) : helpOf(command)}`,
   );
   return exit('typed-wrong');
 }
@@ -571,7 +576,9 @@ function nearestCommand(word: string): string | undefined {
 function noSuchCommand(name: string): number {
   const guess = nearestCommand(name);
   const said = guess === undefined ? '.' : `. Did you mean ${guess}?`;
-  console.error(`firstmate: no such command: ${name}${said}\nfirstmate --help says every command.`);
+  console.error(
+    `${refusalPrefix()} no such command: ${name}${said}\nfirstmate --help says every command.`,
+  );
   return exit('typed-wrong');
 }
 
@@ -589,7 +596,7 @@ const home = (): string => readConfig().home;
 async function main(argv: readonly string[]): Promise<number | undefined> {
   const [name, ...rest] = argv;
   if (name === undefined || HELP_WORDS.has(name)) {
-    console.log(SHORT_HELP);
+    console.log(shortHelp(process.stdout));
     return exit(name === undefined ? 'typed-wrong' : 'done');
   }
   if (VERSION_WORDS.has(name)) {
@@ -706,7 +713,12 @@ async function place(home: string, argv: readonly string[], json: boolean): Prom
     const config = readConfig();
     const places = listPlaces(home).map((one) => ({ ...one, shelf: shelfOf(config, one) }));
     if (json) printJson({ places });
-    else for (const one of places) console.log(`${one.name}\t${one.kind}\t${one.shelf}`);
+    else {
+      printRows(
+        ['PLACE', 'KIND', 'SHELF'],
+        places.map((one) => ({ cells: [one.name, one.kind, one.shelf] })),
+      );
+    }
     return 0;
   }
   if (json) return typedWrong('place', 'place prints JSON only when it changes nothing.');
@@ -737,7 +749,7 @@ async function remove(home: string, argv: readonly string[]): Promise<number> {
   const rows = readRegistry(home);
   const left = rows.filter((row) => row.name !== name);
   if (left.length === rows.length) {
-    console.error(`firstmate: no Plugin named ${name} is registered.`);
+    console.error(`${refusalPrefix()} no Plugin named ${name} is registered.`);
     return exit('missing');
   }
 
@@ -826,7 +838,9 @@ async function shelf(
   if (directory === undefined) {
     const current = named === undefined ? config.shelf : shelfOf(config, named);
     if (json) printJson({ shelf: current });
-    else console.log(`firstmate: the Shelf${of} is ${current}`);
+    else if (process.stdout.isTTY === true) {
+      printRows(['PLACE', 'SHELF'], [{ cells: [named?.name ?? DEFAULT_PLACE, current] }]);
+    } else console.log(`firstmate: the Shelf${of} is ${current}`);
     return 0;
   }
   if (json) return typedWrong('shelf', 'shelf prints JSON only when it moves nothing.');
@@ -886,7 +900,7 @@ async function unbind(home: string, argv: readonly string[]): Promise<number> {
   const shortcuts = settings.shortcuts ?? [];
   const held = shortcuts.find((shortcut) => shortcut.keys === keys);
   if (held === undefined) {
-    console.error(`firstmate: ${keys} is not bound.`);
+    console.error(`${refusalPrefix()} ${keys} is not bound.`);
     return exit('missing');
   }
 
@@ -910,7 +924,12 @@ async function order(home: string, argv: readonly string[], json: boolean): Prom
   if (argv.length === 0) {
     const names = pluginOrder(home);
     if (json) printJson({ order: names });
-    else for (const [at, name] of names.entries()) console.log(`${at + 1}\t${name}`);
+    else {
+      printRows(
+        ['POSITION', 'PLUGIN'],
+        names.map((name, at) => ({ cells: [String(at + 1), name] })),
+      );
+    }
     return 0;
   }
   const [name, position] = argv;
@@ -941,7 +960,7 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
 
   const restarted = await restartPlugin(home, name);
   if (restarted === undefined) {
-    console.error(`firstmate: ${await noHost()}`);
+    console.error(`${refusalPrefix()} ${await noHost()}`);
     return exit('no-host');
   }
   if (restarted.state === 'no-plugin-server') {
@@ -949,7 +968,7 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
     return 0;
   }
   if (restarted.state === 'stopped') {
-    console.error(`firstmate: ${name} is Stopped: ${restarted.why ?? 'it did not start.'}`);
+    console.error(`${refusalPrefix()} ${name} is Stopped: ${restarted.why ?? 'it did not start.'}`);
     return exit('failed');
   }
   console.log(`firstmate: restarted ${name}. It is ${STATE_WORDS[restarted.state]}.`);
@@ -967,7 +986,7 @@ function logs(home: string, argv: readonly string[]): number | undefined {
   const path = logPath(home);
   const old = oldLogPath(home);
   if (!existsSync(path) && !existsSync(old)) {
-    console.error(`firstmate: there is no log yet, at ${path}.`);
+    console.error(`${refusalPrefix()} there is no log yet, at ${path}.`);
     return exit('missing');
   }
   for (const file of [old, path]) {
@@ -1014,10 +1033,20 @@ function list(home: string, argv: readonly string[], json: boolean): number {
     return 0;
   }
   // An empty Registry says nothing, as an empty directory listing says nothing.
-  for (const row of rows) console.log(describe(row));
-  for (const shortcut of shortcuts) {
-    console.log(`${shortcut.keys}\topens ${shortcutAddress(shortcut)}`);
-  }
+  printRows(
+    ['NAME', 'PLACE', 'DIRECTORY', 'GRANTS'],
+    rows.map((row) => ({
+      cells: [row.name, row.place, row.directory, row.grants.join(', ')],
+      plain: describe(row),
+    })),
+  );
+  printRows(
+    ['KEYS', 'OPENS'],
+    shortcuts.map((shortcut) => ({
+      cells: [shortcut.keys, shortcutAddress(shortcut)],
+      plain: `${shortcut.keys}\topens ${shortcutAddress(shortcut)}`,
+    })),
+  );
   return 0;
 }
 
@@ -1041,7 +1070,10 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
     return 0;
   }
   console.log(`firstmate: the Host runs at ${seen.address}`);
-  for (const plugin of seen.plugins) console.log(`${plugin.name}\t${STATE_WORDS[plugin.state]}`);
+  printRows(
+    ['PLUGIN', 'STATE'],
+    seen.plugins.map((plugin) => ({ cells: [plugin.name, stateWord(plugin.state)] })),
+  );
   return 0;
 }
 
@@ -1058,6 +1090,13 @@ async function noHost(): Promise<string> {
     : 'no Host runs.';
 }
 
+/** A Plugin's state word, in green when it runs and in red when it is Stopped. */
+function stateWord(state: PluginState): string {
+  const word = STATE_WORDS[state];
+  if (state === 'running') return good(word);
+  return state === 'stopped' ? bad(word) : word;
+}
+
 function describe(row: PluginRow): string {
   const grants = row.grants.length === 0 ? '' : `  grants: ${row.grants.join(', ')}`;
   return `${row.name}\t${row.place}\t${row.directory}${grants}`;
@@ -1067,6 +1106,6 @@ try {
   const code = await main(process.argv.slice(2));
   if (code !== undefined) process.exitCode = code;
 } catch (fault: unknown) {
-  console.error(`firstmate: ${fault instanceof Error ? fault.message : String(fault)}`);
+  console.error(`${refusalPrefix()} ${fault instanceof Error ? fault.message : String(fault)}`);
   process.exitCode = exit(refusalOf(fault) ?? 'failed');
 }
