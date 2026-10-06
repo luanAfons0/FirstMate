@@ -39,10 +39,12 @@ export type NoticeShower = {
 
 /**
  * Name the App to Windows. It must happen before the first notification, and
- * before the window, so that both are grouped under FirstMate.
+ * before the window, so that both are grouped under FirstMate. Only Windows
+ * has an Application User Model ID; Linux names the App by its desktop entry
+ * (ADR-0026).
  */
 export function nameTheApp(): void {
-  app.setAppUserModelId(APP_ID);
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 }
 
 /** Get ready to show Notices. `open` shows one address of the Host in the window. */
