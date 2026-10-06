@@ -13,6 +13,12 @@
  * stay visible rather than spin in a restart loop behind the operator's back.
  * It does not go quietly all the same: the Host puts a Notice on the queue, so
  * that the operator learns of it without opening the Index Page (ADR-0014).
+ *
+ * The Supervisor also looks, once, whether each Plugin ships a Plugin Page,
+ * and keeps the answer until the next reload or restart. No request makes a
+ * file check of its own: in the App the Host shares the main process with the
+ * window and the Tray, and for a Plugin in a `wsl` Place the check crosses
+ * into the distribution.
  */
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { constants } from 'node:fs';
@@ -20,6 +26,7 @@ import { access, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { WSL_EXE } from '@firstmate/core/wsl';
+import { webRoot } from './static-files.ts';
 import { speak, type Answering, type PluginServer } from './mcp.ts';
 import { SEND_NOTICE, type Notices } from './notices.ts';
 import type { HeldPlugin } from '@firstmate/core/plugin-places';
@@ -61,6 +68,8 @@ export type Supervisor = {
   plugins(): readonly HeldPlugin[];
   stateOf(name: string): PluginState;
   serverOf(name: string): PluginServer | null;
+  /** Whether the Plugin shipped a Plugin Page when the Host last looked. */
+  hasPage(name: string): boolean;
   /**
    * Hold this Registry from now on. A Plugin added is started, a Plugin
    * removed is stopped, and every other Plugin Server is left alone, Stopped
@@ -100,6 +109,8 @@ type Run = {
   server: PluginServer | null;
   /** The Plugin ships no Plugin Server at all, which is no failure. */
   shipsNone: boolean;
+  /** The Plugin ships a Plugin Page, as the Host last looked. */
+  hasPage: boolean;
   /** The process, once one was spawned. */
   child: ChildProcess | null;
   /** Settles once the process has ended, and at once when none was spawned. */
@@ -196,6 +207,14 @@ export async function superviseAll(
         );
       };
       const staying = next.filter(same);
+      // A Plugin that stays may still have gained or lost its web directory,
+      // and a reload is when the Host looks again.
+      await Promise.all(
+        staying.map(async (row) => {
+          const run = runs.get(row.name);
+          if (run !== undefined) run.hasPage = await shipsPage(row);
+        }),
+      );
       const leaving = held.filter((row) => !staying.some((kept) => kept.name === row.name));
 
       // The Host stops serving a Plugin before it stops the Plugin Server, so
@@ -235,6 +254,7 @@ export async function superviseAll(
     plugins: () => held,
     stateOf,
     serverOf,
+    hasPage: (name) => runs.get(name)?.hasPage === true,
     hold,
     restart,
     async stopAll() {
@@ -298,6 +318,7 @@ async function startOne(
     row: plugin,
     server: null,
     shipsNone: false,
+    hasPage: await shipsPage(plugin),
     child: null,
     ended: Promise.resolve(),
     why: null,
@@ -404,6 +425,11 @@ async function serverFile(plugin: HeldPlugin): Promise<ServerFile> {
   return runnable
     ? { found: 'runnable', path: shell }
     : { found: 'unrunnable', why: `${shell} is not executable` };
+}
+
+/** Whether a Plugin ships a Plugin Page: a web directory, read through its Place. */
+async function shipsPage(plugin: HeldPlugin): Promise<boolean> {
+  return (await stat(webRoot(plugin.files)).catch(() => null)) !== null;
 }
 
 async function isFile(path: string): Promise<boolean> {
