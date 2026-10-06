@@ -10,7 +10,7 @@
       "project": ["src/**/*.ts"]
     },
     "apps/desktop": {
-      "entry": ["src/main.ts"],
+      "entry": ["src/main.ts", "src/preload.ts"],
       "project": ["src/**/*.ts"]
     },
     "packages/core": {

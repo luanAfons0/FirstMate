@@ -10,6 +10,14 @@ The Host is a function, `start()` in `packages/host/src/start.ts`, which returns
 
 The App's window shows the Index Page at `http://127.0.0.1:<port>/?token=…`, admitted by the token as a browser is. The App never prints the token. A link away from the Host opens in the operator's browser. The Host still serves the window nothing of its own, and still frames nothing (ADR-0008).
 
+## The window's views
+
+Each Plugin Page the operator opens gets a `WebContentsView` of its own, with the sandbox on and no preload, and it stays loaded until the App quits. A Plugin Page that records a call keeps recording while the operator looks at another Plugin. The views share one browser session, so the token is traded for the cookie once, on the first load, and no later address carries it.
+
+A view belongs to one owner: a Plugin, for everything under `/p/<name>/`, or the Index Page. A link to another owner's address is refused in the view it was clicked in, and that owner's view is shown instead, as it is. So one Plugin's page never shows in another Plugin's view, and never reloads it.
+
+The strip, the switcher and the Settings View are the App's own views. Their pages are written by the App and loaded as data addresses, never served by the Host, for the reason ADR-0008 gives. They ask the main process for things through a preload that only they carry, and the main process also checks which view sent each message. In 1.x the strip asked by trying to navigate, because the webview library's message channel took the program down; Electron's IPC has no such fault, and a preload no Plugin Page carries is the narrower door.
+
 One App runs for one home. A second start shows the first window and ends, so there is never a second Host. Electron's own data, and with it the single-instance lock, lives in `app` under the home: a test that moves the home moves the lock, and never meets the App the operator runs. When the port is taken, the App says so in one sentence and does not start.
 
 ## How a Plugin Server runs

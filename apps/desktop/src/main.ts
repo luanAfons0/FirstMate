@@ -9,11 +9,16 @@
  *
  * Only one App runs for one home. A second start shows the first window and
  * ends; it never starts a second Host.
+ *
+ * This file only wires the parts together. The window and its views are
+ * `window.ts`.
  */
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, Menu, shell, type WebContents } from 'electron';
+import { app, dialog, Menu } from 'electron';
 import { readConfig, type Config } from '@firstmate/core/config';
 import { start, type RunningHost } from '@firstmate/host/start';
+import { askForPlugins } from './host-lists.ts';
+import { openWindow, type Shown } from './window.ts';
 
 /** The window's title, and the name every sentence the App says is signed with. */
 const NAME = 'FirstMate';
@@ -34,13 +39,8 @@ function main(): void {
     return;
   }
 
-  let window: BrowserWindow | undefined;
-  app.on('second-instance', () => {
-    if (window === undefined) return;
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
-  });
+  let shown: Shown | undefined;
+  app.on('second-instance', () => shown?.reveal());
 
   // There is no Tray yet, so the window is the App: closing it quits.
   app.on('window-all-closed', () => app.quit());
@@ -50,7 +50,14 @@ function main(): void {
 
   Promise.all([host, app.whenReady()]).then(
     ([running]) => {
-      window = openWindow(running);
+      // The Index Page and each Plugin Page are whole pages, so the window
+      // adds no menu of its own above them (ADR-0008).
+      Menu.setApplicationMenu(null);
+      const refresh = (): void => {
+        void askForPlugins(running).then((plugins) => shown?.told(plugins));
+      };
+      shown = openWindow(running, refresh);
+      refresh();
     },
     (fault: unknown) => {
       // The Host did not start, and it has already ended what it started.
@@ -100,54 +107,4 @@ function stopOnQuit(host: Promise<RunningHost>): void {
 function say(sentence: string): void {
   console.error(`${NAME}: ${sentence}`);
   dialog.showErrorBox(NAME, sentence);
-}
-
-/** The window, on the Index Page, admitted by the token as a browser is. */
-function openWindow(host: RunningHost): BrowserWindow {
-  const origin = `http://127.0.0.1:${host.port}`;
-  // The Index Page and each Plugin Page are whole pages, so the window adds
-  // no menu of its own above them (ADR-0008).
-  Menu.setApplicationMenu(null);
-  const window = new BrowserWindow({
-    title: NAME,
-    width: 1100,
-    height: 760,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
-  });
-  keepInside(window.webContents, origin);
-  // The address carries the token, and an error from loadURL names the
-  // address, so only its code is said.
-  window.loadURL(`${origin}/?token=${host.token}`).catch((fault: unknown) => {
-    const code = fault instanceof Error && 'code' in fault ? String(fault.code) : 'no code';
-    console.error(`${NAME}: the window did not load the Index Page (${code}).`);
-  });
-  return window;
-}
-
-/**
- * Keep the window on the Host's own addresses. A link to anywhere else opens
- * in the operator's browser, because a window with no way back is no use, and
- * no page outside the Host is shown with the App's name on it.
- */
-function keepInside(contents: WebContents, origin: string): void {
-  const inside = (url: string): boolean => URL.parse(url)?.origin === origin;
-  contents.on('will-navigate', (event, url) => {
-    if (inside(url)) return;
-    event.preventDefault();
-    outside(url);
-  });
-  contents.setWindowOpenHandler(({ url }) => {
-    if (inside(url)) contents.loadURL(url).catch(() => undefined);
-    else outside(url);
-    return { action: 'deny' };
-  });
-}
-
-/** Open an address in the operator's browser, when it is one a browser opens. */
-function outside(url: string): void {
-  const protocol = URL.parse(url)?.protocol;
-  if (protocol !== 'http:' && protocol !== 'https:') return;
-  shell.openExternal(url).catch((fault: unknown) => {
-    console.error(`${NAME}: the browser did not open ${url}.`, fault);
-  });
 }

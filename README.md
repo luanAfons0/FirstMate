@@ -380,6 +380,13 @@ port, the App says so and does not start. Closing the window quits the App,
 and Quit stops every Plugin Server. Each Plugin Server runs on the App's own
 executable as Node, so a Node Plugin needs no Node of its own.
 
+The window has the strip at the top: FirstMate, then what is open, which opens
+the switcher with every Plugin in the Plugin Order; "open in browser", which
+gives what the window shows to your browser; and the gear, which opens the
+Settings View. Each Plugin Page you open has a view of its own and stays
+loaded until the App quits, so switching to another Plugin and back loses
+nothing. A link that leaves FirstMate opens in your browser.
+
 ## Configure it
 
 | Variable                | Default        | What it moves                                     |
