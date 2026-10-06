@@ -55,7 +55,7 @@ import {
   type HostAt,
 } from './addresses.ts';
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
-import { askForPlugins, askToRestart, type Plugins } from './host-lists.ts';
+import { askForPlugins, askToRestart, stoppedCount, type Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
 import { APP_ID } from './notices.ts';
 import {
@@ -108,6 +108,11 @@ export type Shown = {
   reveal(): void;
   /** Bring the window up on the Settings View, whatever it showed. */
   showSettings(): void;
+  /**
+   * Start one Stopped Plugin's Plugin Server again, and say a failure with
+   * `say`. Nothing happens before the Host is ready.
+   */
+  restart(name: string, say: (failed: string) => void): void;
   /** The Host is ready: load what is wanted, and stop saying "Starting…". */
   ready(host: HostAt): void;
   /** What the Host now says about its Plugins. */
@@ -258,10 +263,7 @@ export function openWindow(
         switcher: switching,
         fault,
         starting: host === undefined,
-        stopped:
-          plugins.kind === 'told'
-            ? plugins.plugins.filter((plugin) => plugin.state === 'stopped').length
-            : 0,
+        stopped: stoppedCount(plugins),
       }),
     );
     // The switcher and the Settings View load the first time they are shown.
@@ -426,12 +428,13 @@ export function openWindow(
 
   /**
    * Start one Stopped Plugin's Plugin Server again, through the Host's restart
-   * address, as `firstmate restart` and the Tray do. Only the operator's ask
-   * does this: the Host never restarts a Plugin Server on its own account. Its
-   * row says Restarting… until the Host answers, and then what the Host says
-   * now; a refusal is the strip's fault line.
+   * address, as `firstmate restart` does. The switcher and the Tray both ask
+   * here. Only the operator's ask does this: the Host never restarts a Plugin
+   * Server on its own account. Its row says Restarting… until the Host
+   * answers, and then what the Host says now. A refusal is the strip's fault
+   * line, unless the one who asked says it another way.
    */
-  const restart = (name: string): void => {
+  const restart = (name: string, say?: (failed: string) => void): void => {
     if (host === undefined || restarting.has(name) || named(name)?.state !== 'stopped') return;
     const at = host;
     restarting.add(name);
@@ -439,7 +442,8 @@ export function openWindow(
     void askToRestart(at, name).then(async (failed) => {
       plugins = await askForPlugins(at);
       restarting.delete(name);
-      fault = failed;
+      if (failed !== undefined && say !== undefined) say(failed);
+      else fault = failed;
       // The Tray shows the new state too.
       refresh();
       redraw();
@@ -547,6 +551,7 @@ export function openWindow(
       reveal();
     },
     reveal,
+    restart,
     showSettings: () => {
       if (!setting) act({ kind: 'settings' });
       reveal();
