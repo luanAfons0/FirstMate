@@ -14,6 +14,14 @@ import { refuse } from './refusal.ts';
 /** The program that runs a command inside a WSL distribution. */
 export const WSL_EXE = 'wsl.exe';
 
+/**
+ * Whether this process runs inside WSL, as WSL itself says: it names the
+ * distribution in WSL_DISTRO_NAME for every process it starts.
+ */
+export function isInsideWsl(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env['WSL_DISTRO_NAME'] ?? '') !== '';
+}
+
 /** What one run of `wsl.exe` said. */
 type Answer = { readonly code: number | null; readonly stdout: string; readonly stderr: string };
 
