@@ -12,7 +12,7 @@
  * `core` and `host` reach it only inside the bundle.
  */
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -106,9 +106,15 @@ test('the package holds the desktop program and the icons it draws with', async 
 });
 
 test('every package in the workspace carries one version', async () => {
-  // One tag publishes all of it, so a bug report can name one number.
+  // One tag releases all of it, the App with the command line, so a bug report
+  // can name one number (ADR-0022). A package added later is counted too.
   const versions: Record<string, string | undefined> = {};
-  for (const where of ['.', 'apps/cli', 'packages/core', 'packages/host']) {
+  const packages = await Promise.all(
+    ['apps', 'packages'].map(async (group) =>
+      (await readdir(join(REPOSITORY, group))).map((name) => `${group}/${name}`),
+    ),
+  );
+  for (const where of ['.', ...packages.flat()]) {
     const path = join(REPOSITORY, where, 'package.json');
     versions[where] = (JSON.parse(await readFile(path, 'utf8')) as { version?: string }).version;
   }

@@ -99,7 +99,10 @@ knip and every test.
   **electron-vite** builds it and **electron-builder** packages it as a
   per-user NSIS installer, unsigned for the betas. All three are dev
   dependencies of a private package, and the App's build is not on the npm
-  publish path (ADR-0020).
+  publish path (ADR-0020). One tag releases both: the installer on the GitHub
+  Release, then the command line on npm, with one version. The installer's
+  and its checksum's names are a contract `firstmate desktop` reads
+  (ADR-0022, `.github/workflows/release.yml`).
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
   removing the logon task, and for the three things the running Tray asks of
   it: the taskbar button (`apps/cli/src/taskbar.ts`), the

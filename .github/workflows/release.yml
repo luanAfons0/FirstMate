@@ -1,15 +1,24 @@
-# Publish a version from a tag, with no secret in the repository.
+# Release a version from a tag: the App on a GitHub Release, and the command
+# line on npm, with the same number (ADR-0022).
 #
-# npm accepts GitHub Actions as a trusted publisher over OIDC: the job asks for
-# an identity token that is minted for this one run and expires in minutes, so
-# there is no NPM_TOKEN to store, leak or rotate. npm attaches a provenance
-# attestation on its own, which says which workflow, which commit and which
-# repository built the tarball.
+# One tag does all of it, so the command line and the App never drift apart.
+# The tag and the version of every package in the workspace have to agree,
+# because a tag that lies is worse than no tag. The whole check runs before
+# anything is published, so a broken release cannot leave the machine.
 #
-# The whole check (types, lint, layout, dead code, tests) runs before anything
-# is published, so a broken release cannot leave the machine. The tag and the
-# version of every package in the workspace have to agree, because a tag that
-# lies is worse than no tag. One tag publishes all of it (ADR-0017).
+# The GitHub Release comes before npm. `firstmate desktop` downloads the
+# installer of its own version from that Release, so a command line on npm
+# must never name a Release that is not there yet.
+#
+# A version with a prerelease part, such as 2.0.0-beta.1, is a prerelease
+# everywhere: a GitHub prerelease, and npm's `next` tag. Any other version is
+# the latest on both.
+#
+# npm accepts GitHub Actions as a trusted publisher over OIDC: the npm job asks
+# for an identity token that is minted for this one run and expires in
+# minutes, so there is no NPM_TOKEN to store, leak or rotate. npm attaches a
+# provenance attestation on its own, which says which workflow, which commit
+# and which repository built the tarball.
 name: Release
 
 on:
@@ -17,16 +26,146 @@ on:
     tags:
       - 'v*'
 
-# Read-only is this repository's default, so the identity token is asked for
-# here and nowhere else.
+# Read-only is this repository's default. The two jobs that publish ask for
+# what they need, and nothing else does.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  release:
-    name: Publish to npm
+  check:
+    name: The tag, every version and the whole check
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: The tag and every version must agree
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for manifest in package.json apps/*/package.json packages/*/package.json; do
+            version="$(node -p "require('./$manifest').version")"
+            if [ "$tag" != "$version" ]; then
+              echo "The tag says $tag and $manifest says $version." >&2
+              exit 1
+            fi
+          done
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          case "$tag" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm check
+
+  app:
+    name: Package the App
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The betas are unsigned, and the certificate is decided before 2.0.0
+      # final. Told not to look for one, packaging signs nothing.
+      - name: Package the App, unsigned
+        run: pnpm --filter @firstmate/desktop run package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # The installer, the block map electron-updater downloads only the
+      # changed parts of an update by, and latest.yml, the update feed.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app
+          if-no-files-found: error
+          path: |
+            apps/desktop/dist/FirstMate-Setup-*.exe
+            apps/desktop/dist/FirstMate-Setup-*.exe.blockmap
+            apps/desktop/dist/latest.yml
+
+  github:
+    name: Publish the GitHub Release
+    needs: [check, app]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: app
+          path: release
+
+      # The checksum is written here, from the bytes the Release will carry,
+      # in the form `sha256sum --check` reads: the hash, two spaces, the name.
+      - name: Every file the Release carries, and the installer's checksum
+        working-directory: release
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          installer="FirstMate-Setup-$VERSION.exe"
+          for file in "$installer" "$installer.blockmap" latest.yml; do
+            if [ ! -f "$file" ]; then
+              echo "Packaging wrote no $file." >&2
+              exit 1
+            fi
+          done
+          if ! grep -q "^path: $installer\$" latest.yml; then
+            echo "latest.yml does not name $installer." >&2
+            exit 1
+          fi
+          sha256sum "$installer" > "$installer.sha256"
+          ls -l
+
+      # A Release made by hand for this tag before the tag was pushed keeps its
+      # notes: the files are added to it, and it is published.
+      - name: Publish the Release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = true ]; then latest=false; else latest=true; fi
+          kind=(--prerelease="$PRERELEASE" --latest="$latest")
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" ./* --clobber
+            gh release edit "$TAG" --draft=false "${kind[@]}"
+          else
+            gh release create "$TAG" ./* --verify-tag --generate-notes \
+              --title "FirstMate $VERSION" "${kind[@]}"
+          fi
+
+  npm:
+    name: Publish to npm
+    needs: [check, github]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v7
@@ -39,20 +178,7 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
-      - name: The tag and every version must agree
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          for manifest in package.json apps/cli/package.json packages/*/package.json; do
-            version="$(node -p "require('./$manifest').version")"
-            if [ "$tag" != "$version" ]; then
-              echo "The tag says $tag and $manifest says $version." >&2
-              exit 1
-            fi
-          done
-
       - run: pnpm install --frozen-lockfile
-
-      - run: pnpm check
 
       # Trusted publishing wants npm 11.5.1 or newer. Node 24 ships a newer one
       # already; this keeps a release from resting on that staying true.
@@ -67,5 +193,12 @@ jobs:
         run: pnpm pack --pack-destination "$RUNNER_TEMP/package"
 
       # No NODE_AUTH_TOKEN. npm sees the identity token, mints its own for this
-      # run, and generates the provenance without being asked.
-      - run: npm publish "$RUNNER_TEMP"/package/*.tgz --access public
+      # run, and generates the provenance without being asked. A prerelease
+      # goes to `next`, so that `npx @luan-afonso/firstmate` stays on the
+      # latest stable version.
+      - name: Publish the command line
+        env:
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = true ]; then tag=next; else tag=latest; fi
+          npm publish "$RUNNER_TEMP"/package/*.tgz --access public --tag "$tag"
