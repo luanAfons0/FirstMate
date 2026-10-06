@@ -35,8 +35,9 @@ export type RunningHost = {
    */
   reload(): Promise<void>;
   /**
-   * Remove the runtime file, end every Plugin Server and close the HTTP
-   * server. A second call waits for the first rather than stopping twice.
+   * Remove the runtime file, end every Plugin Server, close the HTTP server
+   * and write what the log still holds. A second call waits for the first
+   * rather than stopping twice.
    */
   stop(): Promise<void>;
 };
@@ -76,7 +77,7 @@ export async function start(
   // every start, so yesterday's address is worth nothing today.
   const token = randomBytes(32).toString('hex');
   // Kept from here, so the log holds every Plugin Server's start as well.
-  keepLog(config.home, token);
+  const log = keepLog(config.home, token);
 
   // One queue of Notices for the run. It lives in memory and dies with it.
   const notices = openNotices(config.noticeMs, Date.now, (notice) => {
@@ -134,6 +135,10 @@ export async function start(
     stopped ??= (async () => {
       removeRuntimeFile(config.home);
       await Promise.all([supervisor.stopAll(), host.close()]);
+      // Every line a Plugin Server said on its way out is in the log before
+      // stop resolves, because whoever stopped the Host may end the process next.
+      await log.drained();
+      log.flush();
     })();
     return stopped;
   };

@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that says the most on its way out, so that a test
+// can prove the log holds every line a Plugin Server wrote before the Host
+// stopped. It says FAREWELL_LINES lines once it is asked to end, by SIGTERM or
+// by the end of its stdin, and then ends.
+import { createInterface } from 'node:readline';
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const lines = Number(process.env.FAREWELL_LINES ?? '0');
+
+let leaving = false;
+const leave = () => {
+  if (leaving) return;
+  leaving = true;
+  for (let at = 1; at <= lines; at += 1) process.stderr.write(`farewell: line ${at}\n`);
+  process.stderr.write('farewell: gone\n', () => process.exit(0));
+};
+process.on('SIGTERM', leave);
+
+const input = createInterface({ input: process.stdin });
+input.on('close', leave);
+input.on('line', (text) => {
+  if (text.trim() === '') return;
+  const message = JSON.parse(text);
+  if (message.method !== 'initialize') return;
+  reply({
+    jsonrpc: '2.0',
+    id: message.id,
+    result: {
+      protocolVersion: '2025-06-18',
+      capabilities: { tools: {} },
+      serverInfo: { name: 'farewell', version: '1.0.0' },
+    },
+  });
+  process.stderr.write('farewell: the Plugin Server is up\n');
+});

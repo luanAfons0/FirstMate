@@ -23,6 +23,30 @@ test("a Plugin Server's stderr is in the log, and logs prints it", async (t) => 
   assert.match(printed.stdout, /FirstMate: the Plugin Server of server-only is running\./);
 });
 
+test(
+  'every line a Plugin Server wrote before the Host stopped is in the log',
+  {
+    skip:
+      process.platform === 'win32' &&
+      'Windows has no signal that asks the Host to end: a test can only kill it at once',
+  },
+  async (t) => {
+    const lines = 2_000;
+    const host = await bootHost(t, [{ name: 'farewell', directory: 'farewell' }], {
+      FAREWELL_LINES: String(lines),
+    });
+    await until(host, /farewell: the Plugin Server is up/);
+
+    await host.stop();
+
+    const log = await readFile(join(host.home, 'firstmate.log'), 'utf8');
+    for (let at = 1; at <= lines; at += 1) {
+      assert.ok(log.includes(`farewell: line ${at}\n`), `line ${at} is in the log`);
+    }
+    assert.match(log, /farewell: gone\n/);
+  },
+);
+
 test('the token never reaches the log', async (t) => {
   const host = await bootHost(t, [{ name: 'server-only', directory: 'server-only' }]);
   await until(host, /the Plugin Server of server-only is running/);
