@@ -33,6 +33,7 @@ Run every command from the repository root.
 | `pnpm build`                         | Bundle `apps/cli` into `apps/cli/dist/`. Packing does this; you do not. |
 | `pnpm --filter @firstmate/desktop package` | Build the App, and its installer, into `apps/desktop/dist/`. Windows or Linux. |
 | `apps\desktop\dist\win-unpacked\FirstMate.exe` | Run the packaged App without installing it. Set `FIRSTMATE_HOME` first. |
+| `apps/desktop/dist/linux-unpacked/firstmate` | The same on Linux. Set `FIRSTMATE_HOME` first. |
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows, Linux or WSL. |
@@ -193,6 +194,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
   src/install-app.ts firstmate desktop: download the App of this version from
                    its GitHub Release, check its SHA-256, install it, open it;
                    and whether it is installed and starts at logon.
+  src/app-logon.ts start at logon, as setup reaches it: the Run value on
+                   Windows and from WSL, the autostart entry on Linux.
   src/one-x.ts     bring a 1.x install across, as import and setup both do.
   tsdown.config.ts the bundle, which runs on the publish path alone.
 apps/desktop/       the App, @firstmate/desktop: one Electron program for
@@ -308,7 +311,9 @@ and drives it over HTTP, exactly as a browser does.
 - `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, and points a `wsl`
   Place's root at a folder of the test's own. `tests/helpers/windows.ts` fakes
   the Windows programs and a GitHub Release, for `firstmate desktop` and the
-  logon question of `setup`.
+  logon question of `setup`. `tests/helpers/linux.ts` is a Linux desktop of
+  the test's own, with a fake AppImage, and `tests/helpers/release.ts` is the
+  fake GitHub Release both of them serve.
 - The suite runs on Linux and on Windows, in CI. A test that only makes sense
   on one skips on the other and says why, as `wsl-place.test.ts` does.
 - A test name is a sentence about behaviour:
