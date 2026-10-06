@@ -10,6 +10,7 @@ The command line now asks with `@clack/prompts` on a terminal: a list to tick fo
 - The clack form is chosen only when both stdin and stdout are a TTY. Anywhere else the `node:readline` form asks, one answer per line, exactly as before: the same questions, the same numbered lists, the same refusals, and the same stop when the input ends early. A script that pipes answers into `setup` sees no change.
 - Both forms are one interface: text, confirm, choose and close. `setup` asks through it and does not know which form it has, except to frame itself on a terminal.
 - A refused answer is asked again with the sentence the plain command gives, in both forms. Ctrl-C stops at once in both, and keeps what finished.
+- The spinner `install` shows while it fetches, and the progress bar `desktop` shows while it downloads, follow the same rule: on a terminal alone, and off one the same lines as before. While the spinner turns, git is quiet and its words are held, then printed if the clone fails. Clack puts the terminal in raw mode to draw, and the wait takes it out again at once, so that Ctrl-C stops `git` or the installer with the command, which ends 130.
 - The Host takes no dependency. Clack is the command line's alone.
 
 ## Considered Options
