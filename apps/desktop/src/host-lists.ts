@@ -33,6 +33,16 @@ export type PluginSeen = {
 export type Plugins =
   { readonly kind: 'told'; readonly plugins: readonly PluginSeen[] } | { readonly kind: 'untold' };
 
+/**
+ * How many Plugins are Stopped, which the strip and the Tray both show. A
+ * Host that would not say names none.
+ */
+export function stoppedCount(plugins: Plugins | undefined): number {
+  return plugins?.kind === 'told'
+    ? plugins.plugins.filter((plugin) => plugin.state === 'stopped').length
+    : 0;
+}
+
 const STATES: ReadonlySet<string> = new Set(['running', 'stopped', 'no-plugin-server']);
 
 /** Every Plugin the Host names, in the Plugin Order, or the fact that it would not say. */

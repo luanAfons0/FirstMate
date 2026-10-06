@@ -19,7 +19,7 @@
 import { app, Menu, nativeImage, Tray, type MenuItemConstructorOptions } from 'electron';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { pluginPath } from './addresses.ts';
-import type { PluginSeen, Plugins } from './host-lists.ts';
+import { stoppedCount, type PluginSeen, type Plugins } from './host-lists.ts';
 import { readLogon, writeLogon } from './logon.ts';
 import { markPath } from './marks.ts';
 
@@ -144,12 +144,6 @@ function pluginItems(plugins: Plugins | undefined, needs: TrayNeeds): MenuItemCo
 
 function pluginLabel(plugin: PluginSeen): string {
   return plugin.state === 'running' ? plugin.name : `${plugin.name}: ${STATE_WORDS[plugin.state]}`;
-}
-
-function stoppedCount(plugins: Plugins | undefined): number {
-  return plugins?.kind === 'told'
-    ? plugins.plugins.filter((plugin) => plugin.state === 'stopped').length
-    : 0;
 }
 
 /** What the icon says when the pointer rests on it. */
