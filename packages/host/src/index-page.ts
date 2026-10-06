@@ -14,11 +14,12 @@
  * HTML and the script only hides rows, so the page still chooses a Plugin when
  * no script runs at all.
  *
- * The page says where a fetched Plugin lands and never sets it. Every Plugin
- * Page is served from this page's own origin, so a form here would be a form
- * a Plugin Page could send for itself, carrying a genuine cookie and a genuine
- * Origin the Host cannot tell from this page's own. The Shelf moves from the
- * terminal alone (ADR-0012).
+ * The page has no form and shows no Shelf. Every Plugin Page is served from
+ * this page's own origin, so a form here would be a form a Plugin Page could
+ * send for itself, carrying a genuine cookie and a genuine Origin the Host
+ * cannot tell from this page's own. It only says the words to type: the
+ * Registry and the Shelf change from the terminal and the Settings View
+ * (ADR-0012).
  */
 
 import { STATE_WORDS, type PluginView } from '@firstmate/core/plugin-state';
@@ -32,11 +33,7 @@ import { THEME_STYLE } from '@firstmate/core/theme';
 const FILTER_FROM = 7;
 
 /** The whole Index Page, as one HTML document. */
-export function indexPage(
-  plugins: readonly PluginView[],
-  registryPath: string,
-  shelf: string,
-): string {
+export function indexPage(plugins: readonly PluginView[], registryPath: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -49,11 +46,10 @@ ${styles()}
 </head>
 <body>
 <header>
-  <h1>FirstMate</h1>
+  <h1>Plugins</h1>
   ${plugins.length === 0 ? '' : `<p class="count">${countOf(plugins)}</p>`}
 </header>
 ${plugins.length === 0 ? emptyRegistry(registryPath) : list(plugins)}
-${shelfNote(shelf)}
 ${plugins.length < FILTER_FROM ? '' : script()}
 </body>
 </html>
@@ -63,8 +59,12 @@ ${plugins.length < FILTER_FROM ? '' : script()}
 /** How many Plugins there are, and how many of them answer right now. */
 function countOf(plugins: readonly PluginView[]): string {
   const running = plugins.filter((plugin) => plugin.state === 'running').length;
+  const stopped = plugins.filter((plugin) => plugin.state === 'stopped').length;
   const all = plugins.length === 1 ? '1 Plugin' : `${plugins.length} Plugins`;
-  return `${all} · ${running} Running`;
+  // The Stopped count has its own colour, so a broken Plugin shows before the
+  // list is read.
+  const broken = stopped === 0 ? '' : ` · <span class="stopped">${stopped} Stopped</span>`;
+  return `${all} · ${running} Running${broken}`;
 }
 
 function list(plugins: readonly PluginView[]): string {
@@ -85,17 +85,22 @@ function row(plugin: PluginView): string {
   const key = escapeHtml(plugin.name.toLowerCase());
   const dot = `<span class="dot ${plugin.state}" aria-hidden="true"></span>`;
   const state = `<span class="state ${plugin.state}">${STATE_WORDS[plugin.state]}</span>`;
+  const more =
+    plugin.state === 'stopped'
+      ? `<span class="more">Its Plugin Server stopped. Start it again with \
+<code>firstmate restart ${name}</code>.</span>`
+      : '';
 
   if (!plugin.hasPage) {
     // A Plugin with no Plugin Page has nowhere to go, so the row is not a link
     // and shows the bare name instead of a path that would 404.
     return `<li data-name="${key}"><span class="row">${dot}<span class="address">\
-<b>${name}</b></span><span class="note">no Plugin Page</span>${state}</span></li>`;
+<b>${name}</b></span><span class="note">no Plugin Page</span>${state}${more}</span></li>`;
   }
   // A Stopped Plugin still serves its Plugin Page, so it keeps its link.
   const href = `/p/${encodeURIComponent(plugin.name)}/`;
   return `<li data-name="${key}"><a class="row" href="${href}">${dot}<span class="address">\
-<i>/p/</i><b>${name}</b><i>/</i></span>${state}</a></li>`;
+<i>/p/</i><b>${name}</b><i>/</i></span>${state}${more}</a></li>`;
 }
 
 function filterBox(): string {
@@ -107,22 +112,13 @@ function filterBox(): string {
 }
 
 function emptyRegistry(registryPath: string): string {
-  return `<p>No Plugins are registered. The Registry is at <code>${escapeHtml(
-    registryPath,
-  )}</code>.</p>
-<p>Add one with <code>node apps/cli/src/cli.ts add &lt;name&gt; &lt;dir&gt;</code>.</p>`;
-}
-
-/**
- * Where a fetched Plugin lands, and the command that moves it. It is shown
- * whatever the Registry holds, because the answer to "where would a Plugin
- * land" does not depend on whether one has landed yet.
- */
-function shelfNote(shelf: string): string {
-  return `<footer>
-<p>A fetched Plugin lands in <code>${escapeHtml(shelf)}</code>. Move it with
-<code>node apps/cli/src/cli.ts shelf &lt;dir&gt;</code>.</p>
-</footer>`;
+  return `<div class="start">
+<h2>No Plugins are registered</h2>
+<p>Install an Official Plugin, or register a directory of your own, from a terminal:</p>
+<p class="cmd"><code>firstmate install research</code></p>
+<p class="cmd"><code>firstmate add &lt;name&gt; &lt;dir&gt;</code></p>
+<p class="where">The Registry is at <code>${escapeHtml(registryPath)}</code>.</p>
+</div>`;
 }
 
 function styles(): string {
@@ -190,9 +186,16 @@ kbd {
 .empty { font-size: .875rem; }
 code { font-family: var(--mono); font-size: .8125em; }
 
-/* The quietest thing on the page: an answer for whoever goes looking. */
-footer { margin: 2.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); }
-footer p { margin: 0; font-size: .8125rem; color: var(--faint); }
+.count .stopped { color: var(--stopped); }
+.row { flex-wrap: wrap; }
+.more { flex-basis: 100%; padding-left: 1.5rem; font-size: .8125rem; color: var(--muted); }
+.start h2 { margin: 0 0 .5rem; font-size: 1rem; color: var(--ink); }
+.cmd { margin: .4rem 0 0; }
+.cmd code {
+  display: block; padding: .5rem .75rem; font-size: .875rem; color: var(--ink);
+  background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-control);
+}
+.where { margin-top: 1rem; font-size: .8125rem; color: var(--faint); }
 @media (max-width: 30rem) {
   body { padding-top: 2rem; }
   .row { gap: .6rem; padding-inline: .5rem; margin-inline: -.5rem; }
