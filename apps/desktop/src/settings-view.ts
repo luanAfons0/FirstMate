@@ -1,27 +1,30 @@
 /**
- * The Settings View, as one HTML document: the Places with their Shelves,
- * start at logon, and the Shortcuts.
+ * The Settings View: the Places with their Shelves, start at logon, and the
+ * Shortcuts.
  *
- * It is one of the App's own pages (`pages.ts`): written here, loaded as a
- * data address, never served by the Host, so no Plugin Page can reach it
- * (ADR-0008). What the operator types goes to the main process as one ask,
+ * It is one of the App's own pages (`pages.ts`): written here, loaded once as
+ * a data address and then sent each new body, never served by the Host, so no
+ * Plugin Page can reach it (ADR-0008). A change elsewhere on the page keeps
+ * what the operator typed in a field; a form whose change was done is emptied
+ * back to what it now says, and one that was refused keeps the typed text, so
+ * the operator can correct it. What the operator types goes to the main process as one ask,
  * every part encoded, and the main process changes it through `core`
  * (`settings.ts`). The page checks nothing itself: `core` refuses what is
  * wrong, in the sentence a terminal would see, and the page shows it.
  */
 import { logonAsk, placeRemoveAsk, shelfChooseAsk, TYPED } from './ask.ts';
-import { escaped, page } from './pages.ts';
+import { escaped, written, type Written } from './pages.ts';
 import type { PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
 
-/** The Settings View, as one HTML document. */
-export function settingsPage(shown: SettingsShown): string {
+/** The Settings View. */
+export function settingsPage(shown: SettingsShown): Written {
   const body =
     shown.saved.kind === 'unread'
       ? `<p class="refused">${escaped(shown.saved.why)}</p>`
       : `${placesSection(shown.saved.places, shown.busy)}
 ${logonSection(shown.logon, shown.busy)}
 ${shortcutsSection(shown.saved.shortcuts)}`;
-  return page(
+  return written(
     'Settings',
     styles(),
     `<main${shown.busy ? ' aria-busy="true"' : ''}>
@@ -83,7 +86,7 @@ Choose…</button>`;
       ? `<span class="hint">Holds ${escaped(place.plugins.join(', '))}.</span>`
       : `<button type="button" class="quiet" data-ask="${escaped(placeRemoveAsk(place.name))}"\
 ${disabled(busy)}>Remove</button>`;
-  return `<div class="place">
+  return `<div class="place" data-key="${name}">
 <div class="head"><b>${name}</b> <span class="kind">${what}</span><span class="gap"></span>${remove}</div>
 <form class="shelf" data-typed="${TYPED.shelf}" data-place="${name}">
 <label>Shelf <input name="directory" value="${escaped(place.shelf)}" required
@@ -128,16 +131,29 @@ function disabled(busy: boolean): string {
 /**
  * Each form sends one ask: its first words, then every field it has, in
  * order, each encoded. A field left empty, such as the distribution of a
- * local Place, is left out.
+ * local Place, is left out. The form is kept until the page has shown its
+ * change worked on and then ended, and it is emptied only when it was done.
  */
 function script(): string {
-  return `const kind = document.querySelector('form.add select[name=kind]');
-const wsl = document.querySelector('form.add .for-wsl');
-const show = () => { if (wsl) wsl.hidden = kind.value !== 'wsl'; };
-if (kind) { kind.addEventListener('change', show); show(); }
+  return `let asking;
+whenShown(() => {
+  if (asking === undefined) return;
+  if (document.querySelector('main[aria-busy]')) { asking.seen = true; return; }
+  if (!asking.seen) return;
+  if (document.querySelector('.outcome.done')) asking.form.reset();
+  asking = undefined;
+});
+const show = () => {
+  const kind = document.querySelector('form.add select[name=kind]');
+  const wsl = document.querySelector('form.add .for-wsl');
+  if (kind && wsl) wsl.hidden = kind.value !== 'wsl';
+};
+whenShown(show);
+addEventListener('change', show);
 addEventListener('submit', (event) => {
   event.preventDefault();
   const form = event.target;
+  asking = { form, seen: false };
   const parts = [form.dataset.typed];
   if (form.dataset.place !== undefined) parts.push(form.dataset.place);
   for (const field of form.querySelectorAll('input, select')) {
