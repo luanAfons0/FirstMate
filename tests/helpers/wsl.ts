@@ -25,7 +25,7 @@ export type Wsl = {
   readonly root: string;
   /** The distribution user's home directory, inside the distribution. */
   readonly home: string;
-  /** The environment that puts the fake first on PATH. */
+  /** The environment that puts the fake first on PATH, and lets a wsl Place be added off Windows. */
   readonly env: Readonly<Record<string, string>>;
   /** Every call the fake took, one line each, in order. */
   calls(): Promise<readonly string[]>;
@@ -89,7 +89,7 @@ exit 0
   return {
     root,
     home,
-    env: { PATH: `${bin}${delimiter}${process.env['PATH'] ?? ''}` },
+    env: { FIRSTMATE_FAKE_WSL: '1', PATH: `${bin}${delimiter}${process.env['PATH'] ?? ''}` },
     calls: async () => {
       const text = await readFile(log, 'utf8').catch(() => '');
       return text.split('\n').filter((line) => line !== '');

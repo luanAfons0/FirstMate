@@ -217,7 +217,7 @@ firstmate place add <name> <kind>     # add a Place
 firstmate place remove <name>         # take an empty Place away
 ```
 
-A `local` Place runs its Plugin Servers on this machine. A `wsl` Place is one
+A `local` Place runs its Plugin Servers on this machine. A `wsl` Place, which only Windows can hold and any other system refuses, is one
 WSL distribution, and its Plugins keep their `mcp` file as it is:
 
 ```sh

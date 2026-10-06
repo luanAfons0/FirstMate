@@ -21,6 +21,18 @@ export const DEFAULT_PLACE = process.platform === 'win32' ? 'windows' : 'local';
 /** Every kind of Place. */
 export const PLACE_KINDS = ['local', 'wsl'] as const;
 
+/** The variable that lets a test add a `wsl` Place off Windows, with a fake `wsl.exe`. */
+const FAKE_WSL_VARIABLE = 'FIRSTMATE_FAKE_WSL';
+
+/**
+ * Whether this machine can hold a `wsl` Place: Windows, which is where
+ * `wsl.exe` runs a distribution as a Place. Off Windows only a test says yes,
+ * with a fake `wsl.exe` it put on `PATH` itself.
+ */
+export function canHoldWslPlace(env: NodeJS.ProcessEnv = process.env): boolean {
+  return process.platform === 'win32' || env[FAKE_WSL_VARIABLE] === '1';
+}
+
 /** One kind of Place. */
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 

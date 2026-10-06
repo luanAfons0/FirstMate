@@ -213,3 +213,21 @@ test('a Plugin in another local Place runs, and a move of Place restarts it', as
   const starts = host.output().match(/server-only: the Plugin Server is up/g) ?? [];
   assert.equal(starts.length, 2, 'it is another Plugin under an old name');
 });
+
+test(
+  'a wsl Place is refused off Windows, with one sentence',
+  { skip: process.platform === 'win32' && 'Windows is where a wsl Place is offered' },
+  async (t) => {
+    const home = await makeHome(t);
+
+    const refused = await firstmate(home, ['place', 'add', 'deb', 'wsl', 'Debian']);
+
+    assert.equal(refused.code, 3);
+    assert.equal(
+      refused.stderr,
+      'firstmate: a wsl Place runs on Windows only, and this machine is not Windows.\n',
+    );
+    const settings = await readFile(join(home, 'settings.json'), 'utf8').catch(() => '{}');
+    assert.equal(JSON.parse(settings).places, undefined, 'nothing is written');
+  },
+);

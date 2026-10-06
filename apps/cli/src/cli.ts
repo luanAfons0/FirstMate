@@ -283,7 +283,7 @@ function usageLine(command: Command): string {
 const PLACES_HELP = `A Place is where Plugins are installed and their Plugin Servers run. The
 default Place is this machine, and it is always there. add, install and shelf
 act in it unless --place names another. Each Place has its own Shelf. A local
-Place runs its Plugin Servers on this machine. A wsl Place is one WSL
+Place runs its Plugin Servers on this machine. A wsl Place (Windows only) is one WSL
 distribution: add it with place add <name> wsl <distribution>, and give the
 Windows path its files are read through when that is not
 \\\\wsl.localhost\\<distribution>. Its paths are the distribution's own. A Place
