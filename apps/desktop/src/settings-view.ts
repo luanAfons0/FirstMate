@@ -8,12 +8,12 @@
  * Plugin Page can reach it (ADR-0008). A change elsewhere on the page keeps
  * what the operator typed in a field; a form whose change was done is emptied
  * back to what it now says, and one that was refused keeps the typed text, so
- * the operator can correct it. What the operator types goes to the main process as one ask,
- * every part encoded, and the main process changes it through `core`
- * (`settings.ts`). The page checks nothing itself: `core` refuses what is
- * wrong, in the sentence a terminal would see, and the page shows it in the
- * outcome line, which stays in view while the page scrolls, and under the
- * field the refusal is about.
+ * the operator can correct it. What the operator types goes to the main
+ * process as one ask, every part encoded, and the main process changes it
+ * through `core` (`settings.ts`). The page checks nothing itself: `core`
+ * refuses what is wrong, in the sentence a terminal would see, and the page
+ * shows it in the outcome line, which stays in view while the page scrolls,
+ * and under the field the refusal is about.
  *
  * Add a Place opens and closes in place, with no modal, and only where a
  * `wsl` Place can be (ADR-0021): elsewhere the one Place is this machine.
