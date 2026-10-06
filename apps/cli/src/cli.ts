@@ -467,7 +467,7 @@ function setUp(argv: readonly string[]): Promise<number> | number {
 }
 
 /**
- * Install the App of this command line's version, and open it (ADR-0022).
+ * Install the App of this command line's version, and open it (ADR-0023).
  *
  * It is imported here rather than at the top of this file, so that no other
  * command loads what only this one needs. The 1.x window, `desktop.ts`, is no

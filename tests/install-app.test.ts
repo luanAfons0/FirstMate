@@ -4,7 +4,7 @@
  * It downloads the installer and its checksum from the GitHub Release of its
  * version, refuses an installer that does not match, runs the one that does
  * silently, and opens the App; an App of that version, or a newer one, is only
- * opened (ADR-0022). Every test runs against a fake Release and a fake
+ * opened (ADR-0023). Every test runs against a fake Release and a fake
  * Windows, `tests/helpers/windows.ts`: WSL on Linux, and Windows itself on
  * Windows.
  */

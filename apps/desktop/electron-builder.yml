@@ -27,7 +27,7 @@ nsis:
   oneClick: true
   perMachine: false
   # The name `firstmate desktop` downloads the installer by, beside the
-  # checksum the release workflow writes for it (ADR-0022).
+  # checksum the release workflow writes for it (ADR-0023).
   artifactName: FirstMate-Setup-${version}.${ext}
   # The name of the App's registry keys, where the installer records its
   # version and its folder for Windows, and where `firstmate desktop` reads
@@ -37,7 +37,7 @@ nsis:
 # Where a release is published, so that packaging writes the update feed,
 # latest.yml, and the App learns where to look for an update. Packaging
 # publishes nothing itself: the release workflow attaches the files to the
-# GitHub Release of the tag (ADR-0022).
+# GitHub Release of the tag (ADR-0023).
 publish:
   provider: github
   owner: luanAfons0
@@ -45,5 +45,5 @@ publish:
 # Every version writes latest.yml, a beta too. Left to guess, a beta would
 # write beta.yml alone. An App finds its channel from its own version: a
 # stable App follows the latest stable Release, and a beta follows the newest
-# Release of either kind (ADR-0022).
+# Release of either kind (ADR-0023).
 detectUpdateChannel: false

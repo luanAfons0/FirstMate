@@ -88,7 +88,7 @@ test('the package carries core and host inside the bundle', async () => {
 test('no part of the package loads the 1.x window', async () => {
   const code = await builtCode();
 
-  // firstmate desktop installs the App now (ADR-0022), and nothing reaches the
+  // firstmate desktop installs the App now (ADR-0023), and nothing reaches the
   // 1.x window. Its library stays a dependency until #145 takes both out.
   for (const [path, text] of code) {
     assert.ok(!text.includes('@webviewjs/webview'), `${path} loads the window library`);
@@ -108,7 +108,7 @@ test('the command line reads its own version beside the bundle', async () => {
 
 test('every package in the workspace carries one version', async () => {
   // One tag releases all of it, the App with the command line, so a bug report
-  // can name one number (ADR-0022). A package added later is counted too.
+  // can name one number (ADR-0023). A package added later is counted too.
   const versions: Record<string, string | undefined> = {};
   const packages = await Promise.all(
     ['apps', 'packages'].map(async (group) =>

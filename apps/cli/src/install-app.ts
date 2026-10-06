@@ -4,7 +4,7 @@
  *
  * One tag releases the command line and the App with one version, so the App
  * this installs is the one that speaks this command line's protocol
- * (ADR-0022). It downloads the installer when it is asked to, never when the
+ * (ADR-0023). It downloads the installer when it is asked to, never when the
  * package is installed, from the GitHub Release of its own version. An
  * installer whose SHA-256 is not the one published beside it is refused
  * before it is written anywhere, so nothing runs. The installer is the
