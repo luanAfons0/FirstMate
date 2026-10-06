@@ -94,7 +94,10 @@ knip and every test.
 - **No runtime dependency.** The Host speaks MCP over stdio with about 140
   lines of its own JSON-RPC (`packages/host/src/mcp.ts`) rather than take a
   dependency. Keep it that way. The npm package is the command line alone, one
-  bundled file that depends on nothing (ADR-0024). `install` runs the `git`
+  bundled file that depends on nothing (ADR-0024). That bundle carries
+  `@clack/prompts`, a devDependency of `apps/cli` and nothing else, for the
+  questions asked on a terminal; the Host still takes no dependency
+  (ADR-0025). `install` runs the `git`
   binary to clone a Plugin, and a `wsl` Place runs `wsl.exe`: external tools
   the command line assumes, not package dependencies.
 - **Electron 44**, in `apps/desktop`, for the App: its main process holds the
@@ -175,7 +178,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
                    Registry: add, remove, list, grant, revoke.
   src/setup.ts     firstmate setup: the conversation, and nothing else. Each
                    step calls commands.ts.
-  src/prompt.ts    ask for text, yes or no, or numbers, over node:readline.
+  src/prompt.ts    ask for text, yes or no, or from a list: with clack on a
+                   terminal, over node:readline from a pipe (ADR-0025).
   src/running-host.ts the running Host, as the terminal reaches it: over
                    loopback, with the token from the runtime file.
   src/install-app.ts firstmate desktop: download the App of this version from

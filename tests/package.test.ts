@@ -77,6 +77,11 @@ test('the package carries core inside the bundle, and depends on nothing', async
   // Neither is published, so an import of either would fail on every install.
   for (const [path, text] of code) {
     assert.ok(!text.includes('@firstmate/'), `${path} imports a workspace package`);
+    // The prompt library is a devDependency, and the bundle carries it
+    // (ADR-0025): what the bundle imports is Node's own, or the bundle's own.
+    for (const [, named] of text.matchAll(/(?:from|import\()\s*["']([^"']+)["']/g)) {
+      assert.match(named ?? '', /^(node:|\.\/)/, `${path} imports ${named}`);
+    }
   }
   const manifest = JSON.parse(await readFile(join(PACKAGE, 'package.json'), 'utf8')) as {
     dependencies?: Readonly<Record<string, string>>;

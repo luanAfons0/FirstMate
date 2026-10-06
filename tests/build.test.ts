@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bootHost, build, builtFirstmate, fixture } from './helpers/host.ts';
+import { bootHost, build, builtFirstmate, fixture, makeHome } from './helpers/host.ts';
 
 test('the built command line writes the Registry and reaches the running Host', async (t) => {
   const firstmate = builtFirstmate(await build(t));
@@ -38,4 +38,18 @@ test('the built command line explains itself, and names no start or service', as
   assert.equal(help.code, 0, help.stderr);
   assert.match(help.stdout, /^ {2}desktop {2,}\S/m);
   assert.doesNotMatch(help.stdout, /^ {2}(start|service) /m);
+});
+
+test('the built command line asks setup its questions from piped answers', async (t) => {
+  const firstmate = builtFirstmate(await build(t));
+  const home = await makeHome(t);
+
+  // The bundle carries the prompt library (ADR-0025), and a pipe still gets
+  // the plain questions. Enter keeps the Shelf, and Enter installs nothing.
+  // On Windows setup also asks for WSL distributions, and Enter adds none.
+  const run = await firstmate(home, ['setup'], {}, '\n\n\n');
+
+  assert.equal(run.code, 0, run.stderr);
+  assert.match(run.stdout, /the Shelf\)\? \[/);
+  assert.match(run.stdout, /Which should be installed\? Type their numbers/);
 });
