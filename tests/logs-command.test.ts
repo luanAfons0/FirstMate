@@ -24,7 +24,7 @@ test("a Plugin Server's stderr is in the log, and logs prints it", async (t) => 
 });
 
 test(
-  'every line a Plugin Server wrote before the Host stopped is in the log',
+  'every line a Plugin Server wrote before the Host stopped is in the log, once',
   {
     skip:
       process.platform === 'win32' &&
@@ -41,8 +41,10 @@ test(
 
     const log = await readFile(join(host.home, 'firstmate.log'), 'utf8');
     for (let at = 1; at <= lines; at += 1) {
-      assert.ok(log.includes(`farewell: line ${at}\n`), `line ${at} is in the log`);
+      const times = log.split(`farewell: line ${at}\n`).length - 1;
+      assert.equal(times, 1, `line ${at} is in the log once`);
     }
+    assert.ok(!log.includes('\0'), 'and the log has no gap in it');
     assert.match(log, /farewell: gone\n/);
   },
 );
