@@ -17,68 +17,84 @@
  * the Index Page ships no assets of its own.
  */
 
-/** The colours of the dark theme, which is the default. */
-const DARK = `  --chrome: #121315;
-  --bg: #17181a;
-  --raised: #1d1f23;
-  --hover: #24262a;
-  --press: #2b2e33;
-  --line: #26282d;
-  --line-2: #34363b;
-  --ink: #eceef1;
-  --text: #d6d8dc;
-  --muted: #9a9ea6;
-  --faint: #80858e;
-  --accent: #7aa2f7;
-  --accent-ink: #0d1424;
-  --accent-soft: rgba(122, 162, 247, .14);
-  --running: #4ecb96;
-  --running-soft: rgba(78, 203, 150, .12);
-  --stopped: #ff6f61;
-  --stopped-soft: rgba(255, 111, 97, .12);
-  --brand: #3fae55;
-  --shadow-panel: 0 14px 34px -10px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .35);
-  --shadow-window: 0 30px 70px -20px rgba(0, 0, 0, .75), 0 0 0 1px rgba(255, 255, 255, .06);`;
+/** The colours of the dark theme, which is the default, by token name. */
+const DARK = {
+  chrome: '#121315',
+  bg: '#17181a',
+  raised: '#1d1f23',
+  hover: '#24262a',
+  press: '#2b2e33',
+  line: '#26282d',
+  'line-2': '#34363b',
+  ink: '#eceef1',
+  text: '#d6d8dc',
+  muted: '#9a9ea6',
+  faint: '#80858e',
+  accent: '#7aa2f7',
+  'accent-ink': '#0d1424',
+  'accent-soft': 'rgba(122, 162, 247, .14)',
+  running: '#4ecb96',
+  'running-soft': 'rgba(78, 203, 150, .12)',
+  stopped: '#ff6f61',
+  'stopped-soft': 'rgba(255, 111, 97, .12)',
+  brand: '#3fae55',
+  'shadow-panel': '0 14px 34px -10px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .35)',
+  'shadow-window': '0 30px 70px -20px rgba(0, 0, 0, .75), 0 0 0 1px rgba(255, 255, 255, .06)',
+} as const;
 
 /** The same names, in the colours of the light theme. */
-const LIGHT = `    --chrome: #eceef1;
-    --bg: #f8f8f7;
-    --raised: #ffffff;
-    --hover: #e8eaed;
-    --press: #dfe2e6;
-    --line: #e1e3e6;
-    --line-2: #cfd3d8;
-    --ink: #111318;
-    --text: #22252b;
-    --muted: #5a606a;
-    --faint: #676d77;
-    --accent: #2f6feb;
-    --accent-ink: #ffffff;
-    --accent-soft: rgba(47, 111, 235, .1);
-    --running: #157f57;
-    --running-soft: rgba(21, 127, 87, .08);
-    --stopped: #b3261e;
-    --stopped-soft: rgba(179, 38, 30, .08);
-    --brand: #2e9e44;
-    --shadow-panel: 0 14px 34px -12px rgba(30, 40, 60, .28), 0 2px 6px rgba(30, 40, 60, .1);
-    --shadow-window: 0 30px 70px -24px rgba(30, 40, 60, .45), 0 0 0 1px rgba(17, 19, 24, .08);`;
+const LIGHT: Readonly<Record<keyof typeof DARK, string>> = {
+  chrome: '#eceef1',
+  bg: '#f8f8f7',
+  raised: '#ffffff',
+  hover: '#e8eaed',
+  press: '#dfe2e6',
+  line: '#e1e3e6',
+  'line-2': '#cfd3d8',
+  ink: '#111318',
+  text: '#22252b',
+  muted: '#5a606a',
+  faint: '#676d77',
+  accent: '#2f6feb',
+  'accent-ink': '#ffffff',
+  'accent-soft': 'rgba(47, 111, 235, .1)',
+  running: '#157f57',
+  'running-soft': 'rgba(21, 127, 87, .08)',
+  stopped: '#b3261e',
+  'stopped-soft': 'rgba(179, 38, 30, .08)',
+  brand: '#2e9e44',
+  'shadow-panel': '0 14px 34px -12px rgba(30, 40, 60, .28), 0 2px 6px rgba(30, 40, 60, .1)',
+  'shadow-window': '0 30px 70px -24px rgba(30, 40, 60, .45), 0 0 0 1px rgba(17, 19, 24, .08)',
+};
+
+/** The colours of one theme as CSS custom properties, each on its own line. */
+function tokens(colours: Readonly<Record<string, string>>, indent: string): string {
+  return Object.entries(colours)
+    .map(([name, value]) => `${indent}--${name}: ${value};`)
+    .join('\n');
+}
 
 /**
- * The colour of a window's own background, dark and light, as the tokens say
- * `--bg`. A window the App makes paints it before its page loads, so no
- * white flash shows, and it follows the system theme.
+ * The colour of a window's own background, as the tokens say `--bg`. A
+ * window the App makes paints it before its page loads, so no white flash
+ * shows, and it follows the system theme.
  */
-export const WINDOW_BACKGROUND = { dark: '#17181a', light: '#f8f8f7' } as const;
+export function windowBackground(dark: boolean): string {
+  return (dark ? DARK : LIGHT).bg;
+}
 
 /**
- * The colours of the window's own buttons, dark and light: their ground is
- * the strip's, as the tokens say `--chrome`, and their symbols are `--muted`.
- * The system draws those buttons over the strip, so they take its colours.
+ * The colours of the window's own buttons: their ground is the strip's, as
+ * the tokens say `--chrome`, and their symbols are `--muted`. The system
+ * draws those buttons over the strip, so they take its colours.
  */
-export const TITLE_BAR = {
-  dark: { color: '#121315', symbolColor: '#9a9ea6' },
-  light: { color: '#eceef1', symbolColor: '#5a606a' },
-} as const;
+export function titleBarColours(dark: boolean): {
+  readonly color: string;
+  readonly symbolColor: string;
+} {
+  const colours = dark ? DARK : LIGHT;
+  return { color: colours.chrome, symbolColor: colours.muted };
+}
 
 /**
  * The style every page starts with: the tokens, the radii, the faces, the
@@ -87,7 +103,7 @@ export const TITLE_BAR = {
  */
 export const THEME_STYLE = `:root {
   color-scheme: light dark;
-${DARK}
+${tokens(DARK, '  ')}
   --radius-control: 6px;
   --radius-panel: 8px;
   --radius-window: 10px;
@@ -97,7 +113,7 @@ ${DARK}
 }
 @media (prefers-color-scheme: light) {
   :root {
-${LIGHT}
+${tokens(LIGHT, '    ')}
   }
 }
 /* Shape as well as colour, so the state never rests on colour alone: Running
