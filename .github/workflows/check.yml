@@ -7,6 +7,10 @@
 # Plugin Server starts from `mcp` on one and from `mcp.cmd` or `mcp.exe` on
 # the other (ADR-0019). Each runner is its own required check, by name, in the
 # repository's ruleset "main stays green".
+#
+# On Windows the tests also package the App, installer and all, and start the
+# packaged program (ADR-0020). The test does that itself, as the build test
+# builds the bundle, so this file names no step for it.
 name: Check
 
 on:

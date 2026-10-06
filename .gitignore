@@ -1,7 +1,9 @@
 node_modules/
 
 # Built output. Only packing makes it, and a clone never holds it (ADR-0017).
+# The App's build writes out/, and its installer lands in dist/ (ADR-0020).
 dist/
+/apps/desktop/out/
 
 # Packing copies these two in from the root, because npm shows the README of
 # the package directory. The root's are the only ones.

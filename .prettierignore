@@ -3,4 +3,5 @@
 *.md
 
 dist/
+out/
 pnpm-lock.yaml

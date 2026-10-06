@@ -1,5 +1,7 @@
 # The host runs in WSL Debian under systemd
 
+Superseded by [ADR-0020](0020-the-host-runs-inside-an-electron-app-on-windows.md): the Host runs inside the App on Windows, and a Plugin in WSL is reached through a Place.
+
 The Host runs as a systemd service inside WSL Debian, with a Windows Task Scheduler entry at logon that starts WSL and holds the distribution up. WSL2 stops a distribution when its last process exits, so without that entry the Host would be awake only by accident; running natively on Windows instead would orphan the shell, the tools and the MCP servers that already live in Debian.
 
 ## Consequences

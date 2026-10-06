@@ -1,5 +1,7 @@
 # The window is the project's one dependency
 
+Superseded by [ADR-0020](0020-the-host-runs-inside-an-electron-app-on-windows.md): the App is Electron, and the webview library leaves with the 1.x window.
+
 FirstMate has a window of its own, drawn by `@webviewjs/webview`, and that library is the first and only dependency this project has ever taken. Until now the Tray handed an address to the default browser, and a Plugin Page lived as a tab among thirty others with no way back to the Plugin list; a window FirstMate owns is the part that was missing, and nothing in plain Node can draw one. The window runs on Windows, where the desktop is, and reaches the Host over loopback, which WSL already forwards (ADR-0007).
 
 The Host does not pay for it. The library is imported by `src/desktop.ts` alone, when the desktop subcommand runs and never when a module loads, so `start`, `add`, `remove`, `list`, `grant` and `revoke` all keep working on a machine where the native binary is missing or will not load for want of system libraries. `tests/desktop-command.test.ts` makes that machine on purpose and proves it.

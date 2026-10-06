@@ -31,6 +31,8 @@ Run every command from the repository root.
 | `pnpm knip`                          | Find unused files, exports and dependencies.    |
 | `pnpm check`                         | All of the above, then every test. CI runs it.  |
 | `pnpm build`                         | Bundle `apps/cli` into `apps/cli/dist/`. Packing does this; you do not. |
+| `pnpm --filter @firstmate/desktop package` | Build the App, and its installer, into `apps/desktop/dist/`. Windows only. |
+| `apps\desktop\dist\win-unpacked\FirstMate.exe` | Run the packaged App without installing it. Set `FIRSTMATE_HOME` first. |
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts start`              | The same Host, from the command line.           |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
@@ -89,6 +91,13 @@ knip and every test.
   where the native binary will not load (ADR-0011). `install` runs the `git`
   binary to clone a Plugin: an external tool the command line assumes, not a
   package dependency, and the Host still calls nothing outside Node.
+- **Electron 44**, in `apps/desktop`, for the App: its main process holds the
+  Host, and its executable, told `ELECTRON_RUN_AS_NODE=1`, is the Node every
+  Plugin Server gets as `FIRSTMATE_NODE`. Keep Electron's `RunAsNode` fuse on.
+  **electron-vite** builds it and **electron-builder** packages it as a
+  per-user NSIS installer, unsigned for the betas. All three are dev
+  dependencies of a private package, and the App's build is not on the npm
+  publish path (ADR-0020).
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
   removing the logon task, and for the three things the running Tray asks of
   it: the taskbar button (`apps/cli/src/taskbar.ts`), the
@@ -128,7 +137,9 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
                    a git URL, and run none of what lands.
 packages/host/src/  the Host. Every file is one job.
-  main.ts          start-up: read the Registry, mint the token, supervise, listen.
+  start.ts         start the Host: read the Registry, mint the token,
+                   supervise, listen; and stop it. The App calls it too.
+  main.ts          the Host as a process: start it, and stop it on a signal.
   host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
                    /notices.json, POST /reload, POST /restart/<name>,
                    /p/<name>/…, POST /p/<name>/rpc.
@@ -178,6 +189,13 @@ apps/cli/           the npm package, @luan-afonso/firstmate. In 1.x it carries
                    shim that starts one with no window. Packed with the
                    program, so an npm install can run it too.
   tsdown.config.ts the bundle, which runs on the publish path alone.
+apps/desktop/       the App, @firstmate/desktop: one Electron program for
+                    Windows. Private; its release is the installer (ADR-0020).
+  src/main.ts      the main process: start the Host, hold the one-App lock,
+                   show the Index Page in the window, stop the Host on Quit.
+  electron.vite.config.ts the build: the main process, with core and host in.
+  electron-builder.yml the package: FirstMate.exe and its per-user installer.
+  build/           what packaging reads: the mark, as icon.ico.
 tests/       one file per behaviour, plus fixtures/ and helpers/, for every
              package at once.
 docs/adr/    the decisions that are expensive to reverse.
@@ -251,6 +269,9 @@ and drives it over HTTP, exactly as a browser does.
   response bytes, and the files the Host writes into its home directory.
 - Tests run the source. `tests/build.test.ts` alone builds the bundle, with the
   helper's `build`, and boots it through the same helper with `built`.
+- `tests/app.test.ts` alone packages the App, with the helper's `packageApp`,
+  and starts the packaged program through the same helper with `app`. It runs
+  on Windows only, and takes about a minute. The App's window has no test.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
   `notifier`. Add a fixture rather than a mock. A fixture with an `mcp`
