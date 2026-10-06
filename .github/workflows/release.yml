@@ -1,5 +1,5 @@
 # Release a version from a tag: the App on a GitHub Release, and the command
-# line on npm, with the same number (ADR-0022).
+# line on npm, with the same number (ADR-0023).
 #
 # One tag does all of it, so the command line and the App never drift apart.
 # The tag and the version of every package in the workspace have to agree,

@@ -91,7 +91,7 @@ name.
    everything else the release carries. They share one version, and a test
    says so when they do not. A beta is `2.0.0-beta.1`: say `beta`, not
    `next`, because the App's updater reads any other word as a channel of its
-   own ([ADR-0022](docs/adr/0022-one-tag-releases-the-app-and-the-command-line.md)).
+   own ([ADR-0023](docs/adr/0023-one-tag-releases-the-app-and-the-command-line.md)).
 2. Tag it and push the tag:
 
    ```sh

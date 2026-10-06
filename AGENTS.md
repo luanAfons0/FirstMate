@@ -107,7 +107,7 @@ knip and every test.
   publish path (ADR-0020). One tag releases both: the installer on the GitHub
   Release, then the command line on npm, with one version. The installer's
   and its checksum's names are a contract `firstmate desktop` reads
-  (ADR-0022, `.github/workflows/release.yml`).
+  (ADR-0023, `.github/workflows/release.yml`).
 - **Windows PowerShell** (`powershell.exe`, not `pwsh`) for installing and
   removing the logon task, and for the three things the running Tray asks of
   it: the taskbar button (`apps/cli/src/taskbar.ts`), the
