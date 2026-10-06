@@ -1,15 +1,18 @@
 /**
- * The settings file: the four settings the Host remembers.
+ * The settings file: the settings FirstMate remembers.
  *
  * The Host stores a Registry and nothing else, and it keeps no run history, no
- * logs and no settings store of its own. Four settings are the exception: the
+ * logs and no settings store of its own. Five settings are the exception: the
  * Shelf, because nothing can fetch a Plugin without somewhere to put it
  * (ADR-0012), the Places, because a Plugin has to run somewhere (ADR-0021),
  * the Shortcuts, because the Tray has to learn them from somewhere that
- * survives a restart (ADR-0013), and the Plugin Order, because the Registry is
+ * survives a restart (ADR-0013), the Plugin Order, because the Registry is
  * read only when the Host starts and a new order should not restart every
- * Plugin Server (ADR-0016). All four are written from a terminal and from
- * nowhere else.
+ * Plugin Server (ADR-0016), and the operator's answers when a Plugin Page asks
+ * for the microphone or a capture of the screen. The first four are written
+ * from a terminal and from nowhere else. The answers are written by the App's
+ * main process, after the operator answers its own dialog, and never by a
+ * page (ADR-0012).
  *
  * It is written the way the runtime file is written: whole, through a rename,
  * for this user alone. A settings file that is not there means nothing has
@@ -35,7 +38,23 @@ export type Settings = {
   readonly shortcuts?: readonly Shortcut[];
   /** The Plugin Order the operator chose, absent until one is chosen. */
   readonly order?: readonly string[];
+  /** What the operator answered each Plugin that asked for a device, by Plugin Name. */
+  readonly permissions?: Readonly<Record<string, PermissionAnswers>>;
 };
+
+/**
+ * What the operator answered one Plugin: true to allow, false to refuse, and
+ * absent until the Plugin first asks.
+ */
+export type PermissionAnswers = {
+  /** Whether its Plugin Page may use the microphone. */
+  readonly microphone?: boolean;
+  /** Whether its Plugin Page may capture the screen or a window, with their sound. */
+  readonly capture?: boolean;
+};
+
+/** The devices a Plugin Page may ask for. Every other permission is refused unasked. */
+const DEVICES: readonly (keyof PermissionAnswers)[] = ['microphone', 'capture'];
 
 function settingsPath(home: string): string {
   return join(home, SETTINGS_FILE);
@@ -89,12 +108,45 @@ function parseSettings(text: string, path: string): Settings {
   const places = record['places'];
   const shortcuts = record['shortcuts'];
   const order = record['order'];
+  const permissions = record['permissions'];
   return {
     ...(shelf === undefined ? {} : { shelf }),
     ...(places === undefined ? {} : { places: parsePlaces(places, path) }),
     ...(shortcuts === undefined ? {} : { shortcuts: parseShortcuts(shortcuts, path) }),
     ...(order === undefined ? {} : { order: parseOrder(order, path) }),
+    ...(permissions === undefined ? {} : { permissions: parsePermissions(permissions, path) }),
   };
+}
+
+/**
+ * The permission answers, checked. A damaged one fails every command, as a
+ * damaged Shortcut does: an answer read wrongly could let a Plugin Page reach
+ * a device the operator refused.
+ */
+function parsePermissions(value: unknown, path: string): Record<string, PermissionAnswers> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`The settings at ${path} need "permissions" to be a JSON object.`);
+  }
+  const answers: Record<string, PermissionAnswers> = {};
+  for (const [plugin, given] of Object.entries(value)) {
+    const where = `The permissions of ${JSON.stringify(plugin)} in the settings at ${path}`;
+    if (!isPluginName(plugin)) {
+      throw new Error(`${where} need to be kept under a Plugin Name.`);
+    }
+    if (typeof given !== 'object' || given === null || Array.isArray(given)) {
+      throw new Error(`${where} need to be a JSON object.`);
+    }
+    for (const [device, answer] of Object.entries(given)) {
+      if (!DEVICES.includes(device as keyof PermissionAnswers) || typeof answer !== 'boolean') {
+        throw new Error(
+          `${where} may hold only ${DEVICES.map((one) => `"${one}"`).join(' and ')}, each ` +
+            `true or false, and not ${JSON.stringify(device)}: ${JSON.stringify(answer)}.`,
+        );
+      }
+    }
+    answers[plugin] = given as PermissionAnswers;
+  }
+  return answers;
 }
 
 /**

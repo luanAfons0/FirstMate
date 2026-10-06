@@ -194,6 +194,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/notices.ts   Notices, as Windows notifications under the App's own ID.
   src/shortcuts.ts the Shortcuts, held with globalShortcut.
   src/popup.ts     the Popup a Shortcut opens.
+  src/permissions.ts what a Plugin Page may use: the microphone and a capture,
+                   asked once per Plugin, and nothing else.
   src/marks.ts     where the running and stopped marks are.
   resources/icons/ the marks, packed with the App.
   electron.vite.config.ts the build: the main process, with core and host
