@@ -329,10 +329,11 @@ It never removes anything. Answers can be piped in, one per line.`,
   },
   {
     about: ['desktop'],
-    text: `desktop downloads the App installer of its own version from the GitHub Release,
-checks its SHA-256, installs it for you alone with no administrator, and opens
-the App. When that version, or a newer one, is installed, it only opens it. It
-runs on Windows, and inside WSL, where it reaches Windows through interop.
+    text: `desktop downloads the App of its own version from the GitHub Release, checks
+its SHA-256, installs it for you alone with no administrator, and opens it.
+When that version, or a newer one, is installed, it only opens it. On Windows,
+and inside WSL, where it reaches Windows through interop, it runs the App
+installer. On Linux it puts the AppImage at ~/Applications/FirstMate.AppImage.
 FIRSTMATE_RELEASES_URL moves where it downloads from.`,
   },
   {
@@ -419,7 +420,7 @@ the log are. Default: ~/.firstmate, or %APPDATA%\\FirstMate on Windows.
 ${SHELF_VARIABLE} moves the Shelf of the default Place, for one run.
 Default: $FIRSTMATE_HOME/shelf, or the directory firstmate shelf moved it to.
 
-FIRSTMATE_RELEASES_URL moves where desktop downloads the App installer from.
+FIRSTMATE_RELEASES_URL moves where desktop downloads the App from.
 Default: https://github.com/luanAfons0/FirstMate/releases/download
 
 The Host reads FIRSTMATE_PORT and the FIRSTMATE_..._MS variables, and the

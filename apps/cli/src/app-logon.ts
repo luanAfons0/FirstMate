@@ -9,10 +9,8 @@
  * Anywhere else there is no App to start at logon.
  */
 import { statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { readAutostart, writeAutostart } from '@firstmate/core/logon';
-import { appHere, logonIsOn, turnLogonOn } from './install-app.ts';
+import { appHere, appImagePath, logonIsOn, turnLogonOn } from './install-app.ts';
 
 /** Start at logon of the App on this machine. */
 export type AppLogon = {
@@ -46,14 +44,9 @@ export async function appLogon(
   };
 }
 
-/** Where `firstmate desktop` puts the App on Linux: one AppImage in `~/Applications`. */
-function appImage(): string {
-  return join(homedir(), 'Applications', 'FirstMate.AppImage');
-}
-
 /** Start at logon on Linux: the autostart entry, which starts the AppImage. */
 function linuxLogon(env: NodeJS.ProcessEnv): AppLogon {
-  const program = appImage();
+  const program = appImagePath();
   return {
     installed: isFile(program),
     isOn: async () => readAutostart(env),

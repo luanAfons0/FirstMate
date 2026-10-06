@@ -3,8 +3,9 @@
  * `firstmate desktop`.
  *
  * No test reaches the real Windows or the real Release. FIRSTMATE_RELEASES_URL
- * points the command line at a server of the test's own, which holds a fake
- * installer and its checksum under the names a Release holds them by. The
+ * points the command line at a server of the test's own, `release.ts`, which
+ * holds a fake installer and its checksum under the names a Release holds
+ * them by. The
  * Windows programs the command line runs are fakes first on PATH, and nothing
  * else is on PATH, so a fake a test forgets finds no real program either. The
  * fakes play their parts in `windows-fake.ts`, and keep the registry in a
@@ -18,20 +19,15 @@
  * `electron-builder.yml`, which the real installer is built from, so the
  * command line is held to what packaging writes.
  */
-import { createServer } from 'node:http';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { AddressInfo } from 'node:net';
 import type { TestContext } from 'node:test';
 import { makeHome } from './host.ts';
+import { type Release, serveRelease } from './release.ts';
 import { FAKE, here, install, writeFake, type Machine } from './windows-fake.ts';
 
 const REPOSITORY = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-
-/** What the fake Release holds for the command line's version. */
-export type Release = 'good' | 'wrong checksum' | 'none';
 
 export type FakeWindows = {
   /** The environment the command line runs with on this machine. */
@@ -85,27 +81,7 @@ export async function fakeWindows(t: TestContext, release: Release = 'good'): Pr
   const made = join(root, 'made');
   await mkdir(made);
   writeFake(join(made, name));
-  const installer = await readFile(join(made, name));
-  const hash = createHash('sha256')
-    .update(release === 'wrong checksum' ? 'some other installer' : installer)
-    .digest('hex');
-  const files: Readonly<Record<string, Buffer>> =
-    release === 'none'
-      ? {}
-      : {
-          [`/v${version}/${name}`]: installer,
-          [`/v${version}/${name}.sha256`]: Buffer.from(`${hash}  ${name}\n`),
-        };
-
-  const asked: string[] = [];
-  const server = createServer((request, response) => {
-    asked.push(request.url ?? '');
-    const body = files[request.url ?? ''];
-    response.writeHead(body === undefined ? 404 : 200).end(body);
-  });
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
-  t.after(() => new Promise<void>((done) => server.close(() => done())));
-  const { port } = server.address() as AddressInfo;
+  const served = await serveRelease(t, release, version, name, await readFile(join(made, name)));
 
   const calls = async (): Promise<readonly string[]> => {
     const text = await readFile(join(root, 'calls.log'), 'utf8').catch(() => '');
@@ -114,7 +90,7 @@ export async function fakeWindows(t: TestContext, release: Release = 'good'): Pr
 
   return {
     env: {
-      FIRSTMATE_RELEASES_URL: `http://127.0.0.1:${port}`,
+      FIRSTMATE_RELEASES_URL: served.url,
       FAKE_WINDOWS: root,
       PATH: bin,
       ...(windows
@@ -127,7 +103,7 @@ export async function fakeWindows(t: TestContext, release: Release = 'good'): Pr
     },
     version,
     temp,
-    asked,
+    asked: served.asked,
     install: (installed) => install(root, machine, installed),
     calls,
     until: async (pattern) => {

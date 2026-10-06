@@ -33,15 +33,25 @@
  * From WSL, Windows is reached through interop: `cmd.exe` names the Windows
  * temp folder, `wslpath` turns a Windows path into one here, and the
  * installer, `reg.exe` and the App run as the Windows programs they are. On
- * Windows the same code runs with every path as it is. Anywhere else there is
- * no Windows to install the App on.
+ * Windows the same code runs with every path as it is.
+ *
+ * On Linux outside WSL the App is the AppImage, one file, put at
+ * `~/Applications/FirstMate.AppImage`, where `setup` and the logon entry look
+ * for it (ADR-0026). It is written beside itself and renamed into place, so a
+ * running App keeps the file it started from. Nothing records an AppImage's
+ * version, so this command writes it in `FirstMate.version` beside it. The
+ * App updates itself by replacing the AppImage, after that file was written:
+ * an AppImage newer than its version file has updated itself past the version
+ * it names, and is opened and not replaced. An AppImage with no version file
+ * was put there by hand, and this version replaces it. Anywhere else, on
+ * macOS, there is no App to install.
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { statSync } from 'node:fs';
-import { readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { AT_LOGON, LOGON_NAME, RUN_KEY } from '@firstmate/core/logon';
 import { refuse } from '@firstmate/core/refusal';
 import { startWait, whileWaiting } from './progress.ts';
@@ -67,6 +77,16 @@ const INSTALL_KEY = `HKCU\\Software\\${APP_GUID}`;
 
 /** The App's program, in its folder: the product name. */
 const APP_PROGRAM = 'FirstMate.exe';
+
+/** Where `firstmate desktop` puts the App on Linux: one AppImage in `~/Applications`. */
+export function appImagePath(): string {
+  return join(homedir(), 'Applications', 'FirstMate.AppImage');
+}
+
+/** The file beside the AppImage that says which version it is. */
+function versionFileOf(program: string): string {
+  return join(dirname(program), 'FirstMate.version');
+}
 
 /** A folder as Windows names it, and as this process reaches it. */
 type Folder = { readonly windows: string; readonly here: string };
@@ -125,35 +145,19 @@ export async function turnLogonOn(installed: Installed): Promise<void> {
  * It gives back the exit code, and throws a refusal with its kind.
  */
 export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  if (isLinuxDesktop(env)) return installAppImage(env);
   const windows = await reachWindows(env);
   const version = ownVersion();
 
   const installed = await installedApp(windows);
   if (installed !== undefined && compareVersions(installed.version, version) >= 0) {
     await open(installed.program);
-    console.log(
-      installed.version === version
-        ? `firstmate: opened FirstMate ${version}.`
-        : `firstmate: opened FirstMate ${installed.version}, which is newer than this command line, ${version}.`,
-    );
+    console.log(openedSentence(installed.version, version));
     return 0;
   }
 
   const name = `FirstMate-Setup-${version}.exe`;
-  const url = `${(env[RELEASES_VARIABLE] || RELEASES_URL).replace(/\/+$/, '')}/v${version}/${name}`;
-  const expected = await publishedChecksum(`${url}.sha256`, version);
-  console.log(`firstmate: downloading FirstMate ${version} from ${url}`);
-  const bytes = await download(url, version, `downloading FirstMate ${version}`);
-  const check = await startWait('checking the SHA-256');
-  if (createHash('sha256').update(bytes).digest('hex') !== expected) {
-    check.failed();
-    throw refuse(
-      'invalid',
-      `the installer from ${url} does not match its published SHA-256, so it was not run.`,
-    );
-  }
-  check.done('the SHA-256 matches');
-
+  const bytes = await fetchChecked(env, version, name, 'installer');
   const installer = join(windows.temp.here, name);
   await writeFile(installer, bytes, { mode: 0o755 });
   try {
@@ -175,16 +179,104 @@ export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<
   return 0;
 }
 
+/** Whether this is Linux outside WSL, where the App is the AppImage. */
+function isLinuxDesktop(env: NodeJS.ProcessEnv): boolean {
+  return process.platform === 'linux' && (env['WSL_DISTRO_NAME'] ?? '') === '';
+}
+
+/** What `desktop` says when the App was there already, of this version or a newer one. */
+function openedSentence(installed: string, version: string): string {
+  return installed === version
+    ? `firstmate: opened FirstMate ${version}.`
+    : `firstmate: opened FirstMate ${installed}, which is newer than this command line, ${version}.`;
+}
+
+/** Install the AppImage of this version unless it is there already, then open it. */
+async function installAppImage(env: NodeJS.ProcessEnv): Promise<number> {
+  const version = ownVersion();
+  const program = appImagePath();
+
+  const installed = await installedAppImage(program);
+  if (installed === 'updated itself') {
+    await open(program);
+    console.log(`firstmate: opened FirstMate, which has updated itself since it was installed.`);
+    return 0;
+  }
+  if (installed !== undefined && compareVersions(installed, version) >= 0) {
+    await open(program);
+    console.log(openedSentence(installed, version));
+    return 0;
+  }
+
+  const bytes = await fetchChecked(env, version, `FirstMate-${version}.AppImage`, 'AppImage');
+  await mkdir(dirname(program), { recursive: true });
+  const part = `${program}.${process.pid}.part`;
+  try {
+    await writeFile(part, bytes, { mode: 0o755 });
+    await rename(part, program);
+  } finally {
+    await rm(part, { force: true });
+  }
+  await writeFile(versionFileOf(program), `${version}\n`);
+  await open(program);
+  console.log(`firstmate: installed FirstMate ${version} at ${program}, and opened it.`);
+  return 0;
+}
+
+/**
+ * The version of the AppImage at this path, as its version file says it;
+ * `updated itself` when the AppImage changed after that file was written; or
+ * nothing when there is no AppImage, or no version file beside it.
+ */
+async function installedAppImage(program: string): Promise<string | 'updated itself' | undefined> {
+  const [app, record] = await Promise.all([
+    stat(program).catch(() => undefined),
+    stat(versionFileOf(program)).catch(() => undefined),
+  ]);
+  if (app === undefined || !app.isFile() || record === undefined) return undefined;
+  if (app.mtimeMs > record.mtimeMs) return 'updated itself';
+  const version = (await readFile(versionFileOf(program), 'utf8')).trim();
+  return version === '' ? undefined : version;
+}
+
+/**
+ * One file of the Release of this version, downloaded whole and checked
+ * against the SHA-256 published beside it. A file that does not match is
+ * refused here, before it is written anywhere, so nothing runs.
+ */
+async function fetchChecked(
+  env: NodeJS.ProcessEnv,
+  version: string,
+  name: string,
+  what: string,
+): Promise<Buffer> {
+  const url = `${(env[RELEASES_VARIABLE] || RELEASES_URL).replace(/\/+$/, '')}/v${version}/${name}`;
+  const expected = await publishedChecksum(`${url}.sha256`, version);
+  console.log(`firstmate: downloading FirstMate ${version} from ${url}`);
+  const bytes = await download(url, version, `downloading FirstMate ${version}`);
+  const check = await startWait('checking the SHA-256');
+  if (createHash('sha256').update(bytes).digest('hex') !== expected) {
+    check.failed();
+    throw refuse(
+      'invalid',
+      `the ${what} from ${url} does not match its published SHA-256, so it was not run.`,
+    );
+  }
+  check.done('the SHA-256 matches');
+  return bytes;
+}
+
 /** Windows, as this process reaches it, or a sentence saying there is none. */
 async function reachWindows(env: NodeJS.ProcessEnv): Promise<Windows> {
   if (process.platform === 'win32') {
     const temp = tmpdir();
     return { temp: { windows: temp, here: temp }, here: async (path) => path };
   }
-  if (process.platform !== 'linux' || (env['WSL_DISTRO_NAME'] ?? '') === '') {
-    throw new Error(
-      'the FirstMate App runs on Windows. Run firstmate desktop on Windows, or inside WSL.',
-    );
+  if (process.platform !== 'linux') {
+    throw new Error('the FirstMate App runs on Windows and Linux. Run firstmate desktop on one.');
+  }
+  if (isLinuxDesktop(env)) {
+    throw new Error('this Linux is not WSL, so there is no Windows to reach.');
   }
   const here = async (path: string): Promise<string> =>
     (await ask('wslpath', ['-u', path])).toString('utf8').trim();
