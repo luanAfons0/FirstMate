@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { firstmate, fixture, makeHome } from './helpers/host.ts';
+import { firstmate, fixture, makeHome, DEFAULT_PLACE } from './helpers/host.ts';
 
 type Written = {
   shelf?: string;
@@ -182,7 +182,7 @@ test('list prints the Shortcuts after the Plugins', async (t) => {
   assert.equal(listed.code, 0, listed.stderr);
   assert.equal(
     listed.stdout,
-    `both\t${fixture('both')}\n` +
+    `both\t${DEFAULT_PLACE}\t${fixture('both')}\n` +
       'Ctrl+Alt+N\topens /p/both/new.html\n' +
       'Ctrl+Alt+M\topens /p/both/\n',
   );

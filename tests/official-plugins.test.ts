@@ -10,14 +10,14 @@ import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { firstmate, makeHome, canStart } from './helpers/host.ts';
+import { firstmate, makeHome, canStart, DEFAULT_PLACE } from './helpers/host.ts';
 import { hasGit, officialSources } from './helpers/git.ts';
 
 async function registry(home: string): Promise<{
-  plugins: { name: string; directory: string; grants: string[] }[];
+  plugins: { name: string; place: string; directory: string; grants: string[] }[];
 }> {
   return JSON.parse(await readFile(join(home, 'registry.json'), 'utf8')) as {
-    plugins: { name: string; directory: string; grants: string[] }[];
+    plugins: { name: string; place: string; directory: string; grants: string[] }[];
   };
 }
 
@@ -36,7 +36,7 @@ test('an Official Plugin is installed by its name alone', async (t) => {
   assert.ok(installed.stdout.includes(`installed worklog at ${landed}`), installed.stdout);
   assert.ok(await canStart(landed), 'mcp is still executable');
   assert.deepEqual(await registry(home), {
-    plugins: [{ name: 'worklog', directory: landed, grants: [] }],
+    plugins: [{ name: 'worklog', place: DEFAULT_PLACE, directory: landed, grants: [] }],
   });
 });
 
@@ -53,7 +53,7 @@ test('an Official Plugin can be installed under another Plugin Name', async (t) 
   assert.equal(installed.code, 0, installed.stderr);
   const landed = join(home, 'shelf', 'timer');
   assert.deepEqual(await registry(home), {
-    plugins: [{ name: 'timer', directory: landed, grants: [] }],
+    plugins: [{ name: 'timer', place: DEFAULT_PLACE, directory: landed, grants: [] }],
   });
 });
 
@@ -71,7 +71,7 @@ test('a name already in the Registry is refused before anything is fetched', asy
 
   assert.equal(refused.code, 5);
   assert.ok(
-    refused.stderr.includes(`nexus is already registered, at ${elsewhere}.`),
+    refused.stderr.includes(`nexus is already registered in ${DEFAULT_PLACE}, at ${elsewhere}.`),
     refused.stderr,
   );
   await assert.rejects(stat(join(home, 'shelf', 'nexus')), 'nothing was fetched');

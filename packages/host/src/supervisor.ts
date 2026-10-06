@@ -194,9 +194,13 @@ export async function superviseAll(
 
   const hold = (next: readonly PluginRow[]): Promise<void> =>
     inTurn(async () => {
-      // A Plugin is the same Plugin while its name and its directory are. One
-      // moved to another directory is another Plugin under an old name.
-      const same = (row: PluginRow): boolean => runs.get(row.name)?.row.directory === row.directory;
+      // A Plugin is the same Plugin while its name, its Place and its
+      // directory are. One moved to another directory, or to another Place,
+      // is another Plugin under an old name.
+      const same = (row: PluginRow): boolean => {
+        const held = runs.get(row.name)?.row;
+        return held?.directory === row.directory && held.place === row.place;
+      };
       const staying = next.filter(same);
       const leaving = held.filter((row) => !staying.some((kept) => kept.name === row.name));
 

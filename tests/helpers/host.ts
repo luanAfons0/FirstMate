@@ -79,6 +79,12 @@ type RawResponse = {
   readonly body: string;
 };
 
+/**
+ * The default Place, as a terminal and the Registry name it: this machine,
+ * which is `windows` on Windows and `local` anywhere else (ADR-0021).
+ */
+export const DEFAULT_PLACE = process.platform === 'win32' ? 'windows' : 'local';
+
 /** The absolute path of a fixture Plugin. */
 export function fixture(name: string): string {
   return join(TESTS, 'fixtures', name);

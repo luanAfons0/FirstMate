@@ -1,7 +1,7 @@
 /**
  * What the writing commands change, apart from how they are typed and
- * printed: move the Shelf, install a Plugin, give a Grant, bind a Shortcut,
- * move a Plugin in the Plugin Order.
+ * printed: add or remove a Place, move a Shelf, add or install a Plugin, give
+ * a Grant, bind a Shortcut, move a Plugin in the Plugin Order.
  *
  * The terminal (`cli.ts`) and `setup` both call these, so a refusal has the
  * same words in both places. Each one either does its whole change or throws
@@ -13,6 +13,15 @@ import type { Config } from './config.ts';
 import { fetchPlugin, isGitUrl } from './fetch-plugin.ts';
 import { refuse } from './refusal.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
+import {
+  allPlaces,
+  DEFAULT_PLACE,
+  defaultShelfOf,
+  isPlaceKind,
+  isPlaceName,
+  PLACE_KINDS,
+  type Place,
+} from './places.ts';
 import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
 import { inPluginOrder, readSettings, writeSettings, type Settings } from './settings.ts';
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
@@ -23,7 +32,78 @@ export function notAPluginName(name: string): string {
   return `${name} is not a Plugin Name. Use lower-case letters, digits and hyphens.`;
 }
 
-/** What moving the Shelf did. */
+/** The sentence for a name that is not a Place Name, in every command's words. */
+function notAPlaceName(name: string): string {
+  return `${name} is not a Place Name. Use lower-case letters, digits and hyphens.`;
+}
+
+/** Every Place, the default first. */
+export function listPlaces(home: string): Place[] {
+  return allPlaces(readSettings(home).places);
+}
+
+/** The Place of this name, or the refusal that says there is none. */
+export function findPlace(home: string, name: string): Place {
+  if (!isPlaceName(name)) throw refuse('invalid', notAPlaceName(name));
+  const place = listPlaces(home).find((one) => one.name === name);
+  if (place === undefined) throw refuse('missing', `no Place named ${name} is there.`);
+  return place;
+}
+
+/**
+ * The Shelf of a Place in force. The default Place's comes from the
+ * environment, then the settings file, then the home directory, as the one
+ * Shelf of 1.x did (ADR-0012). Any other Place's is the one chosen for it, or
+ * a directory of its own beside the default Place's.
+ */
+export function shelfOf(config: Config, place: Place): string {
+  if (place.name === DEFAULT_PLACE) return config.shelf;
+  return place.shelf ?? defaultShelfOf(config.home, place.name);
+}
+
+/** Add a Place, and give back the Place written. */
+export function addPlace(home: string, name: string, kind: string): Place {
+  if (!isPlaceName(name)) throw refuse('invalid', notAPlaceName(name));
+  if (!isPlaceKind(kind)) {
+    throw refuse(
+      'invalid',
+      `${kind} is not a kind of Place. The kinds are ${PLACE_KINDS.join(', ')}.`,
+    );
+  }
+  const settings = readSettings(home);
+  if (allPlaces(settings.places).some((place) => place.name === name)) {
+    throw refuse('taken', `a Place named ${name} is there already.`);
+  }
+  const place: Place = { name, kind };
+  writeSettings(home, { ...settings, places: [...(settings.places ?? []), place] });
+  return place;
+}
+
+/**
+ * Take a Place away. A Place that holds a Plugin is refused, because the
+ * Plugin would be left in no Place at all; the default Place is refused,
+ * because it is this machine and is always there. Nothing on disk is touched.
+ */
+export function removePlace(home: string, name: string): void {
+  const place = findPlace(home, name);
+  if (place.name === DEFAULT_PLACE) {
+    throw refuse('invalid', `${name} is this machine, and is always there.`);
+  }
+  const held = readRegistry(home).filter((row) => row.place === name);
+  if (held.length > 0) {
+    throw refuse(
+      'taken',
+      `${name} holds ${held.map((row) => row.name).join(', ')}. Remove ${
+        held.length === 1 ? 'it' : 'them'
+      } first.`,
+    );
+  }
+  const settings = readSettings(home);
+  const left = (settings.places ?? []).filter((one) => one.name !== name);
+  writeSettings(home, { ...settings, places: left.length === 0 ? undefined : left });
+}
+
+/** What moving a Shelf did. */
 export type ShelfMoved = {
   /** The real path now remembered as the Shelf. */
   readonly shelf: string;
@@ -32,19 +112,67 @@ export type ShelfMoved = {
 };
 
 /**
- * Remember this directory as the Shelf. It is checked before it is
- * remembered, and what is remembered is the real path.
+ * Remember this directory as a Place's Shelf, the default Place's unless
+ * another is named. It is checked before it is remembered, and what is
+ * remembered is the real path.
  */
-export function moveShelf(home: string, directory: string): ShelfMoved {
+export function moveShelf(home: string, directory: string, placeName = DEFAULT_PLACE): ShelfMoved {
+  const place = findPlace(home, placeName);
   const shelf = checkShelf(directory, home);
-  writeSettings(home, { ...readSettings(home), shelf });
+  const settings = readSettings(home);
+  if (place.name !== DEFAULT_PLACE) {
+    const places = (settings.places ?? []).map((one) =>
+      one.name === place.name ? { ...one, shelf } : one,
+    );
+    writeSettings(home, { ...settings, places });
+    return { shelf };
+  }
+  writeSettings(home, { ...settings, shelf });
   const forced = shelfInEnvironment();
   return forced !== undefined && forced !== shelf ? { shelf, forced } : { shelf };
 }
 
 /**
- * Fetch a Plugin into the Shelf and register it, and give back the row
- * written. A source is a git URL, an absolute directory, or the Plugin Name of
+ * Register a Plugin whose directory is already where it will stay, and give
+ * back the row written. Nothing is copied: the Registry holds the path.
+ */
+export function addPlugin(
+  home: string,
+  name: string,
+  directory: string,
+  placeName = DEFAULT_PLACE,
+): PluginRow {
+  if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
+  const place = findPlace(home, placeName);
+  if (!isAbsolute(directory)) throw refuse('invalid', `${directory} is not an absolute path.`);
+  const found = statSync(directory, { throwIfNoEntry: false });
+  if (found === undefined || !found.isDirectory()) {
+    throw refuse('invalid', `${directory} is not a directory.`);
+  }
+  const rows = readRegistry(home);
+  refuseTaken(rows, name);
+  const row: PluginRow = { name, place: place.name, directory, grants: [] };
+  writeRegistry(home, [...rows, row]);
+  return row;
+}
+
+/**
+ * Refuse a Plugin Name the Registry already holds, in whichever Place: a
+ * Plugin Name is an address, and `/p/<name>/` serves one Plugin.
+ */
+function refuseTaken(rows: readonly PluginRow[], name: string): void {
+  const taken = rows.find((row) => row.name === name);
+  if (taken !== undefined) {
+    throw refuse(
+      'taken',
+      `${name} is already registered in ${taken.place}, at ${taken.directory}.`,
+    );
+  }
+}
+
+/**
+ * Fetch a Plugin into a Place's Shelf and register it in that Place, the
+ * default Place unless another is named, and give back the row written. A source is a git URL, an absolute directory, or the Plugin Name of
  * an Official Plugin, in that order (ADR-0015).
  *
  * It follows `add` step for step once the files have landed, because a Plugin
@@ -55,6 +183,7 @@ export async function installPlugin(
   config: Config,
   source: string,
   given?: string,
+  placeName = DEFAULT_PLACE,
 ): Promise<PluginRow> {
   const official = isGitUrl(source) || isAbsolute(source) ? undefined : officialPlugin(source);
   const name = given ?? official?.name ?? nameOf(source);
@@ -68,26 +197,25 @@ export async function installPlugin(
     }
     throw refuse('invalid', notAPluginName(name));
   }
+  const place = findPlace(config.home, placeName);
   const from = official?.url ?? checkSource(source);
 
   // Refused before anything is fetched, so a refusal costs no copying and a
   // Plugin that is running is never replaced under it.
-  const taken = readRegistry(config.home).find((row) => row.name === name);
-  if (taken !== undefined) {
-    throw refuse('taken', `${name} is already registered, at ${taken.directory}.`);
-  }
+  refuseTaken(readRegistry(config.home), name);
 
-  // The default Shelf is inside the Host's home directory, which the Host
+  // A default Shelf is inside the Host's home directory, which the Host
   // makes for itself, so install works before anything has been chosen. A
   // Shelf the operator named is theirs to make, so that a typo is refused
   // rather than created.
-  if (config.shelf === defaultShelf(config.home)) {
-    mkdirSync(config.shelf, { recursive: true, mode: 0o700 });
+  const chosen = shelfOf(config, place);
+  if (chosen === defaultShelf(config.home) || chosen === defaultShelfOf(config.home, place.name)) {
+    mkdirSync(chosen, { recursive: true, mode: 0o700 });
   }
   // Checked on every run. The remembered Shelf is never trusted as already
   // checked, because a path that was a directory yesterday can be a symlink
   // today.
-  const shelf = checkShelf(config.shelf, config.home);
+  const shelf = checkShelf(chosen, config.home);
   const directory = await fetchPlugin(from, shelf, name);
 
   // Read again, because a clone can take minutes, and a row another command
@@ -101,7 +229,7 @@ export async function installPlugin(
         `The files are at ${directory}; take them away, or add them under another name.`,
     );
   }
-  const row: PluginRow = { name, directory, grants: [] };
+  const row: PluginRow = { name, place: place.name, directory, grants: [] };
   writeRegistry(config.home, [...now, row]);
   return row;
 }

@@ -9,36 +9,42 @@
  *   node apps/cli/src/cli.ts start
  *   node apps/cli/src/cli.ts setup
  *   node apps/cli/src/cli.ts desktop
- *   node apps/cli/src/cli.ts add <name> <directory>
+ *   node apps/cli/src/cli.ts place [add <name> <kind> | remove <name>] [--json]
+ *   node apps/cli/src/cli.ts add <name> <directory> [--place <name>]
  *   node apps/cli/src/cli.ts remove <name>
  *   node apps/cli/src/cli.ts list [--json]
  *   node apps/cli/src/cli.ts status [--json]
  *   node apps/cli/src/cli.ts restart <name>
  *   node apps/cli/src/cli.ts grant <from> <to>
  *   node apps/cli/src/cli.ts revoke <from> <to>
- *   node apps/cli/src/cli.ts shelf [directory] [--json]
- *   node apps/cli/src/cli.ts install <directory|git-url|official-name> [name]
+ *   node apps/cli/src/cli.ts shelf [directory] [--place <name>] [--json]
+ *   node apps/cli/src/cli.ts install <directory|git-url|official-name> [name] [--place <name>]
  *   node apps/cli/src/cli.ts bind <keys> <plugin> [path]
  *   node apps/cli/src/cli.ts unbind <keys>
  *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
  *   node apps/cli/src/cli.ts service on|off
  */
-import { statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
 import {
+  addPlace,
+  addPlugin,
   bindShortcut,
   checkKeys,
+  findPlace,
   givePermission,
   installPlugin,
+  listPlaces,
   movePlugin,
   moveShelf,
   notAPluginName,
   pluginOrder,
+  removePlace,
+  shelfOf,
   takePermission,
   withoutInOrder,
   withShortcuts,
 } from '@firstmate/core/commands';
 import { readConfig, type Config } from '@firstmate/core/config';
+import { DEFAULT_PLACE } from '@firstmate/core/places';
 import { refusalOf, refuse, type Refusal } from '@firstmate/core/refusal';
 import { OFFICIAL_PLUGINS } from '@firstmate/core/official-plugins';
 import {
@@ -67,14 +73,17 @@ type Command = {
   readonly does: string;
   /** Whether it can say what it reads as one JSON value, with --json. */
   readonly json?: true;
+  /** Whether it takes `--place <name>`, to act in a Place other than the default. */
+  readonly place?: true;
   /**
-   * Run it with the words typed after its name, less --json, and whether
-   * --json was typed. It gives back the exit code, or nothing when the
-   * command hands the process to something that sets its own.
+   * Run it with the words typed after its name, less --json and --place, and
+   * what those said. It gives back the exit code, or nothing when the command
+   * hands the process to something that sets its own.
    */
   readonly run: (
     argv: readonly string[],
     json: boolean,
+    place: string | undefined,
   ) => Promise<number | undefined> | number | undefined;
 };
 
@@ -92,10 +101,18 @@ const COMMANDS: readonly Command[] = [
   },
   { name: 'desktop', takes: '', does: 'open the FirstMate window. Windows only.', run: desktop },
   {
+    name: 'place',
+    takes: '[add <name> <kind> | remove <name>]',
+    does: 'say every Place, or add or remove one.',
+    json: true,
+    run: (argv, json) => place(home(), argv, json),
+  },
+  {
     name: 'add',
     takes: '<name> <directory>',
     does: 'register a Plugin. The directory is not copied.',
-    run: (argv) => add(home(), argv),
+    place: true,
+    run: (argv, _json, place) => add(home(), argv, place),
   },
   {
     name: 'remove',
@@ -140,13 +157,15 @@ const COMMANDS: readonly Command[] = [
     takes: '[directory]',
     does: 'say where a fetched Plugin lands, or move it.',
     json: true,
-    run: (argv, json) => shelf(readConfig(), argv, json),
+    place: true,
+    run: (argv, json, place) => shelf(readConfig(), argv, json, place),
   },
   {
     name: 'install',
     takes: '<source> [name]',
     does: 'fetch a Plugin into the Shelf and register it.',
-    run: (argv) => install(readConfig(), argv),
+    place: true,
+    run: (argv, _json, place) => install(readConfig(), argv, place),
   },
   {
     name: 'bind',
@@ -183,7 +202,8 @@ const DOES_COLUMN = 37;
  * column says what it does on the line below, at the same column.
  */
 function usageLine(command: Command): string {
-  const typed = `  firstmate ${command.name}${command.takes === '' ? '' : ` ${command.takes}`}`;
+  const takes = `${command.takes}${command.place === true ? ' [--place <name>]' : ''}`.trim();
+  const typed = `  firstmate ${command.name}${takes === '' ? '' : ` ${takes}`}`;
   if (typed.length + 2 <= DOES_COLUMN) return `${typed.padEnd(DOES_COLUMN)}${command.does}`;
   return `${typed}\n${' '.repeat(DOES_COLUMN)}${command.does}`;
 }
@@ -206,6 +226,14 @@ registers what it put there, under the last segment of the source or under the
 name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.`,
+  },
+  {
+    about: ['place', 'add', 'install', 'shelf'],
+    text: `A Place is where Plugins are installed and their Plugin Servers run. The
+default Place is this machine, and it is always there. add, install and shelf
+act in it unless --place names another. Each Place has its own Shelf. A local
+Place runs its Plugin Servers on this machine. A Place that holds a Plugin
+cannot be removed, and a Plugin Name is used once across every Place.`,
   },
   {
     about: ['setup'],
@@ -345,11 +373,23 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
   }
   const json = rest.includes(JSON_WORD);
   if (json && command.json !== true) return typedWrong(name, `${name} prints no JSON.`);
+  const words = rest.filter((word) => word !== JSON_WORD);
+  const at = words.indexOf(PLACE_WORD);
+  if (at < 0) return command.run(words, json, undefined);
+  const place = words[at + 1];
+  if (command.place !== true) return typedWrong(name, `${name} takes no ${PLACE_WORD}.`);
+  if (place === undefined || place.startsWith('-')) {
+    return typedWrong(name, `${PLACE_WORD} takes the name of a Place.`);
+  }
   return command.run(
-    rest.filter((word) => word !== JSON_WORD),
+    words.filter((_word, index) => index !== at && index !== at + 1),
     json,
+    place,
   );
 }
+
+/** The word that names the Place a command acts in, wherever it is typed. */
+const PLACE_WORD = '--place';
 
 /**
  * Run the Host in this process.
@@ -410,36 +450,52 @@ async function desktop(argv: readonly string[]): Promise<number> {
   return openWindow({ distribution, home });
 }
 
-async function add(home: string, argv: readonly string[]): Promise<number> {
+async function add(home: string, argv: readonly string[], place?: string): Promise<number> {
   const [name, directory] = argv;
   if (name === undefined || directory === undefined || argv.length > 2) {
     return typedWrong('add', 'add takes a Plugin Name and a directory.');
   }
-  if (!isPluginName(name)) {
-    console.error(`firstmate: ${notAPluginName(name)}`);
-    return exit('invalid');
-  }
-  if (!isAbsolute(directory)) {
-    console.error(`firstmate: ${directory} is not an absolute path.`);
-    return exit('invalid');
-  }
-  const found = statSync(directory, { throwIfNoEntry: false });
-  if (found === undefined || !found.isDirectory()) {
-    console.error(`firstmate: ${directory} is not a directory.`);
-    return exit('invalid');
-  }
-
-  const rows = readRegistry(home);
-  const taken = rows.find((row) => row.name === name);
-  if (taken !== undefined) {
-    console.error(`firstmate: ${name} is already registered, at ${taken.directory}.`);
-    return exit('taken');
-  }
-
-  writeRegistry(home, [...rows, { name, directory, grants: [] }]);
-  console.log(`firstmate: added ${name} at ${directory}`);
+  const row = addPlugin(home, name, directory, place);
+  console.log(`firstmate: added ${row.name} at ${row.directory}${inPlace(row.place)}`);
   await reloadHost(home);
   return 0;
+}
+
+/**
+ * Where a Plugin went, when that is not the default Place. A command in the
+ * default Place says what it said before there were Places.
+ */
+function inPlace(place: string): string {
+  return place === DEFAULT_PLACE ? '' : `, in ${place}`;
+}
+
+/**
+ * Say every Place, or add or remove one. A Place is a setting, written from a
+ * terminal and from nowhere else, like the Shelf it carries (ADR-0021).
+ */
+async function place(home: string, argv: readonly string[], json: boolean): Promise<number> {
+  const [what, name, kind] = argv;
+  if (what === undefined || (what === 'list' && argv.length === 1)) {
+    const config = readConfig();
+    const places = listPlaces(home).map((one) => ({ ...one, shelf: shelfOf(config, one) }));
+    if (json) printJson({ places });
+    else for (const one of places) console.log(`${one.name}\t${one.kind}\t${one.shelf}`);
+    return 0;
+  }
+  if (json) return typedWrong('place', 'place prints JSON only when it changes nothing.');
+  if (what === 'add' && name !== undefined && kind !== undefined && argv.length === 3) {
+    const added = addPlace(home, name, kind);
+    console.log(`firstmate: added the ${added.kind} Place ${added.name}`);
+    await reloadHost(home);
+    return 0;
+  }
+  if (what === 'remove' && name !== undefined && argv.length === 2) {
+    removePlace(home, name);
+    console.log(`firstmate: removed the Place ${name}. Nothing on disk was touched.`);
+    await reloadHost(home);
+    return 0;
+  }
+  return typedWrong('place', 'place takes nothing, add <name> <kind>, or remove <name>.');
 }
 
 async function remove(home: string, argv: readonly string[]): Promise<number> {
@@ -525,20 +581,28 @@ async function revoke(home: string, argv: readonly string[]): Promise<number> {
  * could therefore send a request the Host cannot tell from the Index Page's
  * own (ADR-0012).
  */
-async function shelf(config: Config, argv: readonly string[], json: boolean): Promise<number> {
+async function shelf(
+  config: Config,
+  argv: readonly string[],
+  json: boolean,
+  placeName?: string,
+): Promise<number> {
   const [directory] = argv;
   if (argv.length > 1) {
     return typedWrong('shelf', 'shelf takes one directory, or nothing.');
   }
+  const named = placeName === undefined ? undefined : findPlace(config.home, placeName);
+  const of = named === undefined ? '' : ` of ${named.name}`;
   if (directory === undefined) {
-    if (json) printJson({ shelf: config.shelf });
-    else console.log(`firstmate: the Shelf is ${config.shelf}`);
+    const current = named === undefined ? config.shelf : shelfOf(config, named);
+    if (json) printJson({ shelf: current });
+    else console.log(`firstmate: the Shelf${of} is ${current}`);
     return 0;
   }
   if (json) return typedWrong('shelf', 'shelf prints JSON only when it moves nothing.');
 
-  const moved = moveShelf(config.home, directory);
-  console.log(`firstmate: the Shelf is now ${moved.shelf}`);
+  const moved = moveShelf(config.home, directory, named?.name);
+  console.log(`firstmate: the Shelf${of} is now ${moved.shelf}`);
   if (moved.forced !== undefined) {
     console.log(
       `firstmate: ${SHELF_VARIABLE} is set to ${moved.forced}, and wins until it is unset.`,
@@ -552,7 +616,7 @@ async function shelf(config: Config, argv: readonly string[], json: boolean): Pr
  * Fetch a Plugin into the Shelf and register it, in one step. The source is a
  * directory, a git URL, or the name of an Official Plugin (ADR-0015).
  */
-async function install(config: Config, argv: readonly string[]): Promise<number> {
+async function install(config: Config, argv: readonly string[], place?: string): Promise<number> {
   const [source, given] = argv;
   if (source === undefined || argv.length > 2) {
     return typedWrong(
@@ -561,8 +625,8 @@ async function install(config: Config, argv: readonly string[]): Promise<number>
     );
   }
 
-  const row = await installPlugin(config, source, given);
-  console.log(`firstmate: installed ${row.name} at ${row.directory}`);
+  const row = await installPlugin(config, source, given, place);
+  console.log(`firstmate: installed ${row.name} at ${row.directory}${inPlace(row.place)}`);
   await reloadHost(config.home);
   return 0;
 }
@@ -723,7 +787,7 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
 
 function describe(row: PluginRow): string {
   const grants = row.grants.length === 0 ? '' : `  grants: ${row.grants.join(', ')}`;
-  return `${row.name}\t${row.directory}${grants}`;
+  return `${row.name}\t${row.place}\t${row.directory}${grants}`;
 }
 
 try {

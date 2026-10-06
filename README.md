@@ -154,6 +154,9 @@ node apps/cli/src/cli.ts revoke <from> <to>
 node apps/cli/src/cli.ts order [<name> <position>]
 ```
 
+`add` and `install` take `--place <name>` to put the Plugin in a Place other
+than the default one. See [Places](#places).
+
 `install` is `add` for a Plugin you do not have yet. A directory is copied and
 a git URL is cloned; either way the files land in the Shelf and `install`
 registers what it put there, under the last segment of the source, without its
@@ -196,6 +199,29 @@ A Tool Bus call may carry a `timeoutMs` saying how long it is allowed to take.
 Without one it gets thirty seconds, and `FIRSTMATE_MAX_CALL_MS` is the ceiling:
 a call that asks for more is quietly given the ceiling rather than refused. A
 Plugin Page's own call is not a Tool Bus call and keeps its thirty seconds.
+
+## Places
+
+A Place is where Plugins are installed and their Plugin Servers run
+([ADR-0021](docs/adr/0021-plugins-live-in-places.md)). The default Place is this
+machine: `windows` on Windows, `local` anywhere else. It is always there, and
+`add`, `install` and `shelf` act in it unless `--place` names another.
+
+```sh
+node apps/cli/src/cli.ts place                       # every Place, its kind and its Shelf
+node apps/cli/src/cli.ts place add <name> <kind>     # add a Place
+node apps/cli/src/cli.ts place remove <name>         # take an empty Place away
+```
+
+A `local` Place runs its Plugin Servers on this machine. Each Place has its own
+Shelf: the default Place's is the Shelf below, and any other's is
+`shelves/<name>` in the home directory until you move it with
+`shelf <directory> --place <name>`. A Plugin Name is used once across every
+Place, so `/p/<name>/` is the same address wherever the Plugin runs. A Place
+that holds a Plugin is not removed, and removing one touches nothing on disk.
+
+Each Plugin in `registry.json` names its Place. A row with no `place`, as 1.x
+wrote it, is in the default Place.
 
 ## Ask the running Host
 
@@ -276,8 +302,9 @@ other value, and says which.
 
 ## The Shelf
 
-The Shelf is the directory a fetched Plugin lands in. Say where it is, or move
-it:
+The Shelf is the directory a fetched Plugin lands in. Each Place has its own,
+and this section is about the default Place's; `--place <name>` says or moves
+another's. Say where it is, or move it:
 
 ```sh
 node apps/cli/src/cli.ts shelf                      # where a fetched Plugin lands
