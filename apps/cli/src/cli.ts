@@ -65,6 +65,7 @@ import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
 import { bringAcross } from './one-x.ts';
 import { openPrompt } from './prompt.ts';
 import { setup } from './setup.ts';
+import { ownVersion } from './version.ts';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
 
@@ -474,7 +475,9 @@ firstmate help <topic>       ${TOPIC_NAMES.join(', ')}`;
 const TOPIC_LIST = `${SHORT_HELP}
 
 Topics, for firstmate help <topic>:
-${TOPICS.map((topic) => shortLine(topic.name, topic.short, 13)).join('\n')}`;
+${TOPICS.map((topic) => shortLine(topic.name, topic.short, 13)).join('\n')}
+
+firstmate --version          which FirstMate this is (-v too)`;
 
 /** One command's own help: its usage line, and every note about it. */
 function helpOf(command: Command): string {
@@ -533,6 +536,45 @@ function printJson(value: unknown): void {
 /** The words that ask for a command's help, wherever they are typed after it. */
 const HELP_WORDS: ReadonlySet<string> = new Set(['-h', '--help']);
 
+/** The words that ask which FirstMate this is, typed where a command goes. */
+const VERSION_WORDS: ReadonlySet<string> = new Set(['-v', '--version']);
+
+/** The fewest single-letter edits that turn one word into another. */
+function editDistance(from: string, to: string): number {
+  let row = Array.from({ length: to.length + 1 }, (_cell, index) => index);
+  for (let i = 1; i <= from.length; i += 1) {
+    const next = [i];
+    for (let j = 1; j <= to.length; j += 1) {
+      const swap = from[i - 1] === to[j - 1] ? 0 : 1;
+      next.push(Math.min((row[j] ?? 0) + 1, (next[j - 1] ?? 0) + 1, (row[j - 1] ?? 0) + swap));
+    }
+    row = next;
+  }
+  return row[to.length] ?? 0;
+}
+
+/** The nearest command name, or `help`, within two edits; a tie goes to the first in the table. */
+function nearestCommand(word: string): string | undefined {
+  let best: string | undefined;
+  let bestDistance = 3;
+  for (const name of [...COMMANDS.map((row) => row.name), HELP_WORD]) {
+    const distance = editDistance(word, name);
+    if (distance < bestDistance) {
+      best = name;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** Refuse a word that is no command in one line, with a guess when one is near. Runs nothing. */
+function noSuchCommand(name: string): number {
+  const guess = nearestCommand(name);
+  const said = guess === undefined ? '.' : `. Did you mean ${guess}?`;
+  console.error(`firstmate: no such command: ${name}${said}\nfirstmate --help says every command.`);
+  return exit('typed-wrong');
+}
+
 /** The word that asks for a command's help or a topic, typed where a command goes. */
 const HELP_WORD = 'help';
 
@@ -550,9 +592,13 @@ async function main(argv: readonly string[]): Promise<number | undefined> {
     console.log(SHORT_HELP);
     return exit(name === undefined ? 'typed-wrong' : 'done');
   }
+  if (VERSION_WORDS.has(name)) {
+    console.log(`firstmate ${ownVersion()}`);
+    return exit('done');
+  }
   if (name === HELP_WORD) return help(rest);
   const command = COMMANDS.find((row) => row.name === name);
-  if (command === undefined) return typedWrong(name, `no such command: ${name}`);
+  if (command === undefined) return noSuchCommand(name);
   if (rest.some((word) => HELP_WORDS.has(word))) {
     console.log(helpOf(command));
     return exit('done');

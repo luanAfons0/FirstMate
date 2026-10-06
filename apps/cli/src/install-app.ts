@@ -34,12 +34,13 @@
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AT_LOGON, LOGON_NAME, RUN_KEY } from '@firstmate/core/logon';
 import { refuse } from '@firstmate/core/refusal';
+import { ownVersion } from './version.ts';
 
 /** The variable that points `firstmate desktop` at another place for the Releases. */
 const RELEASES_VARIABLE = 'FIRSTMATE_RELEASES_URL';
@@ -160,21 +161,6 @@ export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<
   await open(now.program);
   console.log(`firstmate: installed FirstMate ${version}, and opened it.`);
   return 0;
-}
-
-/**
- * The version of this command line: the version of its package, whose
- * manifest is one folder up from `src/` in a clone and from `dist/` in the
- * package.
- */
-function ownVersion(): string {
-  const manifest: unknown = JSON.parse(
-    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-  );
-  if (typeof manifest !== 'object' || manifest === null || !('version' in manifest)) {
-    throw new Error('the command line cannot read its own version from its package.json.');
-  }
-  return String(manifest.version);
 }
 
 /** Windows, as this process reaches it, or a sentence saying there is none. */
