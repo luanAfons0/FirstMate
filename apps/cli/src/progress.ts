@@ -21,11 +21,14 @@ import { onTerminal } from './prompt.ts';
 export type Wait = {
   /** Count this many more bytes as arrived. */
   advance(bytes: number): void;
-  /** It ended well, and this says what it did. */
-  done(said: string): void;
+  /** It ended well, and this says what it did, or nothing is said. */
+  done(said: string | undefined): void;
   /** It failed. The sentence that says why is the caller's to print. */
   failed(): void;
 };
+
+/** Move the cursor up one line, and erase that line. */
+const ERASE_LINE_ABOVE = '\x1b[1A\x1b[2K';
 
 /** A wait that shows nothing, for a pipe. */
 const UNSEEN: Wait = { advance: () => undefined, done: () => undefined, failed: () => undefined };
@@ -37,7 +40,7 @@ const UNSEEN: Wait = { advance: () => undefined, done: () => undefined, failed: 
  */
 export async function startWait(doing: string, size?: number): Promise<Wait> {
   if (!onTerminal()) return UNSEEN;
-  const { progress, spinner } = await import('@clack/prompts');
+  const { progress, settings, spinner } = await import('@clack/prompts');
   const stopped = { cancelMessage: `${doing} stopped.`, onCancel: () => process.exit(130) };
   const bar = size !== undefined && size > 0 ? progress({ ...stopped, max: size }) : undefined;
   const shown = bar ?? spinner(stopped);
@@ -51,15 +54,26 @@ export async function startWait(doing: string, size?: number): Promise<Wait> {
       if (bar === undefined) shown.message(`${doing}  ${megabytes(arrived)}`);
       else bar.advance(bytes, `${doing}  ${megabytes(arrived)} of ${megabytes(size ?? 0)}`);
     },
-    done: (said) => shown.stop(said),
+    done(said) {
+      if (said !== undefined) {
+        shown.stop(said);
+        return;
+      }
+      shown.clear();
+      // The guide line clack drew above the spinner goes too, so nothing is left.
+      if (settings.withGuide) process.stdout.write(ERASE_LINE_ABOVE);
+    },
     failed: () => shown.error(doing),
   };
 }
 
-/** Wait on some work with a spinner, and stop it however the work ends. */
+/**
+ * Wait on some work with a spinner, and stop it however the work ends. When
+ * `done` gives back nothing, the spinner goes and leaves no line.
+ */
 export async function whileWaiting<T>(
   doing: string,
-  done: (value: T) => string,
+  done: (value: T) => string | undefined,
   work: () => Promise<T>,
 ): Promise<T> {
   const wait = await startWait(doing);

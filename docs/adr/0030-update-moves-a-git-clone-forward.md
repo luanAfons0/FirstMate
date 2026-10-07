@@ -11,9 +11,15 @@ A Plugin has no manifest (ADR-0002), so it has no version number to compare. The
 3. Otherwise it moves the branch forward with `merge --ff-only`. It never makes a merge, never drops a commit, and never leaves a clone in the middle of a merge.
 4. It restarts the Plugin Server through the running Host, with the call `restart` uses. The Host does not take part in an update in any other way: no address on the Host changes a Plugin's files.
 
-It refuses in one sentence, and changes nothing, before any step that could lose something: a directory that is not the top of a git work tree of its own, a detached HEAD, a branch with no upstream, local changes to tracked files, a branch that has diverged from its upstream, and an untracked file the new commit would overwrite. The files git ignores are never touched, so a Plugin that keeps its data in ignored files keeps it across an update.
+It refuses in one sentence that says what to do, and changes nothing, before any step that could lose something: a directory that is not the top of a git work tree of its own, a detached HEAD, a branch with no upstream, local changes to tracked files, a branch that has diverged from its upstream, and an untracked or ignored file the new commit would overwrite. The fast-forward runs with `--no-overwrite-ignore`, because git otherwise writes over an ignored file that the new commit starts to track. The files git ignores are never touched, so a Plugin that keeps its data in ignored files keeps it across an update.
 
-An update runs nothing the Plugin ships, as a fetch does not (ADR-0012). Every git command runs with repository hooks and fsmonitor turned off on its command line, which beats the clone's own configuration, and in the environment `install` clones in, so git never asks on the terminal for a password or a key.
+A refusal that comes after the fetch, a branch that has diverged or a file the new commit would overwrite, leaves the branch and the files as they were. The fetch has moved the remote-tracking branch all the same. That loses nothing, and the next `update` or `git fetch` would move it too.
+
+## An update runs nothing the Plugin ships
+
+ADR-0021 says that installing a Plugin runs nothing the Plugin ships, and an update keeps that rule. A clone's shipped files cannot configure git to run a program: a hook, an fsmonitor command and a remote's URL all come from the clone's `.git` directory or from the operator's own configuration, and git never fills those from a commit. Every git command `install` and `update` run still turns off repository hooks, fsmonitor and the `ext::` transport on its command line (`core.hooksPath=/dev/null`, `core.fsmonitor=false`, `protocol.ext.allow=never`), which beats the clone's own configuration. That is defence in depth. What is guarded is the rule above: the bytes a clone ships never make git run a program. A Plugin Server that writes its own `.git/config` already runs as the operator and can do anything the operator can, so that is out of reach, and this decision does not claim to stop it.
+
+Every git command runs in the environment `install` clones in, so git never asks on the terminal for a password or a key, and the operator's own `GIT_SSH_COMMAND` is kept when one is set. The credential helpers stay as they are: they are the operator's own, and an update needs them to fetch a private Plugin.
 
 ## A copied Plugin is not copied over
 

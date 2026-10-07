@@ -4,7 +4,9 @@
  * It runs nothing the Plugin ships. A directory is copied and a git URL is
  * cloned, and that is the whole of it; the Plugin's own executable runs later,
  * when the Host starts it. Fetching a Plugin and running a Plugin stay two
- * separate decisions (ADR-0021, which says the same of the step after it).
+ * separate decisions. ADR-0021 says that installing a Plugin runs nothing it
+ * ships, and git clones with the settings `git.ts` keeps, which turn off
+ * hooks, fsmonitor and the `ext::` transport.
  *
  * Cloning uses the `git` binary. That is one external tool the command line
  * assumes, it is not a package dependency, and the Host itself still has none.
@@ -27,6 +29,7 @@ import { spawn } from 'node:child_process';
 import { lstatSync } from 'node:fs';
 import { cp, realpath, rename, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
+import { askingNothing, RUNS_NOTHING } from './git.ts';
 import { refuse } from './refusal.ts';
 
 /**
@@ -122,14 +125,19 @@ function clone(
   words: GitWords,
   keepLineEndings: boolean,
 ): Promise<void> {
-  // git writes this setting into the clone's own config too, so the
-  // distribution's git sees the files as their author committed them.
-  const keep = keepLineEndings ? ['-c', 'core.autocrlf=false'] : [];
+  // `-c` keeps the line endings for this clone, whatever config git is given;
+  // `--config` writes the same into the clone's own config, so every git that
+  // reads the clone later sees the files as their author committed them.
+  const off = 'core.autocrlf=false';
+  const settings = keepLineEndings ? [...RUNS_NOTHING, '-c', off] : RUNS_NOTHING;
+  const keep = keepLineEndings ? ['--config', off] : [];
   return new Promise((done, fail) => {
     const git =
       words === 'shown'
-        ? spawn('git', [...keep, 'clone', '--', url, staging], { stdio: 'inherit' })
-        : spawn('git', [...keep, 'clone', '--quiet', '--', url, staging], {
+        ? spawn('git', [...settings, 'clone', ...keep, '--', url, staging], {
+            stdio: 'inherit',
+          })
+        : spawn('git', [...settings, 'clone', '--quiet', ...keep, '--', url, staging], {
             env: askingNothing(process.env),
             stdio: ['ignore', 'ignore', 'pipe'],
           });
@@ -154,18 +162,6 @@ function clone(
       fail(new Error(`git could not clone ${url}: ${how}.`));
     });
   });
-}
-
-/**
- * This environment, with git told not to ask on the terminal, and ssh told
- * the same unless the operator chose their own ssh command.
- */
-export function askingNothing(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return {
-    ...env,
-    GIT_TERMINAL_PROMPT: '0',
-    GIT_SSH_COMMAND: env['GIT_SSH_COMMAND'] ?? 'ssh -o BatchMode=yes',
-  };
 }
 
 /** Whether the inner path is the outer one, or sits under it. */

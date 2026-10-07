@@ -319,12 +319,25 @@ export async function installPlugin(
 }
 
 /**
+ * What an update did: the commits it moved between, and whether the Plugin
+ * ships a Plugin Server after it, so a terminal with no Host to ask can say
+ * what the new code changes.
+ */
+export type Updated = Moved & { readonly shipsPluginServer: boolean };
+
+/**
+ * Every file a Plugin can ship its Plugin Server as, on any system (ADR-0019,
+ * ADR-0028). Whether one can run here is the Host's to say, not this list's.
+ */
+const PLUGIN_SERVER_FILES = ['mcp', 'mcp.ts', 'mcp.js', 'mcp.exe', 'mcp.cmd'];
+
+/**
  * Move a Plugin that is a git clone forward to its upstream, and say from
  * which commit to which, or give back nothing when there was nothing to move
  * (ADR-0030). The name is checked as `restart` checks it. Restarting the
  * Plugin Server is the caller's, because only a terminal reaches the Host.
  */
-export async function updatePlugin(home: string, name: string): Promise<Moved | undefined> {
+export async function updatePlugin(home: string, name: string): Promise<Updated | undefined> {
   if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
   const plugin = readPlugins(home).find((row) => row.name === name);
   if (plugin === undefined) throw refuse('missing', `no Plugin named ${name} is registered.`);
@@ -332,7 +345,11 @@ export async function updatePlugin(home: string, name: string): Promise<Moved | 
     throw refuse('invalid', `${name} cannot be updated: ${plugin.runner.why}.`);
   }
   if (statSync(plugin.files, { throwIfNoEntry: false })?.isDirectory() !== true) {
-    throw refuse('invalid', `${plugin.directory} is not a directory.`);
+    throw refuse(
+      'invalid',
+      `${plugin.directory} is not a directory: put the Plugin back there, ` +
+        `or take it out with firstmate remove ${name}.`,
+    );
   }
   // A wsl Place's clone is moved by the distribution's own git, in the path
   // the distribution knows it by, as its Plugin Server runs there.
@@ -340,7 +357,12 @@ export async function updatePlugin(home: string, name: string): Promise<Moved | 
     plugin.runner.kind === 'wsl'
       ? gitInside(plugin.runner.distribution, plugin.directory)
       : gitHere(plugin.files);
-  return moveForward(git, name, plugin.directory);
+  const moved = await moveForward(git, name, plugin.directory);
+  if (moved === undefined) return undefined;
+  const shipsPluginServer = PLUGIN_SERVER_FILES.some(
+    (file) => statSync(join(plugin.files, file), { throwIfNoEntry: false })?.isFile() === true,
+  );
+  return { ...moved, shipsPluginServer };
 }
 
 /**

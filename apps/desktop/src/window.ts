@@ -463,6 +463,22 @@ export function openWindow(
     });
   };
 
+  /** A change to a setting, which `change()` makes. */
+  const SETTING: ReadonlySet<Asked['kind']> = new Set([
+    'logon',
+    'place-add',
+    'place-remove',
+    'shelf',
+    'shelf-choose',
+    'plugin-move',
+  ]);
+  /**
+   * What only the Settings View may ask for: a change to a setting, and a
+   * Plugin's Plugin Settings, which only its Open settings button asks for
+   * (ADR-0029).
+   */
+  const SETTINGS_VIEW_ONLY: ReadonlySet<Asked['kind']> = new Set([...SETTING, 'plugin-settings']);
+
   const act = (asked: Asked): void => {
     if (asked.kind === 'plugin-list') {
       open('/');
@@ -506,7 +522,7 @@ export function openWindow(
       outcome = undefined;
       redraw();
       if (setting) settings.webContents.focus();
-    } else if (asked.kind !== 'nothing' && !busy) {
+    } else if (SETTING.has(asked.kind) && !busy) {
       // A setting. One change at a time: a wsl Place can take a while to add.
       busy = true;
       redraw();
@@ -527,27 +543,15 @@ export function openWindow(
     }
   };
 
-  /** What only the Settings View may ask for: a change to a setting. */
-  const SETTING: ReadonlySet<Asked['kind']> = new Set([
-    'logon',
-    'place-add',
-    'place-remove',
-    'shelf',
-    'shelf-choose',
-    'plugin-move',
-  ]);
-
   const ask = (event: IpcMainEvent, said: unknown): void => {
     // Only the App's own views carry the preload. The check is here as well,
     // so that the rule does not rest on the preload alone.
     const own = [strip, switcher, settings].some((view) => view.webContents === event.sender);
     if (!own) return;
     const asked = readAsked(said);
-    if (SETTING.has(asked.kind) && event.sender !== settings.webContents) return;
+    if (SETTINGS_VIEW_ONLY.has(asked.kind) && event.sender !== settings.webContents) return;
     // Only the switcher carries a Restart button.
     if (asked.kind === 'restart' && event.sender !== switcher.webContents) return;
-    // Only the Settings View carries an Open settings button.
-    if (asked.kind === 'plugin-settings' && event.sender !== settings.webContents) return;
     act(asked);
   };
   ipcMain.on(ASK_CHANNEL, ask);
