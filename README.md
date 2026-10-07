@@ -96,21 +96,22 @@ Evidence, not a promise. "Proved" means someone has run it.
 
 | Platform        | App         | Host          | Plugin Server                        | Command line |
 | --------------- | ----------- | ------------- | ------------------------------------ | ------------ |
-| Windows         | proved      | proved        | proved, from `mcp.cmd` or `mcp.exe`  | proved       |
+| Windows         | proved      | proved        | proved, from `mcp.ts`, `mcp.cmd` or `mcp.exe` | proved |
 | WSL, as a Place | —           | —             | proved, through `wsl.exe`            | proved       |
 | Linux, native   | proved by CI | proved by CI | proved by CI                         | proved by CI |
 | macOS           | not built   | should work, untried | should work, untried          | should work, untried |
 
 **The App runs on Windows and Linux** (ADR-0026). A Plugin in a `wsl` Place keeps its
-`mcp` file and runs inside its distribution (ADR-0021). On Windows itself a
-Plugin Server starts from `mcp.cmd` or `mcp.exe`, because Windows reads no
-shebang (ADR-0019). The Host runs on plain Node anywhere, which is how the tests
+`mcp` file and runs inside its distribution (ADR-0021). Anywhere else a
+Plugin Server can be one `mcp.ts` or `mcp.js`, which the Host runs with its own
+Node (ADR-0028). On Windows a Plugin Server can also start from `mcp.cmd` or
+`mcp.exe`, because Windows reads no shebang (ADR-0019). The Host runs on plain Node anywhere, which is how the tests
 run it; only the App, the Tray and the window are Electron programs, for Windows and
 Linux.
 
 A Plugin is a directory and nothing more. Put a `web/` folder in it and the Host
-serves it as a Plugin Page. Put an executable named `mcp` in it and the Host
-starts that Plugin Server. A directory with neither is still a Plugin; it just
+serves it as a Plugin Page. Put an `mcp.ts` in it, or an executable named
+`mcp`, and the Host starts that Plugin Server. A directory with neither is still a Plugin; it just
 has nothing to show.
 
 The words this project uses are defined in [`CONTEXT.md`](CONTEXT.md). The
@@ -123,13 +124,19 @@ A directory, named in the Registry. There is no manifest and no schema.
 | In the directory   | What the Host does with it                                  |
 | ------------------ | ----------------------------------------------------------- |
 | `web/`             | Serves it at `/p/<name>/`, byte for byte.                   |
-| `mcp` (executable) | Runs it, and speaks MCP to it over stdin and stdout.        |
+| `mcp.ts`, `mcp.js` | Runs it with the Host's own Node, and speaks MCP to it over stdin and stdout. |
+| `mcp` (executable) | The same, run by its shebang, when there is no `mcp.ts` or `mcp.js`. |
 | `mcp.exe`, `mcp.cmd` | The same, on Windows, where `mcp` is not run.             |
 
-The shebang of `mcp` decides the language, so a Plugin Server can be written in
-anything. Windows reads no shebang, so there the Host runs `mcp.exe`, or else
-`mcp.cmd` (ADR-0019). Every Plugin Server receives `FIRSTMATE_NODE`, the Node
-that runs the Host, so a Node Plugin needs no Node of its own. Its output goes
+The Host starts the first of these it finds: `mcp.ts`, then `mcp.js`, then
+`mcp` on Linux, or `mcp.exe` and then `mcp.cmd` on Windows (ADR-0028). A Node
+file is started as `FIRSTMATE_NODE`, the Node that runs the Host, with the file
+as its one argument and no shell, so one `mcp.ts` runs on Linux and on
+Windows and needs no Node of its own. Under the App that Node is the App itself, and it
+strips TypeScript's types. The shebang of `mcp` decides its language, so a
+Plugin Server can still be written in anything. Windows reads no shebang, so
+there the Host runs `mcp.exe`, or else `mcp.cmd` (ADR-0019). Every Plugin
+Server receives `FIRSTMATE_NODE`, and its output goes
 to the Host's own output and its log: `firstmate logs` prints it (ADR-0022).
 
 A Plugin is in one of three states, and the Index Page shows which:
@@ -138,7 +145,7 @@ A Plugin is in one of three states, and the Index Page shows which:
 | ------------------ | ---------------------------------------------------------- |
 | `Running`          | The Plugin Server is up and answered the MCP handshake.     |
 | `Stopped`          | The Plugin Server exited, or could not be run at all.       |
-| `no Plugin Server` | The Plugin ships no `mcp` file of any form. This is allowed. |
+| `no Plugin Server` | The Plugin ships no Plugin Server file of any form. This is allowed. |
 
 The Host never starts a Stopped Plugin again, so a broken Plugin stays visible
 instead of spinning in a restart loop. A Stopped Plugin still serves its Plugin
@@ -235,7 +242,9 @@ distribution's own. A Plugin whose distribution is missing or will not start is
 Stopped with one sentence, and nothing retries it. Its default Shelf is
 `~/.firstmate/shelf` inside the distribution, and `install` makes the fetched
 `mcp` executable there again. `FIRSTMATE_NODE` is not handed across, because it
-names a Windows program.
+names a Windows program, so a `wsl` Place starts `mcp` only: a Plugin there
+with `mcp.ts` and no `mcp` is Stopped, with one sentence that says so
+(ADR-0028).
 
 Each Place has its own Shelf: the default Place's is the Shelf below, and any other's is
 `shelves/<name>` in the home directory until you move it with

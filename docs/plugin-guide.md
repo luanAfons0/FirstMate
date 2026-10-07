@@ -1,8 +1,8 @@
 # How to write a Plugin
 
 A Plugin is a directory. Put a `web/` directory in it and the Host serves
-that as a Plugin Page. Put an executable named `mcp` in it and the Host
-starts that as a Plugin Server. A directory with neither is still a Plugin;
+that as a Plugin Page. Put an `mcp.ts` in it, or an executable named `mcp`,
+and the Host starts that as a Plugin Server. A directory with neither is still a Plugin;
 it just has nothing to show.
 
 That is the whole of it. There is no manifest, no schema and no file in
@@ -63,8 +63,8 @@ which, in a sentence you can act on.
 
 Each of `add`, `install` and `remove` asks the running Host to reload, so the
 Host picks the change up with no restart (ADR-0018). In a `wsl` Place, keep
-your `mcp` file as it is; on Windows itself, ship `mcp.cmd` or `mcp.exe` beside
-it (ADR-0019).
+your `mcp` file as it is; on Windows itself, ship `mcp.ts`, or `mcp.cmd` or
+`mcp.exe` beside `mcp` (ADR-0019, ADR-0028).
 
 ## The Plugin Page: your `web/` directory
 
@@ -91,21 +91,37 @@ Optional. If `web/` is there, everything in it is served at `/p/<name>/`.
 - **Everything here is read-only.** `GET` and `HEAD`. Any other method is
   `405` with an `Allow` header.
 
-## The Plugin Server: your `mcp` executable
+## The Plugin Server: your `mcp.ts`, or your `mcp` executable
 
-Optional. If `mcp` is there, the Host starts it and holds the connection
-for the life of the Host.
+Optional. If a Plugin Server file is there, the Host starts it and holds
+the connection for the life of the Host.
 
-- **It must be a file, and it must carry the executable bit.** An `mcp`
+- **Ship one `mcp.ts`, and it runs everywhere the App does.** The Host
+  looks for `mcp.ts`, then `mcp.js`, then the forms below: `mcp` on Linux,
+  and `mcp.exe`, then `mcp.cmd`, on Windows. It starts the first it finds
+  ([ADR-0028](adr/0028-a-plugin-server-can-be-mcp-ts-run-by-the-hosts-node.md)).
+  A Node file is started with the Host's own Node, `FIRSTMATE_NODE`, with
+  the file's name as its one argument, and no shell: `<FIRSTMATE_NODE>
+  mcp.ts`. That Node strips TypeScript's types, so `mcp.ts` needs no build,
+  no executable bit, no `mcp.cmd`, and no Node on the operator's machine.
+  Start it the same way in your own tests: `process.execPath` with
+  `mcp.ts`, in the Plugin directory, with no shell.
+- **A `wsl` Place starts `mcp` only.** There the Host runs `./mcp` inside the
+  distribution, and its Node, a Windows program, does not cross over. A
+  Plugin with `mcp.ts` and no `mcp` is **Stopped** there, with one sentence
+  that says so. Keep `mcp` beside `mcp.ts` if your Plugin may live in a
+  `wsl` Place; the Host takes `mcp.ts` everywhere else.
+- **An `mcp` must be a file, and it must carry the executable bit.** An `mcp`
   that cannot be run leaves your Plugin **Stopped**, with one line in the
   log and no other symptom. This is the mistake that costs an
   afternoon. Run `chmod +x mcp`. On Windows there is no executable bit: the
   cause is a missing `mcp.cmd` or `mcp.exe` (see below).
-- **The shebang chooses the language.** The Host runs the file; it does not
-  care what is in it. Python, Node, a shell script, a compiled binary.
-- **On Windows, ship `mcp.cmd` or `mcp.exe` beside it.** Windows reads no
-  shebang and has no executable bit, so there the Host runs `mcp.exe`, or
-  else `mcp.cmd`, and a Plugin with only `mcp` is **Stopped**
+- **The shebang of `mcp` chooses the language.** The Host runs the file; it
+  does not care what is in it. Python, Node, a shell script, a compiled binary.
+- **On Windows, ship `mcp.ts`, or `mcp.cmd` or `mcp.exe` beside `mcp`.**
+  Windows reads no shebang and has no executable bit, so there the Host
+  runs `mcp.exe`, or else `mcp.cmd`, and a Plugin with only `mcp` is
+  **Stopped**
   ([ADR-0019](adr/0019-a-plugin-starts-on-windows-from-mcp-cmd-or-mcp-exe.md)).
   For a Node Plugin, `mcp.cmd` is one line:
   `@"%FIRSTMATE_NODE%" "%~dp0mcp" %*`.
@@ -282,9 +298,9 @@ three, and each has an exact cause:
 
 | State              | What it means                                       |
 | ------------------ | --------------------------------------------------- |
-| `Running`          | Your `mcp` started and answered the handshake.      |
+| `Running`          | Your Plugin Server started and answered the handshake. |
 | `Stopped`          | It could not be run, exited, or would not answer.   |
-| `no Plugin Server` | There is no `mcp` file. This is allowed.            |
+| `no Plugin Server` | There is no Plugin Server file. This is allowed.    |
 
 `no Plugin Server` is not a failure. A Plugin that is only a page is a
 Plugin.
@@ -331,10 +347,11 @@ None of this is enforced. All of it is what the first Plugin learned.
 
 - [ ] The directory is at an absolute path you are happy to leave it at.
 - [ ] The name is lower-case letters, digits and single hyphens.
-- [ ] `chmod +x mcp`, or `mcp.cmd` or `mcp.exe` beside it on Windows — check
-  this first when the Plugin is Stopped.
-- [ ] `mcp.cmd` or `mcp.exe` beside it, if it runs on Windows.
-- [ ] `./mcp` runs from the Plugin directory without an import error.
+- [ ] An `mcp.ts`, which runs everywhere but a `wsl` Place; or `chmod +x mcp`,
+  with `mcp.cmd` or `mcp.exe` beside it on Windows — check this first when
+  the Plugin is Stopped.
+- [ ] `node mcp.ts`, or `./mcp`, runs from the Plugin directory without an
+  import error.
 - [ ] It answers `initialize` within ten seconds.
 - [ ] Nothing but JSON-RPC goes to stdout. Diagnostics go to stderr.
 - [ ] `web/index.html` exists, if you ship a page.

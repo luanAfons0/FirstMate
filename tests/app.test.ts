@@ -209,6 +209,7 @@ test(
       [
         { name: 'server-only', directory: 'app-node' },
         { name: 'page-only', directory: 'page-only' },
+        { name: 'node-form', directory: 'node-form' },
       ],
       {},
       { app },
@@ -223,6 +224,7 @@ test(
       plugins: [
         { name: 'server-only', hasPage: false, state: 'running' },
         { name: 'page-only', hasPage: true, state: 'no-plugin-server' },
+        { name: 'node-form', hasPage: false, state: 'running' },
       ],
     });
 
@@ -237,6 +239,18 @@ test(
     const said = (await answer.json()) as { result: { content: { text: string }[] } };
     assert.equal(answer.status, 200);
     assert.equal(said.result.content[0]?.text, 'pong from server-only');
+
+    // A Plugin with only mcp.ts is started by the App as Node, with the file
+    // as its one argument, and the App's Node strips its types (ADR-0028).
+    const fromTs = await ask(host, 'node-form', {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'ping', arguments: {} },
+    });
+    const saidTs = (await fromTs.json()) as { result: { content: { text: string }[] } };
+    assert.equal(fromTs.status, 200);
+    assert.equal(saidTs.result.content[0]?.text, 'pong from mcp.ts');
 
     const runtime = await readFile(join(host.home, 'runtime.json'), 'utf8');
     const second = spawn(app, [], {
