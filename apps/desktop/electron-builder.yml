@@ -3,8 +3,9 @@
 # packages of the system it runs on.
 #
 # The Windows installer is NSIS, one click, for this user alone: it writes
-# under %LOCALAPPDATA%\Programs and asks for no administrator. The betas ship
-# unsigned; the certificate is decided before 2.0.0 final.
+# under %LOCALAPPDATA%\Programs and asks for no administrator. Packaging signs
+# nothing: a release signs through SignPath Foundation between the passes of
+# scripts/package.ts (ADR-0027).
 appId: io.github.luanafons0.firstmate
 productName: FirstMate
 # The packed package.json is named FirstMate, not @firstmate/desktop. A per-user
@@ -50,6 +51,11 @@ nsis:
   # them. It is what electron-builder derives from appId, written down so that
   # nothing moves it unseen: a new GUID is a second App beside the first.
   guid: 97530065-71e0-5fdb-bf30-b8a47e68e176
+  # elevate.exe asks for an administrator, which only an install for every user
+  # needs. The App installs for one user, so it carries no elevate.exe: one
+  # program file fewer, and electron-builder would copy it in only while it
+  # builds the installer, after SignPath signed the App (ADR-0027).
+  packElevateHelper: false
 # On Linux the App is an AppImage, which electron-updater keeps up to date,
 # and a deb, which the package manager does (ADR-0026). Both take their mark
 # from one large PNG, which the desktop scales to the size it draws.

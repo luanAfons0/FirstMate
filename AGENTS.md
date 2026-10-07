@@ -230,6 +230,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   scripts/package.ts packaging in three passes: the unpacked App, the
                    installers built from it, and the update feed written
                    last. A release signs between them (ADR-0027).
+  signpath/        what SignPath signs: the copies of its two artifact
+                   configurations, app and installer.
   build/           what packaging reads: the mark, as icon.ico.
 tests/       one file per behaviour, plus fixtures/ and helpers/, for every
              package at once.
