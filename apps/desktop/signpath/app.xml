@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The artifact configuration "app" in SignPath: what it signs in the unpacked
+  Windows App the release workflow hands it, a zip of dist/win-unpacked
+  (ADR-0027). SignPath reads its own copy; this file is the one it is pasted
+  from, so a change here is a change made there too.
+
+  Every program file Electron ships unsigned is named, by name. Electron ships
+  d3dcompiler_47.dll and dxil.dll signed by Microsoft already, so they are left
+  as they are. A new program file in a new Electron is named nowhere, so the
+  workflow's check finds it unsigned and fails before anything is published.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file-set>
+      <include path="FirstMate.exe" />
+      <include path="dxcompiler.dll" />
+      <include path="ffmpeg.dll" />
+      <include path="vk_swiftshader.dll" />
+      <include path="vulkan-1.dll" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

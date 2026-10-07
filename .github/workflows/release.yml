@@ -70,30 +70,171 @@ jobs:
 
       - run: pnpm check
 
-  app:
-    name: Package the App (${{ matrix.system }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      # Packaging makes the packages of the system it runs on, so each system
-      # packages on its own runner (ADR-0026).
-      matrix:
-        include:
-          - system: windows
-            runner: windows-latest
-            # The installer, the block map electron-updater downloads only the
-            # changed parts of an update by, and latest.yml, the update feed.
-            files: |
-              apps/desktop/dist/FirstMate-Setup-*.exe
-              apps/desktop/dist/FirstMate-Setup-*.exe.blockmap
-              apps/desktop/dist/latest.yml
-          - system: linux
-            runner: ubuntu-latest
-            # The AppImage, which carries its block map inside it, the deb,
-            # and latest-linux.yml, the AppImage's update feed.
-            files: |
-              apps/desktop/dist/FirstMate-*.AppImage
-              apps/desktop/dist/firstmate_*.deb
-              apps/desktop/dist/latest-linux.yml
+  # The Windows App is packaged in three passes, and a release signs between
+  # them through SignPath Foundation (ADR-0027): the unpacked App, every program
+  # file of it signed; the installer built from it, then signed; and the update
+  # feed written last, from the signed installer's bytes, because a signature
+  # changes them.
+  #
+  # Signing is on when the repository holds SignPath's settings: the variables
+  # SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG and
+  # SIGNPATH_SIGNING_POLICY_SLUG, and the secret SIGNPATH_API_TOKEN. The token
+  # can only ask: SignPath signs nothing until the maintainer approves the
+  # request on its site, and the key never leaves SignPath's hardware. The two
+  # artifact configurations SignPath reads are kept in apps/desktop/signpath/.
+  # With no settings, a beta ships unsigned and says so; a version that is not
+  # a prerelease refuses to.
+  windows:
+    name: Package the App (windows)
+    # No signing request goes out for a tag that fails the check.
+    needs: check
+    runs-on: windows-latest
+    env:
+      SIGNING: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && secrets.SIGNPATH_API_TOKEN != '' }}
+      # Packaging signs nothing itself: SignPath does, between the passes.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: apps/desktop
+
+    steps:
+      - name: A final version ships signed
+        env:
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+          VERSION: ${{ needs.check.outputs.version }}
+        working-directory: .
+        run: |
+          if ($env:SIGNING -eq 'true') { exit 0 }
+          if ($env:PRERELEASE -ne 'true') {
+            Write-Error "$env:VERSION is not a prerelease, and signing is off: set the SignPath settings first."
+            exit 1
+          }
+          Write-Output "::warning::Signing is off, so the App of $env:VERSION ships unsigned."
+
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Package the unpacked App
+        run: pnpm run package:unpacked
+
+      - name: Hand the unpacked App to SignPath
+        id: unsigned-app
+        if: env.SIGNING == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          # Not app-*: the Release carries only what the github job downloads.
+          name: unsigned-app
+          if-no-files-found: error
+          path: apps/desktop/dist/win-unpacked
+
+      - name: Sign every program file of the App
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          # Long enough for the maintainer to approve the request.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: apps/desktop/dist/signed-app
+
+      # Every program file carries a valid signature: SignPath's, or, on the
+      # two DLLs Electron ships signed already, Microsoft's. A file SignPath's
+      # configuration does not name, such as a new DLL in a new Electron,
+      # fails here instead of shipping unsigned. The RunAsNode fuse still
+      # reads on, because every Plugin Server runs on FirstMate.exe as Node
+      # (ADR-0019): a fuse is a byte after its sentinel, '1' when on, and
+      # RunAsNode is the first.
+      - name: Check the signed App
+        if: env.SIGNING == 'true'
+        run: |
+          Remove-Item -Recurse -Force dist/win-unpacked
+          Move-Item dist/signed-app dist/win-unpacked
+          $unsigned = Get-ChildItem -Recurse dist/win-unpacked -Include *.exe, *.dll |
+            Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' }
+          if ($unsigned) {
+            Write-Error "These program files carry no valid signature: $($unsigned.Name -join ', ')."
+            exit 1
+          }
+          $bytes = [IO.File]::ReadAllBytes("$PWD/dist/win-unpacked/FirstMate.exe")
+          $text = [Text.Encoding]::Latin1.GetString($bytes)
+          $sentinel = 'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
+          $at = $text.IndexOf($sentinel, [StringComparison]::Ordinal)
+          if ($at -lt 0 -or $bytes[$at + $sentinel.Length + 2] -ne 0x31) {
+            Write-Error 'FirstMate.exe has its RunAsNode fuse off, so no Plugin Server could start.'
+            exit 1
+          }
+
+      - name: Build the installer from the unpacked App
+        run: pnpm run package:installers
+
+      - name: Hand the installer to SignPath
+        id: unsigned-installer
+        if: env.SIGNING == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-installer
+          if-no-files-found: error
+          path: apps/desktop/dist/FirstMate-Setup-*.exe
+
+      - name: Sign the installer
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: apps/desktop/dist/signed-installer
+
+      - name: Check the signed installer
+        if: env.SIGNING == 'true'
+        run: |
+          $installer = Get-ChildItem dist/signed-installer/FirstMate-Setup-*.exe
+          if ((Get-AuthenticodeSignature $installer.FullName).Status -ne 'Valid') {
+            Write-Error "$($installer.Name) carries no valid signature."
+            exit 1
+          }
+          Move-Item -Force $installer.FullName dist/
+
+      # Last, from the installer's final bytes: its block map, and the SHA-512
+      # and size in latest.yml. Unsigned, it writes what packaging wrote.
+      - name: Write the update feed
+        run: pnpm run package:feed
+
+      # The installer, the block map electron-updater downloads only the
+      # changed parts of an update by, and latest.yml, the update feed.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-windows
+          if-no-files-found: error
+          path: |
+            apps/desktop/dist/FirstMate-Setup-*.exe
+            apps/desktop/dist/FirstMate-Setup-*.exe.blockmap
+            apps/desktop/dist/latest.yml
+
+  linux:
+    name: Package the App (linux)
+    # Packaging makes the packages of the system it runs on, so each system
+    # packages on its own runner (ADR-0026). Linux is not signed: Smart App
+    # Control does not check an AppImage or a deb (ADR-0027).
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v7
@@ -107,24 +248,23 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The betas are unsigned, and the certificate is decided before 2.0.0
-      # final. Told not to look for one, packaging signs nothing.
-      # Packaging runs its three passes in a row: the unpacked App, the
-      # installers built from it, and the update feed written last.
-      - name: Package the App, unsigned
+      - name: Package the App
         run: pnpm --filter @firstmate/desktop run package
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      # The AppImage, which carries its block map inside it, the deb, and
+      # latest-linux.yml, the AppImage's update feed.
       - uses: actions/upload-artifact@v7
         with:
-          name: app-${{ matrix.system }}
+          name: app-linux
           if-no-files-found: error
-          path: ${{ matrix.files }}
+          path: |
+            apps/desktop/dist/FirstMate-*.AppImage
+            apps/desktop/dist/firstmate_*.deb
+            apps/desktop/dist/latest-linux.yml
 
   github:
     name: Publish the GitHub Release
-    needs: [check, app]
+    needs: [check, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
