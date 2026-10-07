@@ -152,7 +152,8 @@ instead of spinning in a restart loop. A Stopped Plugin still serves its Plugin
 Page.
 
 Writing one? [`docs/plugin-guide.md`](docs/plugin-guide.md) states the whole
-contract: what the Host enforces, and what it only advises.
+contract: what the Host enforces, and what it only advises. It advises a Node
+24 Plugin with an `mcp.ts`, which brings everything it needs.
 
 ## Add a Plugin
 
