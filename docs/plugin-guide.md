@@ -63,8 +63,9 @@ which, in a sentence you can act on.
 
 Each of `add`, `install` and `remove` asks the running Host to reload, so the
 Host picks the change up with no restart (ADR-0018). In a `wsl` Place, keep
-your `mcp` file as it is; on Windows itself, ship `mcp.ts`, or `mcp.cmd` or
-`mcp.exe` beside `mcp` (ADR-0019, ADR-0028).
+your `mcp` file as it is. On Windows itself, a Node Plugin ships `mcp.ts`, and
+a Plugin in another language ships `mcp.exe` or `mcp.cmd` beside `mcp`
+(ADR-0019, ADR-0028).
 
 ## The Plugin Page: your `web/` directory
 
@@ -115,16 +116,17 @@ the connection for the life of the Host.
   that cannot be run leaves your Plugin **Stopped**, with one line in the
   log and no other symptom. This is the mistake that costs an
   afternoon. Run `chmod +x mcp`. On Windows there is no executable bit: the
-  cause is a missing `mcp.cmd` or `mcp.exe` (see below).
+  cause is a Plugin with `mcp` alone, and the log says so (see below):
+  `mcp cannot run on Windows: it needs mcp.ts, mcp.cmd or mcp.exe`.
 - **The shebang of `mcp` chooses the language.** The Host runs the file; it
   does not care what is in it. Python, Node, a shell script, a compiled binary.
-- **On Windows, ship `mcp.ts`, or `mcp.cmd` or `mcp.exe` beside `mcp`.**
-  Windows reads no shebang and has no executable bit, so there the Host
-  runs `mcp.exe`, or else `mcp.cmd`, and a Plugin with only `mcp` is
-  **Stopped**
+- **On Windows, a Node Plugin ships `mcp.ts`, and any other ships `mcp.exe`
+  or `mcp.cmd` beside `mcp`.** Windows reads no shebang and has no
+  executable bit, so after `mcp.ts` and `mcp.js` the Host runs `mcp.exe`, or
+  else `mcp.cmd`, and a Plugin with only `mcp` is **Stopped**
   ([ADR-0019](adr/0019-a-plugin-starts-on-windows-from-mcp-cmd-or-mcp-exe.md)).
-  For a Node Plugin, `mcp.cmd` is one line:
-  `@"%FIRSTMATE_NODE%" "%~dp0mcp" %*`.
+  `mcp.cmd` is for a language Windows starts from a command line, such as
+  Python: `@python "%~dp0mcp" %*`. A Node Plugin needs no `mcp.cmd`.
 - **`FIRSTMATE_NODE` names a Node you may use.** Every Plugin Server
   receives it, on every platform: the Node that runs the Host. A Node
   Plugin needs no Node of its own.
@@ -324,8 +326,8 @@ None of this is enforced. All of it is what the first Plugin learned.
 - **Write a Node 24 Plugin with an `mcp.ts`.** It is the one form that runs
   on every system the App runs on, with no build step and no Node of the
   operator's own: the Host runs it with its own Node (ADR-0028). Other
-  languages stay welcome. Ship `mcp`, `mcp.exe` or `mcp.cmd`, as above, and
-  expect to do the work below by hand.
+  languages stay welcome. Ship `mcp`, with `mcp.exe` or `mcp.cmd` beside it
+  for Windows, as above, and expect to do the work below by hand.
 - **Write relative paths and nothing else.** The Host rewrites nothing, so
   relative paths are the ones that survive. Anything absolute assumes an
   address you do not own.
@@ -371,6 +373,14 @@ None of this is enforced. All of it is what the first Plugin learned.
   default. A time or a limit that only a test changes can stay an
   environment variable alone. The Host keeps no settings for you
   ([ADR-0005](adr/0005-plugins-own-their-data.md)).
+  - Your Plugin Page edits the file through your own tools. Your Plugin
+    Server offers a tool that reads the settings and one that changes
+    them, and the page calls them over `rpc`, as it calls any other tool
+    (`POST /p/<name>/rpc`). The page cannot write a file itself: everything
+    under `web/` is read-only.
+  - The tool that changes a setting checks it, writes the whole file
+    through a rename, and answers with the settings as they now are, or
+    with a sentence that says why it refused.
 - **Say nothing when nothing is wrong.** Your stderr is the operator's
   log, shared with the Host and every other Plugin. Earn each line.
 
@@ -378,9 +388,9 @@ None of this is enforced. All of it is what the first Plugin learned.
 
 - [ ] The directory is at an absolute path you are happy to leave it at.
 - [ ] The name is lower-case letters, digits and single hyphens.
-- [ ] An `mcp.ts`, which runs everywhere but a `wsl` Place; or `chmod +x mcp`,
-  with `mcp.cmd` or `mcp.exe` beside it on Windows — check this first when
-  the Plugin is Stopped.
+- [ ] An `mcp.ts`, which runs everywhere but a `wsl` Place. In another
+  language, `chmod +x mcp`, with `mcp.exe` or `mcp.cmd` beside it on
+  Windows — check this first when the Plugin is Stopped.
 - [ ] `node mcp.ts`, or `./mcp`, runs from the Plugin directory without an
   import error.
 - [ ] It answers `initialize` within ten seconds.
@@ -407,7 +417,7 @@ The running Host picks it up with no restart. After you fix a Stopped Plugin,
 Open the Index Page. If it says `Stopped`, the reason is in
 `firstmate logs`.
 
-## Two worked examples
+## Three worked examples
 
 **The smallest one that is complete.** `tests/fixtures/node-form/` is a whole
 Plugin Server in the recommended form: one `mcp.ts`, about forty lines, that
@@ -417,8 +427,50 @@ executable bit. Add a `web/` directory beside it and it has a page.
 and an `mcp.cmd`; it is in Python to show that the Host does not care what a
 Plugin Server is written in, and it is the form for another language.
 
+**One that brings what it needs.** Say your Plugin runs a program that the
+operator does not have. Fetch it the first time a tool needs it, check it
+against a SHA-256 you wrote into your code, and keep it under your Plugin
+directory, which is your working directory:
+
+```ts
+import { createHash } from 'node:crypto';
+import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+// One URL and one hash for each system you support, by process.platform.
+const TOOL = { url: 'https://example.com/tool-1.2.0-linux-x64', sha256: '<hex>' };
+const PATH = join('bin', process.platform === 'win32' ? 'tool.exe' : 'tool');
+
+const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
+
+/** The program's path, fetched and checked the first time it is needed. */
+async function tool(): Promise<string> {
+  const held = await readFile(PATH).catch(() => null);
+  if (held !== null && sha256(held) === TOOL.sha256) return PATH;
+  const answer = await fetch(TOOL.url);
+  if (!answer.ok) throw new Error(`${TOOL.url} answered ${answer.status}.`);
+  const bytes = Buffer.from(await answer.arrayBuffer());
+  if (sha256(bytes) !== TOOL.sha256) {
+    throw new Error(`${TOOL.url} is not the file this Plugin expects.`);
+  }
+  await mkdir('bin', { recursive: true });
+  await writeFile(`${PATH}.part`, bytes);
+  await chmod(`${PATH}.part`, 0o755);
+  await rename(`${PATH}.part`, PATH);
+  return PATH;
+}
+```
+
+Then offer a tool, such as `status`, that says what is still missing and how
+to get it, in a sentence: `tool is not here yet. It downloads on first use,
+about 40 MB.` Your Plugin Page calls it over `rpc` and shows that sentence,
+so the operator learns what is missing on the page and not from the log. A
+fetch that fails is a tool error with a sentence too, and the page shows it.
+
 **A real one.** Nexus is FirstMate's first Plugin.
 [`nexus-migration.md`](nexus-migration.md) records what it once had to
 build for itself — a loopback listener, a static allowlist, a run token, a
 tray — and what it deleted when the Host gave it all four. That document is
-the argument for this one.
+the argument for this one. Nexus is a Python Plugin, so it shows the `mcp`
+form, not `mcp.ts`, and it stays on Linux alone until
+[luanAfons0/nexus#71](https://github.com/luanAfons0/nexus/issues/71).
