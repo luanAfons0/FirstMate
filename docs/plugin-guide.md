@@ -392,6 +392,17 @@ None of this is enforced. All of it is what the first Plugin learned.
   - The tool that changes a setting checks it, writes the whole file
     through a rename, and answers with the settings as they now are, or
     with a sentence that says why it refused.
+  - Show your settings at `#settings` of your Plugin Page:
+    `/p/<name>/#settings`. The Settings View of the App has an Open
+    settings button for every Plugin with a Plugin Page, and it opens that
+    address in your Plugin's own view
+    ([ADR-0029](adr/0029-a-plugins-settings-are-at-settings-of-its-plugin-page.md)).
+    Read `location.hash` when the page loads and on every `hashchange`:
+    when your page is already open, only the fragment changes, and the
+    page does not load again. The fragment never reaches the Host.
+  - A Plugin with no settings may ignore the fragment. The button then
+    opens its Plugin Page as it always opens. There is nothing to declare:
+    the App never asks whether you have settings, and never reads them.
 - **Say nothing when nothing is wrong.** Your stderr is the operator's
   log, shared with the Host and every other Plugin. Earn each line.
 
@@ -415,6 +426,7 @@ None of this is enforced. All of it is what the first Plugin learned.
   whole process tree.
 - [ ] Its settings are in a file in its own directory, and an environment
   variable beats the file.
+- [ ] If it has settings, its Plugin Page shows them at `#settings`.
 
 Then:
 

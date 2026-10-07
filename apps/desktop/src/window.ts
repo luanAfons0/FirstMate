@@ -52,6 +52,7 @@ import {
   ownerOf,
   pathOf,
   pluginPath,
+  pluginSettingsPath,
   type HostAt,
 } from './addresses.ts';
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
@@ -490,6 +491,14 @@ export function openWindow(
         switching = false;
         redraw();
       }
+    } else if (asked.kind === 'plugin-settings') {
+      // The Plugin's own view, at its Plugin Settings, as the switcher opens
+      // its Plugin Page: a Stopped Plugin too, which may need a setting to
+      // start. The address is not the view's first page, so it is loaded
+      // even when the view is open; a view already on that page only moves
+      // to the fragment, and the page hears a hashchange. The Settings View
+      // closes. The App reads none of what it shows (ADR-0029, ADR-0005).
+      if (named(asked.name)?.hasPage === true) open(pluginSettingsPath(asked.name));
     } else if (asked.kind === 'settings') {
       setting = !setting;
       switching = false;
@@ -537,6 +546,8 @@ export function openWindow(
     if (SETTING.has(asked.kind) && event.sender !== settings.webContents) return;
     // Only the switcher carries a Restart button.
     if (asked.kind === 'restart' && event.sender !== switcher.webContents) return;
+    // Only the Settings View carries an Open settings button.
+    if (asked.kind === 'plugin-settings' && event.sender !== settings.webContents) return;
     act(asked);
   };
   ipcMain.on(ASK_CHANNEL, ask);

@@ -461,7 +461,7 @@ loaded until the App quits, so switching to another Plugin and back loses
 nothing. A link that leaves FirstMate opens in your browser.
 
 The Settings View has a side list of its sections, Places, Plugin Order, Start
-at logon and Shortcuts, and says the App's version under it. Places shows each Place with
+at logon, Shortcuts and Plugin settings, and says the App's version under it. Places shows each Place with
 its kind and its Shelf. There you move a Place's Shelf: type a path, or choose
 a folder for a Place on this machine. You remove a Place that holds no Plugin;
 the Place of this machine is always there. On Windows, Add a Place opens in
@@ -477,6 +477,15 @@ or why it was refused, and a refused field is marked with that sentence under
 it. What you typed stays, so you can correct it. The App then has the Host
 read its settings again. The Host never serves the Settings View, so no Plugin
 Page can reach it. Shortcuts, Plugins and Grants change from a terminal.
+
+Plugin settings lists every Plugin in the Plugin Order, with its state. A
+Plugin with a Plugin Page has an Open settings button: it closes the Settings
+View and opens `/p/<name>/#settings` in that Plugin's own view, as the
+switcher opens a Plugin Page, for a Stopped Plugin too. A Plugin that has
+settings shows them there; one that has none shows its page as usual. A Plugin
+with no Plugin Page says so, and has no button. Each Plugin keeps its own
+settings in its own directory, and the App never reads or writes them
+([ADR-0029](docs/adr/0029-a-plugins-settings-are-at-settings-of-its-plugin-page.md)).
 
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its
