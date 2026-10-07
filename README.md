@@ -375,7 +375,8 @@ where it downloads from.
 
 To build it yourself from a clone, on Windows, see
 [Work on FirstMate](#work-on-firstmate). Both the installer and the App it
-holds are unsigned, so Windows may warn before they run.
+holds are unsigned, so Windows may warn before they run. How the App will be
+signed is in [Code signing policy](#code-signing-policy).
 
 To try a change to the App before it is released, you need no clone on
 Windows: the Windows check of every pull request keeps the installer it built,
@@ -549,6 +550,96 @@ Other things differ from Windows:
   second start of the App shows its window.
 - **A capture** of a screen or a window is the picture alone. Its sound, the
   loopback audio, is on Windows only.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+The Windows App will be signed by SignPath Foundation, on SignPath's own
+hardware. No signing key is in this repository or in a GitHub secret. The
+release workflow builds the App from the source on GitHub, in public CI, for a
+tag, and asks SignPath for a signature. Each request is signed only after an
+approver approves it on SignPath's site. Every `.exe` and `.dll` of the App is
+signed, apart from the two Electron ships signed by Microsoft, then the
+installer that holds them. The AppImage and the deb are not
+signed. Windows names "SignPath Foundation" as the signer
+([ADR-0027](docs/adr/0027-the-app-is-signed-by-signpath-foundation.md)).
+
+Signing is not on yet. Until SignPath accepts FirstMate, the betas ship
+unsigned, as [The App](#the-app) says.
+
+### The team
+
+| Role | Who | What they do |
+| --- | --- | --- |
+| Committers and reviewers | Luan Afonso ([@luanAfons0](https://github.com/luanAfons0)) | Change the source on `main`, and review every pull request from anyone else before it is merged. |
+| Approvers | Luan Afonso ([@luanAfons0](https://github.com/luanAfons0)) | Approve each signing request on SignPath, for a release they trust. |
+
+Every team member uses multi-factor authentication on GitHub and on SignPath.
+
+### Privacy
+
+This program will not transfer any information to other networked systems
+unless specifically requested by the user or the person installing or
+operating it. There are two exceptions, and they are part of what you install:
+
+- **The App's updates.** Five minutes after the App starts, and every six
+  hours after, electron-updater asks the
+  [GitHub Release](https://github.com/luanAfons0/FirstMate/releases) of
+  `luanAfons0/FirstMate` for a newer version, and downloads it from there. The
+  App sends nothing else with that request. An App you run unpacked from a
+  clone, and the deb, never ask.
+- **The spell checker, on Linux.** Electron checks the spelling of what you
+  type in a page. On Linux it downloads the dictionary for your language from
+  Google's servers the first time it needs one. On Windows it uses the
+  spell checker of Windows, which downloads nothing.
+
+What the command line sends, it sends when you run a command:
+
+- `firstmate desktop` downloads the App and its checksum from the same GitHub
+  Release, or from `FIRSTMATE_RELEASES_URL`.
+- `firstmate install` clones a Plugin with `git` from the address you give, or
+  from the address of the Official Plugin you name.
+- `npx` and `npm` download the command line from npm.
+
+Nothing else leaves the machine. FirstMate has no telemetry, no crash reports
+and no account. The Host listens on `127.0.0.1` alone. GitHub and npm see
+each request as any web server does, under the
+[GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+
+A Plugin is not FirstMate. Its Plugin Page and its Plugin Server may reach the
+network, and FirstMate does not look at what they send. Read the privacy
+policy of each Plugin you add.
+
+### What the App changes, and how to remove it
+
+On Windows, the installer installs the App for you alone, with no
+administrator: the App in `%LOCALAPPDATA%\Programs\FirstMate`, a Start menu
+entry, a desktop shortcut, and the App's uninstall key in `HKCU`. The Host
+keeps its files in `%APPDATA%\FirstMate`. Start at logon writes the Run value
+`FirstMate` in `HKCU`, and only when you turn it on.
+
+To remove the App on Windows, first turn **Start at logon** off in the Tray.
+Then open Windows Settings, go to Apps, and uninstall FirstMate. The
+uninstall keeps `%APPDATA%\FirstMate`, with the Registry, the settings and
+every Grant; delete that folder to remove them too.
+
+On Linux, the AppImage is one file, `~/Applications/FirstMate.AppImage`. The
+deb installs the App into `/opt/FirstMate`, puts `firstmate-app` on the path,
+and loads an AppArmor profile. Start at logon writes
+`~/.config/autostart/firstmate.desktop`, and only when you turn it on. The
+Host keeps its files in `~/.firstmate`.
+
+To remove the App on Linux, turn **Start at logon** off, then delete the
+AppImage, or remove the deb:
+
+```sh
+sudo apt remove firstmate
+```
+
+Delete `~/.firstmate` to remove the Registry, the settings and every Grant
+too. Remove the command line with `npm uninstall -g @luan-afonso/firstmate`.
 
 ## Configure it
 
