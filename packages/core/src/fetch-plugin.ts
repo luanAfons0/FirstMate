@@ -4,7 +4,7 @@
  * It runs nothing the Plugin ships. A directory is copied and a git URL is
  * cloned, and that is the whole of it; the Plugin's own executable runs later,
  * when the Host starts it. Fetching a Plugin and running a Plugin stay two
- * separate decisions (ADR-0012).
+ * separate decisions (ADR-0021, which says the same of the step after it).
  *
  * Cloning uses the `git` binary. That is one external tool the command line
  * assumes, it is not a package dependency, and the Host itself still has none.
@@ -49,12 +49,15 @@ export function isGitUrl(source: string): boolean {
  * Put the Plugin at this source into the Shelf under this Plugin Name, and
  * give back the directory it landed in. A fetch that fails leaves nothing
  * behind, so a caller can write a Registry row knowing the files are there.
+ * `keepLineEndings` clones with `core.autocrlf` off, for a Place whose own git
+ * reads the files later (a `wsl` Place, ADR-0021).
  */
 export async function fetchPlugin(
   source: string,
   shelf: string,
   name: string,
   words: GitWords = 'shown',
+  keepLineEndings = false,
 ): Promise<string> {
   const target = join(shelf, name);
   // lstat, not exists: a symlink there that points nowhere is still in the way.
@@ -68,7 +71,7 @@ export async function fetchPlugin(
   const staging = join(shelf, `.${name}.pending`);
   await rm(staging, { recursive: true, force: true });
   try {
-    if (isGitUrl(source)) await clone(source, staging, words);
+    if (isGitUrl(source)) await clone(source, staging, words, keepLineEndings);
     else await copyDirectory(source, staging, shelf);
     await rename(staging, target);
   } catch (cause) {
@@ -113,12 +116,20 @@ async function copyDirectory(source: string, staging: string, shelf: string): Pr
  * words, and the operator runs it again from a pipe, or sets up a credential
  * helper or an ssh key (ADR-0025).
  */
-function clone(url: string, staging: string, words: GitWords): Promise<void> {
+function clone(
+  url: string,
+  staging: string,
+  words: GitWords,
+  keepLineEndings: boolean,
+): Promise<void> {
+  // git writes this setting into the clone's own config too, so the
+  // distribution's git sees the files as their author committed them.
+  const keep = keepLineEndings ? ['-c', 'core.autocrlf=false'] : [];
   return new Promise((done, fail) => {
     const git =
       words === 'shown'
-        ? spawn('git', ['clone', '--', url, staging], { stdio: 'inherit' })
-        : spawn('git', ['clone', '--quiet', '--', url, staging], {
+        ? spawn('git', [...keep, 'clone', '--', url, staging], { stdio: 'inherit' })
+        : spawn('git', [...keep, 'clone', '--quiet', '--', url, staging], {
             env: askingNothing(process.env),
             stdio: ['ignore', 'ignore', 'pipe'],
           });

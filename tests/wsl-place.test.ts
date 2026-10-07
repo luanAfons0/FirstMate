@@ -4,10 +4,12 @@
  * read through the Place's root, and their Plugin Pages are served like any
  * other (ADR-0021). The distribution here is a fake, and the root a folder.
  */
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { cp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
+import { bareRepositoryOf, hasGit } from './helpers/git.ts';
 import { bootHostIn, firstmate, fixture, makeHome } from './helpers/host.ts';
 import { callTool, stateOf } from './helpers/plugins.ts';
 import { fakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
@@ -223,6 +225,38 @@ test(
     );
     const rows = JSON.parse(await readFile(join(home, 'registry.json'), 'utf8')).plugins;
     assert.deepEqual(rows, [{ name: 'server-only', place: 'deb', directory: inside, grants: [] }]);
+  },
+);
+
+test(
+  'install clones into a wsl Place with the line endings its author committed',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    if (!(await hasGit())) {
+      t.skip('this machine has no git to clone with');
+      return;
+    }
+    const bare = await bareRepositoryOf(t, 'both', 'both');
+    const home = await makeHome(t);
+    const wsl = await fakeWsl(t, ['Debian']);
+    await firstmate(home, ['place', 'add', 'deb', 'wsl', 'Debian', wsl.root], wsl.env);
+    // The setting of a Windows git, given to every git this command runs.
+    const crlf = {
+      ...wsl.env,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_SYSTEM: '/dev/null',
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'core.autocrlf',
+      GIT_CONFIG_VALUE_0: 'true',
+    };
+
+    const installed = await firstmate(home, ['install', `file://${bare}`, '--place', 'deb'], crlf);
+
+    assert.equal(installed.code, 0, installed.stderr);
+    const clone = join(wsl.root, '/home/mate/.firstmate/shelf/both');
+    assert.doesNotMatch(await readFile(join(clone, 'mcp'), 'utf8'), /\r/, 'mcp keeps LF');
+    const status = spawnSync('git', ['status', '--porcelain'], { cwd: clone, env: crlf });
+    assert.equal(status.stdout.toString(), '', 'the clone has no local changes');
   },
 );
 
