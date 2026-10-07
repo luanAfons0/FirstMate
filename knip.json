@@ -10,8 +10,8 @@
       "project": ["src/**/*.ts"]
     },
     "apps/desktop": {
-      "entry": ["src/main.ts", "src/preload.ts"],
-      "project": ["src/**/*.ts"]
+      "entry": ["src/main.ts", "src/preload.ts", "scripts/package.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"]
     },
     "packages/core": {
       "project": ["src/**/*.ts"]

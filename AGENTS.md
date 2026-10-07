@@ -227,6 +227,9 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   electron.vite.config.ts the build: the main process, with core and host
                    in, and the preload.
   electron-builder.yml the package: FirstMate.exe and its per-user installer.
+  scripts/package.ts packaging in three passes: the unpacked App, the
+                   installers built from it, and the update feed written
+                   last. A release signs between them (ADR-0027).
   build/           what packaging reads: the mark, as icon.ico.
 tests/       one file per behaviour, plus fixtures/ and helpers/, for every
              package at once.
