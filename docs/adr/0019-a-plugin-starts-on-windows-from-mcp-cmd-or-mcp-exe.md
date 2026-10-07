@@ -27,3 +27,7 @@ The `.cmd` form runs from a drive path only: cmd.exe cannot work in a `\\server\
 The home folder on Windows is `%APPDATA%\FirstMate`. Linux keeps `~/.firstmate`, because that is where a 1.x Host left its files. This is the first place the Host's source asks which platform it runs on.
 
 CI runs the whole suite on `windows-latest` and on `ubuntu-latest`, and every fixture with a Plugin Server carries `mcp.cmd` beside `mcp`. The `unrunnable` fixture carries none, because on Windows it is the Plugin with only the shell form.
+
+## Amended: mcp.ts and mcp.js first (ADR-0028)
+
+ADR-0028 amends this ADR: on Windows, as on Linux, the Host starts `mcp.ts` or `mcp.js` with its own Node before it looks for `mcp.exe` and `mcp.cmd`, so a Node Plugin needs no `mcp.cmd`.

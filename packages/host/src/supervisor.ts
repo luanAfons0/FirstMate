@@ -2,11 +2,12 @@
  * The Supervisor: every Plugin Server the Host starts, and the truth about
  * each one.
  *
- * At start, every Registry row whose directory holds an executable named `mcp`
- * is spawned and kept until the Plugin leaves the Registry or the Host stops.
- * On Windows the executable is `mcp.exe` or `mcp.cmd` instead (ADR-0019). A
- * Plugin in a `wsl` Place keeps its `mcp`, and runs inside its distribution
- * through `wsl.exe` (ADR-0021).
+ * At start, every Registry row whose directory holds a Plugin Server file is
+ * spawned and kept until the Plugin leaves the Registry or the Host stops. The
+ * file is `mcp.ts` or `mcp.js`, which the Host's own Node runs (ADR-0028), or
+ * else an executable `mcp`, which on Windows is `mcp.exe` or `mcp.cmd` instead
+ * (ADR-0019). A Plugin in a `wsl` Place keeps its `mcp`, and runs inside its
+ * distribution through `wsl.exe` (ADR-0021).
  * A reload starts the Plugins added and stops the ones removed, and leaves
  * every other one alone. A Plugin Server that exits leaves its Plugin Stopped
  * and is never started again on the Host's own account: a broken Plugin must
@@ -23,7 +24,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { WSL_EXE } from '@firstmate/core/wsl';
 import { webRoot } from './static-files.ts';
@@ -35,6 +36,13 @@ import { openToolBus } from './tool-bus.ts';
 
 /** The executable a Plugin ships its Plugin Server as. There is no manifest. */
 const SERVER_FILE = 'mcp';
+
+/**
+ * What a Plugin ships its Plugin Server as for the Host's own Node, in the
+ * order the Host looks, before any other form. One file runs on every system,
+ * and needs no Node but the one that runs the Host (ADR-0028).
+ */
+const NODE_SERVER_FILES = ['mcp.ts', 'mcp.js'] as const;
 
 /**
  * What a Plugin ships its Plugin Server as on Windows, in the order the Host
@@ -404,13 +412,20 @@ async function serverFile(plugin: HeldPlugin): Promise<ServerFile> {
           `${plugin.runner.distribution} there, and does it start?`,
       };
     }
-    return (await isFile(shell)) ? { found: 'runnable', path: shell } : { found: 'none' };
+    if (await isFile(shell)) return { found: 'runnable', path: shell };
+    // A Plugin Server for the Host's Node is a Plugin Server all the same, so
+    // the Plugin is Stopped, not shipping none. The Host's Node is a Windows
+    // program, and is not handed across (ADR-0021, ADR-0028).
+    const node = await firstFile(directory, NODE_SERVER_FILES);
+    return node === null
+      ? { found: 'none' }
+      : { found: 'unrunnable', why: `${node} cannot run in a wsl Place, which starts mcp` };
   }
+  const node = await firstFile(directory, NODE_SERVER_FILES);
+  if (node !== null) return { found: 'runnable', path: node };
   if (ON_WINDOWS) {
-    for (const name of WINDOWS_SERVER_FILES) {
-      const path = join(directory, name);
-      if (await isFile(path)) return { found: 'runnable', path };
-    }
+    const windows = await firstFile(directory, WINDOWS_SERVER_FILES);
+    if (windows !== null) return { found: 'runnable', path: windows };
     // An `mcp` alone is a Plugin Server written for Linux. It is a Plugin
     // Server all the same, so the Plugin is Stopped, not shipping none.
     return (await isFile(shell))
@@ -430,6 +445,20 @@ async function serverFile(plugin: HeldPlugin): Promise<ServerFile> {
 /** Whether a Plugin ships a Plugin Page: a web directory, read through its Place. */
 async function shipsPage(plugin: HeldPlugin): Promise<boolean> {
   return (await stat(webRoot(plugin.files)).catch(() => null)) !== null;
+}
+
+/** The first of these files the directory holds, in this order, or null for none. */
+async function firstFile(directory: string, names: readonly string[]): Promise<string | null> {
+  for (const name of names) {
+    const path = join(directory, name);
+    if (await isFile(path)) return path;
+  }
+  return null;
+}
+
+/** Whether a Plugin Server file is one the Host's own Node runs. */
+function isNodeFile(name: string): boolean {
+  return (NODE_SERVER_FILES as readonly string[]).includes(name);
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -467,6 +496,10 @@ function launch(path: string, plugin: HeldPlugin): ChildProcess {
       { ...options, cwd: undefined },
     );
   }
+  const name = basename(path);
+  // The Host's own Node, with the file as its one argument, and no shell: a
+  // Plugin Server is started the same way on every system (ADR-0028).
+  if (isNodeFile(name)) return spawn(process.execPath, [name], options);
   if (!path.endsWith('.cmd')) return spawn(path, [], options);
   // Node starts a `.cmd` file only through cmd.exe, and only when asked to
   // (CVE-2024-27980). cmd.exe reads a command line by rules of its own, so it
