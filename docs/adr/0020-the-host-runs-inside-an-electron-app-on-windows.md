@@ -48,7 +48,7 @@ The App is built, and the build is not on the npm publish path. ADR-0017's rule 
 
 The App has one automated test. `tests/app.test.ts` packages the App, installer and all, starts the packaged program with a temporary home and port zero, and drives its Host through the same helper as every other test. It runs on Windows only. The window, as in ADR-0011, has no test.
 
-The App ships unsigned for the betas, and Windows may warn before it runs. The certificate is decided before 2.0.0 final.
+The App ships unsigned for the betas, and Windows may warn before it runs. The certificate is decided before 2.0.0 final. [ADR-0027](0027-the-app-is-signed-by-signpath-foundation.md) decides how the App is signed.
 
 Electron fetches its binary the first time it runs, not when it is installed, so a clone that never starts the App never fetches it. Packaging fetches the Electron it packs on its own.
 

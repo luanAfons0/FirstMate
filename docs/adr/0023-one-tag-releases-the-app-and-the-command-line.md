@@ -65,7 +65,7 @@ The npm package first, then the Release. That is the order 1.x had, when the Rel
 
 The GitHub Release is no longer written by hand. The workflow writes it with generated notes, and the maintainer edits the notes after. A Release a maintainer made for the tag before pushing it keeps its notes and gets the files.
 
-The betas are unsigned, and Windows may warn before the installer runs. The certificate is decided before 2.0.0 final; signing changes the workflow and none of these names.
+The betas are unsigned, and Windows may warn before the installer runs. The certificate is decided before 2.0.0 final; signing changes the workflow and none of these names. [ADR-0027](0027-the-app-is-signed-by-signpath-foundation.md) decides how the App is signed, and writes `latest.yml` after the last signature.
 
 A Release whose App failed to package is not published, and neither is its command line. Running the failed job again finishes the release.
 
