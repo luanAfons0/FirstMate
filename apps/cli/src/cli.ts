@@ -296,7 +296,8 @@ act in it unless --place names another. Each Place has its own Shelf. A local
 Place runs its Plugin Servers on this machine. A wsl Place (Windows only) is one WSL
 distribution: add it with place add <name> wsl <distribution>, and give the
 Windows path its files are read through when that is not
-\\\\wsl.localhost\\<distribution>. Its paths are the distribution's own. A Place
+\\\\wsl.localhost\\<distribution>. Its paths are the distribution's own, and update
+runs git inside the distribution, so that it needs git installed there. A Place
 that holds a Plugin cannot be removed, and a Plugin Name is used once across
 every Place.`;
 
@@ -319,7 +320,7 @@ name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.`,
   },
-  { about: ['place', 'add', 'install', 'shelf'], text: PLACES_HELP },
+  { about: ['place', 'add', 'install', 'shelf', 'update'], text: PLACES_HELP },
   {
     about: ['import'],
     text: `import reads the 1.x Registry and settings from ~/.firstmate in a wsl Place's
