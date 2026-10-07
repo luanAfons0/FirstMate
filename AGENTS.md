@@ -52,6 +52,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts revoke <from> <to>` | Take that Grant back.                           |
 | `node apps/cli/src/cli.ts shelf [dir] [--place <name>]` | Say where a fetched Plugin lands, or move it.   |
 | `node apps/cli/src/cli.ts install <dir\|url\|official-name> [name] [--place <name>]` | Fetch a Plugin into the Shelf and register it. |
+| `node apps/cli/src/cli.ts update <name>`      | Move a Plugin that is a git clone forward, and restart it. |
 | `node apps/cli/src/cli.ts bind <keys> <plugin> [path]` | Bind a Shortcut to a Plugin address.  |
 | `node apps/cli/src/cli.ts unbind <keys>`      | Free a Shortcut's keys.                         |
 | `node apps/cli/src/cli.ts order [<name> <position>]` | Say the Plugin Order, or move one Plugin in it. |
@@ -99,7 +100,8 @@ knip and every test.
   `@clack/prompts`, a devDependency of `apps/cli` and nothing else, for the
   questions asked on a terminal; the Host still takes no dependency
   (ADR-0025). `install` runs the `git`
-  binary to clone a Plugin, and a `wsl` Place runs `wsl.exe`: external tools
+  binary to clone a Plugin, and `update` runs it to move the clone forward
+  (ADR-0030), and a `wsl` Place runs `wsl.exe`: external tools
   the command line assumes, not package dependencies.
 - **Electron 44**, in `apps/desktop`, for the App: its main process holds the
   Host, and its executable, told `ELECTRON_RUN_AS_NODE=1`, is the Node every
@@ -155,6 +157,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
                    a git URL, and run none of what lands.
+  update-plugin.ts move a Plugin that is a git clone forward, with no merge,
+                   through a runner of one git command (ADR-0030).
 packages/host/src/  the Host. Every file is one job.
   start.ts         start the Host: read the Registry, mint the token,
                    supervise, listen; and stop it. The App calls it too.
@@ -179,7 +183,7 @@ packages/host/src/  the Host. Every file is one job.
 apps/cli/           the npm package, @luan-afonso/firstmate: the command line
                     alone, with no Host and no window (ADR-0024).
   src/cli.ts       the terminal: desktop, setup, place, import, shelf, install,
-                   bind, unbind, order, logs, status, restart, and the
+                   update, bind, unbind, order, logs, status, restart, and the
                    Registry: add, remove, list, grant, revoke.
   src/version.ts   the version of the command line, read from its own package.json:
                    `--version` says it, and `desktop` installs the App of it.

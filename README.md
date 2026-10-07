@@ -162,6 +162,7 @@ firstmate add <name> /absolute/path/to/the/directory
 firstmate install /absolute/path/to/the/directory [name]
 firstmate install https://example.com/someone/a-plugin.git [name]
 firstmate install worklog [name]
+firstmate update <name>
 firstmate remove <name>
 firstmate list
 firstmate grant <from> <to>
@@ -192,6 +193,43 @@ to reload, so you never restart FirstMate by hand. A reload starts the Plugins
 that were added, stops the ones that were removed, takes the new Grants, and
 leaves every other Plugin Server alone. It never starts a Stopped Plugin again.
 With no Host running, the command writes the files and says nothing more.
+
+### Update a Plugin
+
+```sh
+firstmate update <name>
+```
+
+A Plugin's version is its commit, so `update` updates a Plugin that is a git
+clone: one you installed from a git URL, or an Official Plugin you installed
+by name ([ADR-0030](docs/adr/0030-update-moves-a-git-clone-forward.md)). It
+fetches the clone's upstream and moves its branch forward, with no merge, then
+restarts the Plugin Server through the running Host. It says
+`updated <name> from <commit> to <commit>`, then what `restart` says. A Plugin
+with no Plugin Server is not restarted: the Host serves its Plugin Page from
+disk, so the page has changed already. With no Host running, the update is
+done, and the new code starts with the Host. When there is nothing to fetch,
+or the clone is ahead with commits of your own, it says nothing and restarts
+nothing.
+
+The files git ignores, where a Plugin keeps its data, stay as they are, and
+nothing the Plugin ships runs: git runs with the clone's hooks and fsmonitor
+off, and never asks on the terminal. `update` refuses in one sentence, with
+exit code `3`, and changes nothing, when the directory is not a git clone of
+its own, when it has local changes to tracked files, when it is at a detached
+HEAD or its branch has no upstream, when the branch has diverged from its
+upstream, and when the new commit would overwrite an untracked file. git not
+on the PATH, or a fetch that fails, ends with exit code `1` and git's reason.
+For now `update` reaches a Plugin in a `local` Place only.
+
+A copied Plugin, one installed from a directory or registered with `add`, is
+not a clone of its own, and `update` never copies over it: that would risk its
+data. Update it by hand: move its data out, run `firstmate remove <name>`,
+then `firstmate install` it again, and put its data back. A Plugin you
+registered with `add` inside your own repository is yours to pull.
+
+`firstmate update` updates Plugins only. The App updates itself
+([The App](#the-app)), and the command line updates with npm.
 
 ### Official Plugins
 
@@ -611,6 +649,8 @@ What the command line sends, it sends when you run a command:
   Release, or from `FIRSTMATE_RELEASES_URL`.
 - `firstmate install` clones a Plugin with `git` from the address you give, or
   from the address of the Official Plugin you name.
+- `firstmate update` fetches a Plugin's clone from its upstream, the address
+  it was cloned from.
 - `npx` and `npm` download the command line from npm.
 
 Nothing else leaves the machine. FirstMate has no telemetry, no crash reports

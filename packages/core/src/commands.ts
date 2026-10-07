@@ -1,7 +1,7 @@
 /**
  * What the writing commands change, apart from how they are typed and
- * printed: add or remove a Place, move a Shelf, add or install a Plugin, give
- * a Grant, bind a Shortcut, move a Plugin in the Plugin Order.
+ * printed: add or remove a Place, move a Shelf, add, install or update a
+ * Plugin, give a Grant, bind a Shortcut, move a Plugin in the Plugin Order.
  *
  * The terminal (`cli.ts`) and `setup` both call these, so a refusal has the
  * same words in both places. Each one either does its whole change or throws
@@ -11,6 +11,7 @@ import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, posix } from 'node:path';
 import type { Config } from './config.ts';
 import { fetchPlugin, isGitUrl, type GitWords } from './fetch-plugin.ts';
+import { readPlugins } from './plugin-places.ts';
 import { refusalOf, refuse } from './refusal.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import {
@@ -29,6 +30,7 @@ import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './reg
 import { inPluginOrder, readSettings, writeSettings, type Settings } from './settings.ts';
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
+import { gitHere, moveForward, type Moved } from './update-plugin.ts';
 import { homeIn, makeExecutable } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
@@ -314,6 +316,33 @@ export async function installPlugin(
   const row: PluginRow = { name, place: place.name, directory, grants: [] };
   writeRegistry(config.home, [...now, row]);
   return row;
+}
+
+/**
+ * Move a Plugin that is a git clone forward to its upstream, and say from
+ * which commit to which, or give back nothing when there was nothing to move
+ * (ADR-0030). The name is checked as `restart` checks it. Restarting the
+ * Plugin Server is the caller's, because only a terminal reaches the Host.
+ */
+export async function updatePlugin(home: string, name: string): Promise<Moved | undefined> {
+  if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
+  const plugin = readPlugins(home).find((row) => row.name === name);
+  if (plugin === undefined) throw refuse('missing', `no Plugin named ${name} is registered.`);
+  if (plugin.runner.kind === 'nowhere') {
+    throw refuse('invalid', `${name} cannot be updated: ${plugin.runner.why}.`);
+  }
+  if (plugin.runner.kind === 'wsl') {
+    throw refuse(
+      'invalid',
+      `${name} is in ${plugin.place}, a wsl Place, and update does not reach a wsl Place yet: ` +
+        `run git pull --ff-only in ${plugin.directory} inside ${plugin.runner.distribution}, ` +
+        `then firstmate restart ${name}.`,
+    );
+  }
+  if (statSync(plugin.files, { throwIfNoEntry: false })?.isDirectory() !== true) {
+    throw refuse('invalid', `${plugin.directory} is not a directory.`);
+  }
+  return moveForward(gitHere(plugin.files), name, plugin.directory);
 }
 
 /**

@@ -149,7 +149,7 @@ function clone(url: string, staging: string, words: GitWords): Promise<void> {
  * This environment, with git told not to ask on the terminal, and ssh told
  * the same unless the operator chose their own ssh command.
  */
-function askingNothing(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function askingNothing(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     ...env,
     GIT_TERMINAL_PROMPT: '0',
