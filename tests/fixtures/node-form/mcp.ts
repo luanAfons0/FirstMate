@@ -3,7 +3,7 @@
 // JavaScript, so it runs only on a Node that strips types: the Node the Host
 // names, and under the App the App itself.
 // It answers with the name of the file the Host started, which is its one
-// argument, so a test can tell which form won. Other fixtures import it.
+// argument, so a test can tell which form won.
 import { basename } from 'node:path';
 import { createInterface } from 'node:readline';
 

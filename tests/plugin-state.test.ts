@@ -106,7 +106,7 @@ test('an mcp that cannot run here leaves its Plugin Stopped, and says why', asyn
   // first line, so a Plugin with the shell form alone cannot start there.
   const why =
     process.platform === 'win32'
-      ? /unrunnable is Stopped: .*mcp cannot run on Windows: it needs mcp\.cmd or mcp\.exe\./
+      ? /unrunnable is Stopped: .*mcp cannot run on Windows: it needs mcp\.ts, mcp\.cmd or mcp\.exe\./
       : /unrunnable is Stopped: .*mcp is not executable\./;
   assert.match(host.output(), why);
 });

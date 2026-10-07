@@ -317,7 +317,10 @@ and drives it over HTTP, exactly as a browser does.
   Add a fixture rather than a mock. A fixture with an `mcp` carries its
   Windows form, `mcp.cmd`, beside it (ADR-0019). A fixture with only an
   `mcp.ts` or `mcp.js` needs neither, because the Host runs it with its own
-  Node (ADR-0028); knip takes each `mcp.ts` as an entry.
+  Node (ADR-0028); knip takes each `mcp.ts` as an entry. A fixture reaches no
+  file outside its own directory, so it proves what it holds and nothing more.
+- `tests/helpers/plugins.ts` asks a booted Host for one Plugin's state, and
+  makes one tool call as a Plugin Page makes it, through `host.ts`.
 - `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, and points a `wsl`
   Place's root at a folder of the test's own. `tests/helpers/windows.ts` fakes
   the Windows programs and a GitHub Release, for `firstmate desktop` and the
