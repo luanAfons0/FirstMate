@@ -294,7 +294,7 @@ export async function installPlugin(
   // checked, because a path that was a directory yesterday can be a symlink
   // today.
   const shelf = checkShelf(filesOf(place, chosen), config.home);
-  const landed = await fetchPlugin(from, shelf, name, words);
+  const landed = await fetchPlugin(from, shelf, name, words, place.kind === 'wsl');
   // A `wsl` Plugin is registered by the distribution's own path, and the
   // files written from Windows lost the executable bit on their way in.
   const directory = place.kind === 'wsl' ? posix.join(chosen, name) : landed;
