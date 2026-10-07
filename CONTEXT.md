@@ -27,7 +27,7 @@ The order every list of Plugins shows them in, chosen by the operator. A Plugin 
 _Avoid_: sort, ranking, priority
 
 **Settings View**:
-The window's own page for FirstMate's settings, opened from the gear in the strip. The Host never serves it, so no Plugin Page can reach it.
+The window's own page for FirstMate's settings, opened from the gear in the strip. The Host never serves it, so no Plugin Page can reach it. It opens each Plugin's Plugin Settings, and holds none of them.
 _Avoid_: preferences, options, config page, settings page
 
 **Place**:
@@ -80,6 +80,12 @@ _Avoid_: id, slug, key
 **Plugin Page**:
 The web interface a Plugin ships and owns. The Host serves it and never reaches inside it.
 _Avoid_: view, board, dashboard, UI, frontend
+
+**Plugin Settings**:
+The part of a Plugin Page where that Plugin's own settings are set, reached at
+`/p/<name>/#settings`. It is the Plugin's own, kept in its own directory, and
+it is not the Settings View, which holds FirstMate's settings (ADR-0029).
+_Avoid_: settings page, preferences, config
 
 **Plugin Server**:
 The MCP server a Plugin ships. Its tools are everything the Plugin can do.
