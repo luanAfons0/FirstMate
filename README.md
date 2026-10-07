@@ -96,7 +96,7 @@ Evidence, not a promise. "Proved" means someone has run it.
 
 | Platform        | App         | Host          | Plugin Server                        | Command line |
 | --------------- | ----------- | ------------- | ------------------------------------ | ------------ |
-| Windows         | proved      | proved        | proved, from `mcp.ts`, `mcp.cmd` or `mcp.exe` | proved |
+| Windows         | proved      | proved        | proved from `mcp.cmd` or `mcp.exe`; `mcp.ts` written, and run by hand on Windows Node, but not yet proved by Windows CI or the packaged App | proved |
 | WSL, as a Place | —           | —             | proved, through `wsl.exe`            | proved       |
 | Linux, native   | proved by CI | proved by CI | proved by CI                         | proved by CI |
 | macOS           | not built   | should work, untried | should work, untried          | should work, untried |
