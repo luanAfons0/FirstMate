@@ -321,6 +321,11 @@ One Stopped Plugin leaves every other Plugin serving.
 
 None of this is enforced. All of it is what the first Plugin learned.
 
+- **Write a Node 24 Plugin with an `mcp.ts`.** It is the one form that runs
+  on every system the App runs on, with no build step and no Node of the
+  operator's own: the Host runs it with its own Node (ADR-0028). Other
+  languages stay welcome. Ship `mcp`, `mcp.exe` or `mcp.cmd`, as above, and
+  expect to do the work below by hand.
 - **Write relative paths and nothing else.** The Host rewrites nothing, so
   relative paths are the ones that survive. Anything absolute assumes an
   address you do not own.
@@ -340,6 +345,32 @@ None of this is enforced. All of it is what the first Plugin learned.
   needs one, it brings its own.
 - **Do not read the Host's runtime file, and do not print the token.**
   Nothing in `$FIRSTMATE_HOME` is yours.
+- **Bring everything you need.** A Plugin carries, or fetches on first use,
+  each program and file it needs, so that it works after `firstmate
+  install` with nothing else done. Its Plugin Page says what is still
+  missing and how to get it.
+  - Keep a fetched binary inside your own directory, never in a system
+    path. Check it against a SHA-256 that you know before you run it.
+  - Fetch on first use, never at `firstmate install`. Nothing runs at
+    install, and the Host runs nothing on your behalf either.
+  - Do not bundle a tool that belongs to the operator's own account, such
+    as `claude`. Let the operator set it from your Plugin Page.
+- **Start other programs the same way on every system.**
+  - Start a program and a list of arguments, with no shell. Then no
+    quoting rule of any shell can change what the arguments mean.
+  - Start a `.cmd` or `.bat` file through `cmd.exe`, and pass nothing that
+    `cmd.exe` would interpret.
+  - End a command that runs too long with its whole process tree: the
+    process group on Linux, `taskkill /T /F` on Windows. Ending only the
+    first process leaves its children running.
+  - Build every path with `node:path` and `node:os`, never with a `/` or a
+    `\` of your own.
+- **Keep the settings your operator chooses in your own directory.** A
+  settings file there, which your Plugin Page edits. An environment
+  variable of the same meaning beats the file, and the file beats the
+  default. A time or a limit that only a test changes can stay an
+  environment variable alone. The Host keeps no settings for you
+  ([ADR-0005](adr/0005-plugins-own-their-data.md)).
 - **Say nothing when nothing is wrong.** Your stderr is the operator's
   log, shared with the Host and every other Plugin. Earn each line.
 
@@ -357,6 +388,12 @@ None of this is enforced. All of it is what the first Plugin learned.
 - [ ] `web/index.html` exists, if you ship a page.
 - [ ] Every path in the page is relative.
 - [ ] No token, anywhere, in anything you wrote.
+- [ ] Every program it needs is bundled, or fetched on first use and checked
+  against a SHA-256, and the Plugin Page says what is missing.
+- [ ] It starts other programs with no shell, and ends a long one with its
+  whole process tree.
+- [ ] Its settings are in a file in its own directory, and an environment
+  variable beats the file.
 
 Then:
 
@@ -372,12 +409,13 @@ Open the Index Page. If it says `Stopped`, the reason is in
 
 ## Two worked examples
 
-**The smallest one that is complete.** `tests/fixtures/both/` is a whole
-Plugin in about sixty lines: an `mcp` in Python that answers `initialize`,
-`tools/list` and `tools/call`, and a `web/` directory beside it. It is
-Python precisely to show that the Host does not care what a Plugin Server
-is written in. `tests/fixtures/server-only/` is the same in JavaScript,
-with no page at all.
+**The smallest one that is complete.** `tests/fixtures/node-form/` is a whole
+Plugin Server in the recommended form: one `mcp.ts`, about forty lines, that
+answers `initialize`, and `tools/call`, with no build, no `mcp.cmd` and no
+executable bit. Add a `web/` directory beside it and it has a page.
+`tests/fixtures/both/` is the same Plugin in Python, with a page, an `mcp`
+and an `mcp.cmd`; it is in Python to show that the Host does not care what a
+Plugin Server is written in, and it is the form for another language.
 
 **A real one.** Nexus is FirstMate's first Plugin.
 [`nexus-migration.md`](nexus-migration.md) records what it once had to
