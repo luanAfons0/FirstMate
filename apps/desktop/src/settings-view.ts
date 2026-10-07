@@ -1,7 +1,7 @@
 /**
  * The Settings View: a side list of its sections, the Places with their
- * Shelves, the Plugin Order, start at logon, the Shortcuts, and the App's
- * version.
+ * Shelves, the Plugin Order, start at logon, the Shortcuts, the way to each
+ * Plugin's Plugin Settings, and the App's version.
  *
  * It is one of the App's own pages (`pages.ts`): written here, loaded once as
  * a data address and then sent each new body, never served by the Host, so no
@@ -26,12 +26,18 @@
  * itself; it shows the order the Host gives back, so a refused move leaves
  * the rows where they are kept (ADR-0016). The row that moved keeps the
  * focus, so the keys can move it again.
+ *
+ * Plugin settings lists the same rows. Each Plugin with a Plugin Page has an
+ * Open settings button, whose ask carries the Plugin Name alone; the main
+ * process opens `/p/<name>/#settings` in that Plugin's own view. The App
+ * shows the button whether or not the Plugin has settings, and reads and
+ * writes none of them (ADR-0029).
  */
 import { canHoldWslPlace } from '@firstmate/core/places';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { shortcutAddress } from '@firstmate/core/shortcut';
 import { type IconName, icon } from '@firstmate/core/theme';
-import { logonAsk, placeRemoveAsk, shelfChooseAsk, TYPED } from './ask.ts';
+import { logonAsk, placeRemoveAsk, pluginSettingsAsk, shelfChooseAsk, TYPED } from './ask.ts';
 import { escaped, written, type Written } from './pages.ts';
 import type { PluginSeen, Plugins } from './host-lists.ts';
 import type { Field, PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
@@ -45,6 +51,7 @@ const SECTIONS: readonly Section[] = [
   { id: 'order', icon: 'list-numbers', words: 'Plugin Order' },
   { id: 'logon', icon: 'power', words: 'Start at logon' },
   { id: 'shortcuts', icon: 'keyboard', words: 'Shortcuts' },
+  { id: 'plugin-settings', icon: 'puzzle-piece', words: 'Plugin settings' },
 ];
 
 /** The icons any body of the Settings View may draw. */
@@ -74,6 +81,7 @@ ${placesSection(shown.saved.places, shown)}
 ${orderSection(shown.plugins, shown.busy)}
 ${logonSection(shown.logon, shown.busy)}
 ${shortcutsSection(shown.saved.shortcuts)}
+${pluginSettingsSection(shown.plugins)}
 <p class="foot">Plugins and Grants change from a terminal: <code>firstmate --help</code>.</p>`;
   return written(
     'Settings',
@@ -282,6 +290,41 @@ function shortcutRow(shortcut: ShortcutShown): string {
   return `<div class="shortcut" data-key="shortcut:${escaped(shortcut.keys)}">\
 <span class="k">${keys}</span><code><i>/p/</i>${escaped(plugin)}<i>/</i>\
 ${escaped(path)}</code></div>`;
+}
+
+/** Plugin settings: every Plugin in the Plugin Order, and a way to its own settings. */
+function pluginSettingsSection(plugins: Plugins): string {
+  const rows =
+    plugins.kind === 'untold'
+      ? '<p class="none">The Host would not say which Plugins there are.</p>'
+      : plugins.plugins.length === 0
+        ? '<p class="none">No Plugin is registered.</p>'
+        : `<div class="group">
+${plugins.plugins.map(pluginSettingsRow).join('\n')}
+</div>`;
+  return `<section id="plugin-settings">
+<h2>Plugin settings</h2>
+<p class="hint">Each Plugin keeps its own settings in its own Plugin Page. Open settings shows that
+page at <code>#settings</code>; a Plugin with no settings shows its page as it always does.</p>
+${rows}
+</section>`;
+}
+
+/**
+ * One Plugin, its state, and its Open settings button. A Plugin with no
+ * Plugin Page has nothing to open, so it says so. Running needs no word: the
+ * solid dot says it.
+ */
+function pluginSettingsRow(plugin: PluginSeen): string {
+  const name = escaped(plugin.name);
+  const state = plugin.state === 'running' ? '' : STATE_WORDS[plugin.state];
+  const end = plugin.hasPage
+    ? `<button type="button" class="btn" data-ask="${escaped(pluginSettingsAsk(plugin.name))}" \
+aria-label="Open the settings of ${name}">Open settings</button>`
+    : '<span class="no-page">No Plugin Page</span>';
+  return `<div class="plugin-row" data-key="plugin-settings:${name}">\
+<span class="dot ${plugin.state}" aria-hidden="true"></span><span class="name">${name}</span>\
+<span class="state ${plugin.state}">${state}</span>${end}</div>`;
 }
 
 function disabled(busy: boolean): string {
@@ -619,6 +662,17 @@ function styles(): string {
   .order-row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
   .order-busy .order-row { cursor: default; opacity: .6; pointer-events: none; }
   .none { margin: 0; padding: 14px 12px; color: var(--muted); font-size: 12.5px; }
+  .plugin-row {
+    display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center;
+    gap: 10px; padding: 8px 10px 8px 14px; min-height: 46px;
+  }
+  .plugin-row .name {
+    font: 600 12.5px/1.2 var(--mono); color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .plugin-row .state { font-size: 11.5px; color: var(--faint); }
+  .plugin-row .state.stopped { color: var(--stopped); }
+  .plugin-row .no-page { font-size: 12px; color: var(--faint); }
   .cmd {
     display: flex; align-items: center; gap: 8px; margin: 10px 0 0; padding: 8px 10px;
     border-radius: var(--radius-control); background: var(--chrome); border: 1px solid var(--line);

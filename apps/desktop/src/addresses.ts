@@ -48,6 +48,15 @@ export function pluginPath(name: string): string {
 }
 
 /**
+ * The address of one Plugin's Plugin Settings: its Plugin Page, at
+ * `#settings`. The fragment never reaches the Host; the page reads it
+ * (ADR-0029).
+ */
+export function pluginSettingsPath(name: string): string {
+  return `${pluginPath(name)}#settings`;
+}
+
+/**
  * Whose an address on the Host is: a Plugin Name, or `INDEX`. Undefined when
  * the address is not on the Host at all. Only the path is read.
  */
