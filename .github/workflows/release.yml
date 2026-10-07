@@ -109,6 +109,8 @@ jobs:
 
       # The betas are unsigned, and the certificate is decided before 2.0.0
       # final. Told not to look for one, packaging signs nothing.
+      # Packaging runs its three passes in a row: the unpacked App, the
+      # installers built from it, and the update feed written last.
       - name: Package the App, unsigned
         run: pnpm --filter @firstmate/desktop run package
         env:
@@ -162,6 +164,19 @@ jobs:
             echo "latest-linux.yml does not name $appimage." >&2
             exit 1
           fi
+          # Each feed carries the SHA-512 and the size of the bytes this
+          # Release carries, or electron-updater refuses the update. Signing
+          # changes the installer's bytes, so this is what proves the feed was
+          # written after the last signature (ADR-0027).
+          for pair in "latest.yml $windows" "latest-linux.yml $appimage"; do
+            set -- $pair
+            sha512="$(openssl dgst -sha512 -binary "$2" | base64 -w0)"
+            size="$(stat -c %s "$2")"
+            if ! grep -qx "sha512: $sha512" "$1" || ! grep -qx "    size: $size" "$1"; then
+              echo "$1 does not carry the SHA-512 and the size of $2." >&2
+              exit 1
+            fi
+          done
           for installer in "$windows" "$appimage" "$deb"; do
             sha256sum "$installer" > "$installer.sha256"
           done

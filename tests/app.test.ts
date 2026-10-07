@@ -10,10 +10,13 @@
  */
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
+import { gunzipSync } from 'node:zlib';
 import { bootHost, packageApp, type Booted } from './helpers/host.ts';
 
 /** What packaging makes on one system, and how the packaged App is started there. */
@@ -22,6 +25,8 @@ type Packaged = {
   readonly packages: readonly RegExp[];
   /** The directory of the unpacked program, under packaging's output. */
   readonly unpacked: string;
+  /** The update feed electron-updater reads, under packaging's output. */
+  readonly feed: string;
   /** Make the App ready to start from packaging's output, and say what starts it. */
   program(out: string): Promise<string>;
   /** Check what the packages carry beside the program, apart from starting it. */
@@ -40,12 +45,14 @@ const PACKAGED: Readonly<Partial<Record<NodeJS.Platform, Packaged>>> = {
   win32: {
     packages: [/^FirstMate-Setup-.+\.exe$/],
     unpacked: 'win-unpacked',
+    feed: 'latest.yml',
     program: async (out) => join(out, 'win-unpacked', 'FirstMate.exe'),
     carries: async () => undefined,
   },
   linux: {
     packages: [/^FirstMate-.+\.AppImage$/, /^firstmate_.+\.deb$/],
     unpacked: 'linux-unpacked',
+    feed: 'latest-linux.yml',
     program: (out) => unpackAppImage(out, `FirstMate-${VERSION}.AppImage`),
     carries: (out) => checkDeb(out, `firstmate_${VERSION}_amd64.deb`),
   },
@@ -104,6 +111,41 @@ async function unpackAppImage(out: string, name: string): Promise<string> {
   return join(out, 'squashfs-root', 'AppRun');
 }
 
+/**
+ * Every file the update feed names carries the SHA-512 and the size of that
+ * file's bytes, and a block map beside a file was written from those bytes.
+ * A release signs the Windows installer after it is built, which changes its
+ * bytes, so packaging writes the feed last (ADR-0027). A feed that describes
+ * other bytes is one electron-updater refuses.
+ */
+async function checkFeed(out: string, feed: string): Promise<void> {
+  const text = await readFile(join(out, feed), 'utf8');
+  const named = [...text.matchAll(/^(?: {2}- url|path): (.+)$/gm)].map((match) => match[1]);
+  assert.ok(named.length > 0, `${feed} names a file`);
+  for (const name of new Set(named)) {
+    if (name === undefined) continue;
+    const bytes = await readFile(join(out, name));
+    const sha512 = createHash('sha512').update(bytes).digest('base64');
+    assert.ok(text.includes(`sha512: ${sha512}`), `${feed} carries the SHA-512 of ${name}`);
+    const entry = new RegExp(
+      `^ {2}- url: ${name.replaceAll('.', '\\.')}\\n {4}sha512: .+\\n {4}size: (\\d+)$`,
+      'm',
+    );
+    assert.equal(
+      text.match(entry)?.[1],
+      String(bytes.length),
+      `${feed} carries the size of ${name}`,
+    );
+    const map = join(out, `${name}.blockmap`);
+    if (!existsSync(map)) continue;
+    const blocks = JSON.parse(gunzipSync(await readFile(map)).toString('utf8')) as {
+      files: { sizes: number[] }[];
+    };
+    const mapped = blocks.files[0]?.sizes.reduce((sum, size) => sum + size, 0);
+    assert.equal(mapped, bytes.length, `the block map of ${name} covers its bytes`);
+  }
+}
+
 const packaged = PACKAGED[process.platform];
 
 /**
@@ -149,6 +191,7 @@ test(
       assert.equal(made.filter((file) => name.test(file)).length, 1, `packaging makes ${name}`);
     }
     await packaged.carries(out);
+    await checkFeed(out, packaged.feed);
 
     // The App learns where to look for an update from this file, which
     // packaging writes from the publish block of electron-builder.yml.

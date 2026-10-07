@@ -11,7 +11,10 @@
   "desktopName": "firstmate.desktop",
   "scripts": {
     "build": "electron-vite build",
-    "package": "electron-vite build && electron-builder --publish never"
+    "package": "electron-vite build && node scripts/package.ts",
+    "package:unpacked": "electron-vite build && node scripts/package.ts unpacked",
+    "package:installers": "node scripts/package.ts installers",
+    "package:feed": "node scripts/package.ts feed"
   },
   "devDependencies": {
     "@firstmate/core": "workspace:*",

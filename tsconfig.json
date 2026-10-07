@@ -15,5 +15,11 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["apps/*/src/**/*.ts", "apps/*/*.config.ts", "packages/*/src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "apps/*/src/**/*.ts",
+    "apps/*/scripts/**/*.ts",
+    "apps/*/*.config.ts",
+    "packages/*/src/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }
