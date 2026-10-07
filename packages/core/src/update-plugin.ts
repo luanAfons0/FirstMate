@@ -6,7 +6,9 @@
  * fetch and a fast-forward. Nothing is merged, nothing is copied over, and the
  * files git ignores, where a Plugin keeps its data, are never touched
  * (ADR-0005). Every step that would lose something refuses instead, before
- * the step that changes anything, so a refusal leaves the clone as it was.
+ * the step that changes anything, so a refusal leaves the branch and the
+ * files as they were. A refusal after the fetch has moved the remote-tracking
+ * branch all the same, which loses nothing.
  *
  * The steps run git through a runner: one git command, in the Plugin's own
  * directory, wherever the git that owns that clone is. A `local` Place's
@@ -14,48 +16,24 @@
  * distribution, and that runner is the one thing such a Place adds: the
  * steps, their order and their sentences are the same in every Place.
  *
- * Every command runs with repository hooks and fsmonitor off, so an update
- * runs nothing a clone can configure for itself, as a fetch runs nothing the
- * Plugin ships. git runs in the C locale, so that its words can be read here.
+ * Every command runs with the settings `git.ts` keeps, which turn off
+ * repository hooks, fsmonitor and the `ext::` transport, and in an
+ * environment where git asks nothing on the terminal and speaks in the C
+ * locale, so that its words can be read here.
  */
 import { spawn } from 'node:child_process';
-import { askingNothing } from './fetch-plugin.ts';
+import { gitEnvironment, RUNS_NOTHING, type GitAnswer, type GitRunner } from './git.ts';
 import { refuse } from './refusal.ts';
-
-/** What one git command said, and how it ended. */
-type GitAnswer = {
-  readonly code: number | null;
-  readonly stdout: string;
-  readonly stderr: string;
-};
-
-/**
- * Run one git command in one Plugin's directory, and give back its answer. It
- * fails, with a sentence that says where git is missing, only when git cannot
- * be run at all; a command git runs and refuses is an answer.
- */
-export type GitRunner = (argv: readonly string[]) => Promise<GitAnswer>;
 
 /** What an update moved: the commit before it and the commit after it, short. */
 export type Moved = { readonly from: string; readonly to: string };
-
-/**
- * The settings that keep a clone from making git run anything: no hook, and
- * no file-system monitor. Given on the command line, they beat the clone's own
- * configuration.
- */
-const RUNS_NOTHING = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false'];
-
-/** The variables that would point git at another repository than the Plugin's own. */
-const ELSEWHERE = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'];
 
 /**
  * The runner of a `local` Place: this machine's git, in this directory, in
  * the environment `install` clones in, so it never asks on the terminal.
  */
 export function gitHere(directory: string): GitRunner {
-  const env: NodeJS.ProcessEnv = { ...askingNothing(process.env), LC_ALL: 'C' };
-  for (const name of ELSEWHERE) delete env[name];
+  const env = gitEnvironment(process.env);
   return (argv) =>
     new Promise((done, fail) => {
       const git = spawn('git', argv, { cwd: directory, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -116,7 +94,8 @@ export async function moveForward(
   if (branch.code !== 0) {
     throw refuse(
       'invalid',
-      `${name} is on no branch, at a detached HEAD, so update does not know what to follow.`,
+      `${name} is on no branch, at a detached HEAD, so update does not know what to follow: ` +
+        'check out the branch it follows, then run update again.',
     );
   }
   const upstream = await run('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}');
@@ -124,7 +103,8 @@ export async function moveForward(
     throw refuse(
       'invalid',
       `${name}'s branch ${branch.stdout.trim()} has no upstream, ` +
-        'so update does not know what to follow.',
+        'so update does not know what to follow: ' +
+        'set one with git branch --set-upstream-to, then run update again.',
     );
   }
 
@@ -147,12 +127,15 @@ export async function moveForward(
     throw refuse(
       'invalid',
       `${name} has commits its upstream does not have, and its upstream has moved on too, ` +
-        'so it cannot move forward without a merge.',
+        'so it cannot move forward without a merge: ' +
+        'merge or rebase it by hand, then run update again.',
     );
   }
 
   const from = await shortHead(run, directory);
-  const merged = await run('merge', '--ff-only', '--quiet', '@{upstream}');
+  // git overwrites an ignored file the new commit tracks unless told not to,
+  // and an ignored file is where a Plugin keeps its data (ADR-0005).
+  const merged = await run('merge', '--ff-only', '--no-overwrite-ignore', '--quiet', '@{upstream}');
   if (merged.code !== 0) {
     if (/untracked working tree files would be overwritten/.test(merged.stderr)) {
       const files = merged.stderr

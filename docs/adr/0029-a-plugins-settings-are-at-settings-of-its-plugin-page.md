@@ -2,7 +2,7 @@
 
 The Settings View holds every setting of FirstMate: the Places, the Plugin Order, start at logon and the Shortcuts. It said nothing about the settings of each Plugin. A Plugin keeps those in a file in its own directory, and its Plugin Page edits them through its own tools (ADR-0005). scribe and research show them at `/p/<name>/#settings`, so an operator had to open the Plugin first, then find its settings there. The spec is issue #200.
 
-So a Plugin that has settings serves them at `/p/<name>/#settings`: its own Plugin Page, which reads the fragment and shows its Plugin Settings. The Settings View gains a Plugin settings section. It lists every Plugin in the Plugin Order, from the rows `/plugins.json` already gives, and each Plugin that ships a Plugin Page has an Open settings button. The button opens that address in the Plugin's own view, as the switcher opens a Plugin Page, and the Settings View closes.
+So a Plugin that has settings serves them at `/p/<name>/#settings`: its own Plugin Page, which reads the fragment and shows its Plugin Settings. The Settings View gains a Plugin Settings section. It lists every Plugin in the Plugin Order, from the rows `/plugins.json` already gives, and each Plugin that ships a Plugin Page has an Open settings button. The button opens that address in the Plugin's own view, as the switcher opens a Plugin Page, and the Settings View closes.
 
 The App shows the button for every Plugin with a Plugin Page, and it does not try to find out whether the Plugin has settings. A Plugin with none is free to ignore the fragment, and the button then opens its Plugin Page as it always opens. A Plugin with no Plugin Page has nothing to open, so its row says so and has no button.
 

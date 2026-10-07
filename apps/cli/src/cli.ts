@@ -387,7 +387,8 @@ Host. It says nothing when there is nothing to move. The files git ignores,
 where a Plugin keeps its data, stay as they are, and nothing the Plugin ships
 runs. It refuses, and changes nothing, a Plugin that is no git clone of its
 own, has local changes to tracked files, follows no upstream, or has diverged
-from it. With no Host running, the new code starts with the Host.`,
+from it. With no Host running, a Plugin Server's new code starts with the
+Host.`,
   },
   {
     about: ['restart'],
@@ -1031,7 +1032,8 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
  * Move a Plugin that is a git clone forward, then restart its Plugin Server
  * through the running Host, in the words restart uses (ADR-0030). Nothing
  * moved, nothing said: a Plugin that is current is left alone. With no Host
- * running the update is still done, and the new code starts with the Host.
+ * running the update is still done: a Plugin Server's new code starts with the
+ * Host, and a Plugin with none has its new Plugin Page already.
  */
 async function update(home: string, argv: readonly string[]): Promise<number> {
   const [name] = argv;
@@ -1040,28 +1042,37 @@ async function update(home: string, argv: readonly string[]): Promise<number> {
   }
 
   // git's words are held, and said in the sentence of a failure, so a
-  // spinner can turn while it fetches (ADR-0025).
+  // spinner can turn while it fetches (ADR-0025). Nothing moved, so the
+  // spinner goes with no line.
   const moved = await whileWaiting(
     `updating ${name}`,
-    (done) => (done === undefined ? `${name} is up to date` : `fetched ${name}`),
+    (done) => (done === undefined ? undefined : `fetched ${name}`),
     () => updatePlugin(home, name),
   );
   if (moved === undefined) return 0;
   console.log(`firstmate: updated ${name} from ${moved.from} to ${moved.to}`);
 
+  // The Host serves a Plugin Page's bytes from disk, so they changed already.
+  const pageChanged = ' Its Plugin Page has changed.';
   const restarted = await restartPlugin(home, name);
   if (restarted === undefined) {
+    if (!moved.shipsPluginServer) {
+      return sayRestarted(name, { state: 'no-plugin-server' }, pageChanged);
+    }
     console.log(`firstmate: no Host runs, so ${name}'s new code starts with the Host.`);
     return 0;
   }
-  // The Host serves a Plugin Page's bytes from disk, so they changed already.
-  return sayRestarted(name, restarted, ' Its Plugin Page has changed.');
+  return sayRestarted(name, restarted, pageChanged);
 }
 
-/** Say what became of a Plugin the Host restarted, and give back the exit code. */
-function sayRestarted(name: string, restarted: Restarted, noServer = ''): number {
+/**
+ * Say what became of a Plugin the Host restarted, and give back the exit
+ * code. `afterNoServer` is said after the sentence for a Plugin that ships no
+ * Plugin Server, starting with its own space.
+ */
+function sayRestarted(name: string, restarted: Restarted, afterNoServer = ''): number {
   if (restarted.state === 'no-plugin-server') {
-    console.log(`firstmate: ${name} ships no Plugin Server to restart.${noServer}`);
+    console.log(`firstmate: ${name} ships no Plugin Server to restart.${afterNoServer}`);
     return 0;
   }
   if (restarted.state === 'stopped') {
