@@ -83,6 +83,9 @@ _Avoid_: view, board, dashboard, UI, frontend
 
 **Plugin Server**:
 The MCP server a Plugin ships. Its tools are everything the Plugin can do.
+It is `mcp.ts` or `mcp.js`, which the Host runs with its own Node, or else an
+executable `mcp`, or on Windows `mcp.exe` or `mcp.cmd`, in that order. A `wsl`
+Place starts `mcp` only (ADR-0028).
 _Avoid_: backend, worker, daemon, adapter
 
 **Stopped**:

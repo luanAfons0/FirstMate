@@ -3,7 +3,8 @@
   "includeEntryExports": true,
   "workspaces": {
     ".": {
-      "entry": ["tests/**/*.test.ts"],
+      // A fixture's mcp.ts is started by the Host, not imported (ADR-0028).
+      "entry": ["tests/**/*.test.ts", "tests/fixtures/*/mcp.ts"],
       "project": ["tests/**/*.ts"]
     },
     "apps/cli": {

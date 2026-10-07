@@ -149,6 +149,36 @@ test(
   },
 );
 
+test(
+  'a wsl Plugin that ships only mcp.ts is Stopped, because a wsl Place starts mcp',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    const home = await makeHome(t);
+    const wsl = await fakeWsl(t, ['Debian']);
+    await inDistribution(wsl, 'node-form', '/home/mate/plugins/node-form');
+    await firstmate(home, ['place', 'add', 'deb', 'wsl', 'Debian', wsl.root], wsl.env);
+    await firstmate(home, ['add', 'node-form', '/home/mate/plugins/node-form', '--place', 'deb']);
+
+    const host = await bootHostIn(t, home, wsl.env);
+
+    assert.equal(await stateOf(host, 'node-form'), 'stopped');
+    assert.ok(
+      host
+        .output()
+        .includes(
+          `the Plugin named node-form is Stopped: ` +
+            `${join(wsl.root, 'home/mate/plugins/node-form', 'mcp.ts')} cannot run in a wsl Place, ` +
+            'which starts mcp.',
+        ),
+      host.output(),
+    );
+    assert.ok(
+      !(await wsl.calls()).some((call) => call.endsWith('./mcp')),
+      'nothing was started in the distribution',
+    );
+  },
+);
+
 test('a Plugin whose Place is not there is Stopped, and says so', async (t) => {
   const home = await makeHome(t);
   await writeFile(

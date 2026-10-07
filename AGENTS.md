@@ -167,7 +167,9 @@ packages/host/src/  the Host. Every file is one job.
   index-page.ts    the Index Page, one file with no assets of its own.
   supervisor.ts    start every Plugin Server, hold the truth about each, and
                    start or stop only what a reload added or removed. On
-                   Windows it starts mcp.exe or mcp.cmd (ADR-0019).
+                   Windows it starts mcp.exe or mcp.cmd (ADR-0019). It
+                   starts mcp.ts or mcp.js first, with its own Node
+                   (ADR-0028).
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
@@ -310,9 +312,12 @@ and drives it over HTTP, exactly as a browser does.
   and starts the packaged program through the same helper with `app`. It runs
   on Windows and on Linux, and takes about a minute. The App's window has no test.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
-  `page-only`, `server-only`, `quitter`, `unrunnable`, `caller` and
-  `notifier`. Add a fixture rather than a mock. A fixture with an `mcp`
-  carries its Windows form, `mcp.cmd`, beside it (ADR-0019).
+  `page-only`, `server-only`, `quitter`, `unrunnable`, `caller`, `notifier`,
+  and `node-form`, `node-js` and `node-first` for the Node form.
+  Add a fixture rather than a mock. A fixture with an `mcp` carries its
+  Windows form, `mcp.cmd`, beside it (ADR-0019). A fixture with only an
+  `mcp.ts` or `mcp.js` needs neither, because the Host runs it with its own
+  Node (ADR-0028); knip takes each `mcp.ts` as an entry.
 - `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, and points a `wsl`
   Place's root at a folder of the test's own. `tests/helpers/windows.ts` fakes
   the Windows programs and a GitHub Release, for `firstmate desktop` and the
@@ -346,7 +351,8 @@ and drives it over HTTP, exactly as a browser does.
 
 - Any `git add`, `git commit`, `git push`, or anything that opens a PR.
 - Adding a runtime dependency, or any dependency at all.
-- Changing the Plugin contract: the `web/` directory, the `mcp` executable, the
+- Changing the Plugin contract: the `web/` directory, the Plugin Server file
+  (`mcp.ts`, `mcp.js`, or the `mcp` executable and its Windows forms), the
   shape of `registry.json`, or an address under `/p/<name>/`.
 - Anything that reverses an ADR, and anything that adds a manifest or a schema
   for Plugins (ADR-0002).

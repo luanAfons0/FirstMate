@@ -1,0 +1,4 @@
+#!/bin/sh
+# The shell form of this fixture: server-only's server, which answers as
+# server-only. The Host starts mcp.ts before it, so this one never answers.
+exec "$FIRSTMATE_NODE" "$(dirname "$0")/../server-only/mcp" "$@"
