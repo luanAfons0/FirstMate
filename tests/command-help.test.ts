@@ -25,6 +25,7 @@ const COMMANDS: readonly [string, string][] = [
   ['revoke', ' <from> <to>'],
   ['shelf', ' [directory] [--place <name>]'],
   ['install', ' <source> [name] [--place <name>]'],
+  ['update', ' <name>'],
   ['bind', ' <keys> <plugin> [path]'],
   ['unbind', ' <keys>'],
   ['order', ' [<name> <position>]'],

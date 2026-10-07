@@ -342,6 +342,17 @@ None of this is enforced. All of it is what the first Plugin learned.
   you, and never reads or writes a Plugin's data
   ([ADR-0005](adr/0005-plugins-own-their-data.md)). Decide where your state
   lives on the first day.
+  - Keep your data in files git ignores: name them in your `.gitignore`.
+    `firstmate update` moves a clone of your Plugin forward to your newest
+    commit and never touches the files git ignores, so the data survives
+    every update
+    ([ADR-0030](adr/0030-update-moves-a-git-clone-forward.md)). A data file
+    that git tracks is a local change, and `update` refuses to move a clone
+    that has one.
+  - Ship a fix by pushing a commit. An operator who installed your Plugin
+    from its git URL takes it with `firstmate update <name>`. Nothing runs
+    after an update, so a fix that needs a new program fetches it on first
+    use, as above.
 - **Expect no scheduler.** The Host runs nothing on a timer
   ([ADR-0004](adr/0004-the-host-owns-no-scheduler.md)). If your Plugin
   needs one, it brings its own.

@@ -24,6 +24,7 @@
  *   node apps/cli/src/cli.ts revoke <from> <to>
  *   node apps/cli/src/cli.ts shelf [directory] [--place <name>] [--json]
  *   node apps/cli/src/cli.ts install <directory|git-url|official-name> [name] [--place <name>]
+ *   node apps/cli/src/cli.ts update <name>
  *   node apps/cli/src/cli.ts bind <keys> <plugin> [path]
  *   node apps/cli/src/cli.ts unbind <keys>
  *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
@@ -45,6 +46,7 @@ import {
   removePlace,
   shelfOf,
   takePermission,
+  updatePlugin,
   withoutInOrder,
   withShortcuts,
 } from '@firstmate/core/commands';
@@ -60,7 +62,7 @@ import {
 } from '@firstmate/core/registry';
 import { logPath, oldLogPath } from '@firstmate/core/runtime';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
-import { STATE_WORDS, type PluginState } from '@firstmate/core/plugin-state';
+import { STATE_WORDS, type PluginState, type Restarted } from '@firstmate/core/plugin-state';
 import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
 import { bringAcross } from './one-x.ts';
 import { onTerminal, openPrompt } from './prompt.ts';
@@ -140,6 +142,14 @@ const COMMANDS: readonly Command[] = [
     does: 'fetch a Plugin into the Shelf and register it.',
     place: true,
     run: (argv, _json, place) => install(readConfig(), argv, place),
+  },
+  {
+    name: 'update',
+    group: 'Plugins',
+    short: 'move a Plugin that is a git clone forward',
+    takes: '<name>',
+    does: 'move a Plugin that is a git clone forward, and restart it.',
+    run: (argv) => update(home(), argv),
   },
   {
     name: 'add',
@@ -369,6 +379,16 @@ its cap: the whole log then moves to firstmate.log.old, which is printed
 first. With -f it keeps printing new lines until you stop it with Ctrl-C.`,
   },
   {
+    about: ['update'],
+    text: `update fetches a Plugin that is a git clone and moves its branch forward to its
+upstream, with no merge, then restarts its Plugin Server through the running
+Host. It says nothing when there is nothing to move. The files git ignores,
+where a Plugin keeps its data, stay as they are, and nothing the Plugin ships
+runs. It refuses, and changes nothing, a Plugin that is no git clone of its
+own, has local changes to tracked files, follows no upstream, or has diverged
+from it. With no Host running, the new code starts with the Host.`,
+  },
+  {
     about: ['restart'],
     text: `restart stops one Plugin's Plugin Server, Stopped or not, and starts it again.
 The Host never does this by itself: a broken Plugin stays Stopped until you
@@ -460,7 +480,6 @@ function shortLine(name: string, short: string, column: number): string {
  */
 function shortHelp(stream: NodeJS.WriteStream): string {
   return `firstmate: run your own tools on your own machine.
-
 usage: firstmate <command> [...]
 
 ${GROUPS.map((group) =>
@@ -1004,8 +1023,44 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
     console.error(`${refusalPrefix()} ${await noHost()}`);
     return exit('no-host');
   }
+  return sayRestarted(name, restarted);
+}
+
+/**
+ * Move a Plugin that is a git clone forward, then restart its Plugin Server
+ * through the running Host, in the words restart uses (ADR-0030). Nothing
+ * moved, nothing said: a Plugin that is current is left alone. With no Host
+ * running the update is still done, and the new code starts with the Host.
+ */
+async function update(home: string, argv: readonly string[]): Promise<number> {
+  const [name] = argv;
+  if (name === undefined || argv.length > 1) {
+    return typedWrong('update', 'update takes one Plugin Name: name the Plugin to update.');
+  }
+
+  // git's words are held, and said in the sentence of a failure, so a
+  // spinner can turn while it fetches (ADR-0025).
+  const moved = await whileWaiting(
+    `updating ${name}`,
+    (done) => (done === undefined ? `${name} is up to date` : `fetched ${name}`),
+    () => updatePlugin(home, name),
+  );
+  if (moved === undefined) return 0;
+  console.log(`firstmate: updated ${name} from ${moved.from} to ${moved.to}`);
+
+  const restarted = await restartPlugin(home, name);
+  if (restarted === undefined) {
+    console.log(`firstmate: no Host runs, so ${name}'s new code starts with the Host.`);
+    return 0;
+  }
+  // The Host serves a Plugin Page's bytes from disk, so they changed already.
+  return sayRestarted(name, restarted, ' Its Plugin Page has changed.');
+}
+
+/** Say what became of a Plugin the Host restarted, and give back the exit code. */
+function sayRestarted(name: string, restarted: Restarted, noServer = ''): number {
   if (restarted.state === 'no-plugin-server') {
-    console.log(`firstmate: ${name} ships no Plugin Server to restart.`);
+    console.log(`firstmate: ${name} ships no Plugin Server to restart.${noServer}`);
     return 0;
   }
   if (restarted.state === 'stopped') {
