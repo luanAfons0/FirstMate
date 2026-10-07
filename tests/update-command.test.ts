@@ -138,6 +138,21 @@ test('a Plugin with no Plugin Server is not restarted, and its Plugin Page chang
   assert.equal(await (await host.fetch('/p/page-only/')).text(), 'the new Plugin Page\n');
 });
 
+test('a Plugin with no Plugin Server and no Host running says its Plugin Page changed', async (t) => {
+  if (!(await needsGit(t))) return;
+  const { home, bare } = await installed(t, 'page-only');
+  await addCommitTo(bare, { 'web/index.html': 'the new Plugin Page\n' });
+
+  const updated = await update(home, 'page-only');
+
+  assert.equal(updated.code, 0, updated.stderr);
+  assert.match(
+    updated.stdout,
+    /^firstmate: page-only ships no Plugin Server to restart\. Its Plugin Page has changed\.$/m,
+  );
+  assert.doesNotMatch(updated.stdout, /starts with the Host/);
+});
+
 test('a clone that is current, or ahead, gets no output and no restart', async (t) => {
   if (!(await needsGit(t))) return;
   const { home, clone } = await installed(t, 'both');
@@ -233,7 +248,7 @@ test('a detached HEAD is refused', async (t) => {
   await assertRefused(
     t,
     async (clone) => void (await gitIn(clone, ['checkout', '--quiet', '--detach'])),
-    /^firstmate: both is on no branch, at a detached HEAD/,
+    /^firstmate: both is on no branch, at a detached HEAD, .*: check out the branch it follows, then run update again\.$/m,
   );
 });
 
@@ -242,7 +257,7 @@ test('a branch with no upstream is refused', async (t) => {
   await assertRefused(
     t,
     async (clone) => void (await gitIn(clone, ['branch', '--unset-upstream'])),
-    /^firstmate: both's branch main has no upstream/,
+    /^firstmate: both's branch main has no upstream, .*: set one with git branch --set-upstream-to, then run update again\.$/m,
   );
 });
 
@@ -255,7 +270,7 @@ test('a branch that has diverged from its upstream is refused', async (t) => {
       await gitIn(clone, ['add', 'mine.txt']);
       await gitIn(clone, ['commit', '--quiet', '-m', 'mine']);
     },
-    /^firstmate: both has commits its upstream does not have.*without a merge\.$/m,
+    /^firstmate: both has commits its upstream does not have.*without a merge: merge or rebase it by hand, then run update again\.$/m,
   );
 });
 
@@ -268,6 +283,39 @@ test('an untracked file the new commit would overwrite is refused, and kept', as
       await writeFile(join(clone, 'web', 'new.txt'), 'my own file\n');
     },
     /^firstmate: the update of both would overwrite untracked files, web\/new\.txt: move them/,
+  );
+});
+
+test('an ignored file the new commit would track is refused, and kept', async (t) => {
+  if (!(await needsGit(t))) return;
+  let data = '';
+  await assertRefused(
+    t,
+    async (clone, bare) => {
+      // The operator's own data, which git ignores in this clone alone.
+      await writeFile(join(clone, '.git', 'info', 'exclude'), 'data/\n');
+      await mkdir(join(clone, 'data'));
+      data = join(clone, 'data', 'notes.db');
+      await writeFile(data, "the operator's own data\n");
+      await addCommitTo(bare, { 'data/notes.db': "the author's file\n" });
+    },
+    /^firstmate: the update of both would overwrite untracked files, data\/notes\.db: move them/,
+  );
+  assert.equal(await readFile(data, 'utf8'), "the operator's own data\n");
+});
+
+test('a Plugin whose directory is gone is refused, with what to do', async (t) => {
+  if (!(await needsGit(t))) return;
+  const { home, clone } = await installed(t, 'both');
+  await rename(clone, `${clone}.gone`);
+
+  const refused = await update(home, 'both');
+
+  assert.equal(refused.code, 3, refused.stderr);
+  assert.equal(
+    refused.stderr,
+    `firstmate: ${clone} is not a directory: put the Plugin back there, ` +
+      'or take it out with firstmate remove both.\n',
   );
 });
 
@@ -324,6 +372,25 @@ test('a hook planted in the clone does not run', async (t) => {
   // And the hooks were live: git run by hand does run them.
   await gitIn(clone, ['commit', '--quiet', '--allow-empty', '-m', 'by hand']);
   assert.match(await readFile(ran, 'utf8'), /reference-transaction/);
+});
+
+test('an ext:: remote the clone allows does not run', async (t) => {
+  if (!(await needsGit(t))) return;
+  const { home, clone } = await installed(t, 'both');
+  const ran = join(home, 'transport-ran');
+  await gitIn(clone, ['config', 'protocol.ext.allow', 'always']);
+  await gitIn(clone, ['remote', 'set-url', 'origin', `ext::sh -c touch% ${ran}`]);
+  const before = await stateOfClone(clone);
+
+  const updated = await update(home, 'both');
+
+  assert.equal(updated.code, 1, updated.stderr);
+  assert.match(updated.stderr, /^firstmate: git could not fetch both's upstream: /);
+  assert.equal(existsSync(ran), false, 'no transport ran');
+  assert.equal(await stateOfClone(clone), before);
+  // And the transport was live: git run by hand does run it.
+  await gitIn(clone, ['fetch', '--quiet']).catch(() => undefined);
+  assert.equal(existsSync(ran), true, 'git run by hand runs the transport');
 });
 
 test('git not on the PATH, or a failed fetch, fails with a sentence', async (t) => {
@@ -406,7 +473,10 @@ test(
     );
     for (const line of calls) {
       assert.ok(line.startsWith(`wsl.exe -d Debian --cd ${INSIDE} --exec `), line);
-      assert.match(line, / git -c core\.hooksPath=\/dev\/null -c core\.fsmonitor=false /);
+      assert.match(
+        line,
+        / git -c core\.hooksPath=\/dev\/null -c core\.fsmonitor=false -c protocol\.ext\.allow=never /,
+      );
     }
   },
 );

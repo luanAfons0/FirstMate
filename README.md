@@ -207,18 +207,21 @@ fetches the clone's upstream and moves its branch forward, with no merge, then
 restarts the Plugin Server through the running Host. It says
 `updated <name> from <commit> to <commit>`, then what `restart` says. A Plugin
 with no Plugin Server is not restarted: the Host serves its Plugin Page from
-disk, so the page has changed already. With no Host running, the update is
-done, and the new code starts with the Host. When there is nothing to fetch,
+disk, so the page has changed already, and `update` says so with or without
+a Host. With no Host running, the update is done, and a Plugin Server's new
+code starts with the Host. When there is nothing to fetch,
 or the clone is ahead with commits of your own, it says nothing and restarts
 nothing.
 
 The files git ignores, where a Plugin keeps its data, stay as they are, and
-nothing the Plugin ships runs: git runs with the clone's hooks and fsmonitor
-off, and never asks on the terminal. `update` refuses in one sentence, with
+nothing the Plugin ships runs: git runs with hooks, fsmonitor and the `ext::`
+transport off, and never asks on the terminal. `update` refuses in one sentence, with
 exit code `3`, and changes nothing, when the directory is not a git clone of
 its own, when it has local changes to tracked files, when it is at a detached
 HEAD or its branch has no upstream, when the branch has diverged from its
-upstream, and when the new commit would overwrite an untracked file. git not
+upstream, and when the new commit would overwrite an untracked or ignored
+file. Each refusal says what to do. A refusal after the fetch leaves the
+branch and the files as they were; only the remote-tracking branch has moved. git not
 on the PATH, or a fetch that fails, ends with exit code `1` and git's reason.
 In a `wsl` Place git runs inside the distribution (see [Places](#places)), and
 git not installed there ends with exit code `1` too.
@@ -465,7 +468,7 @@ loaded until the App quits, so switching to another Plugin and back loses
 nothing. A link that leaves FirstMate opens in your browser.
 
 The Settings View has a side list of its sections, Places, Plugin Order, Start
-at logon, Shortcuts and Plugin settings, and says the App's version under it. Places shows each Place with
+at logon, Shortcuts and Plugin Settings, and says the App's version under it. Places shows each Place with
 its kind and its Shelf. There you move a Place's Shelf: type a path, or choose
 a folder for a Place on this machine. You remove a Place that holds no Plugin;
 the Place of this machine is always there. On Windows, Add a Place opens in
@@ -482,7 +485,7 @@ it. What you typed stays, so you can correct it. The App then has the Host
 read its settings again. The Host never serves the Settings View, so no Plugin
 Page can reach it. Shortcuts, Plugins and Grants change from a terminal.
 
-Plugin settings lists every Plugin in the Plugin Order, with its state. A
+Plugin Settings lists every Plugin in the Plugin Order, with its state. A
 Plugin with a Plugin Page has an Open settings button: it closes the Settings
 View and opens `/p/<name>/#settings` in that Plugin's own view, as the
 switcher opens a Plugin Page, for a Stopped Plugin too. A Plugin that has

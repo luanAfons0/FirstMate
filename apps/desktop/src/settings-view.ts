@@ -27,7 +27,7 @@
  * the rows where they are kept (ADR-0016). The row that moved keeps the
  * focus, so the keys can move it again.
  *
- * Plugin settings lists the same rows. Each Plugin with a Plugin Page has an
+ * Plugin Settings lists the same rows. Each Plugin with a Plugin Page has an
  * Open settings button, whose ask carries the Plugin Name alone; the main
  * process opens `/p/<name>/#settings` in that Plugin's own view. The App
  * shows the button whether or not the Plugin has settings, and reads and
@@ -51,7 +51,7 @@ const SECTIONS: readonly Section[] = [
   { id: 'order', icon: 'list-numbers', words: 'Plugin Order' },
   { id: 'logon', icon: 'power', words: 'Start at logon' },
   { id: 'shortcuts', icon: 'keyboard', words: 'Shortcuts' },
-  { id: 'plugin-settings', icon: 'puzzle-piece', words: 'Plugin settings' },
+  { id: 'plugin-settings', icon: 'puzzle-piece', words: 'Plugin Settings' },
 ];
 
 /** The icons any body of the Settings View may draw. */
@@ -292,7 +292,7 @@ function shortcutRow(shortcut: ShortcutShown): string {
 ${escaped(path)}</code></div>`;
 }
 
-/** Plugin settings: every Plugin in the Plugin Order, and a way to its own settings. */
+/** Plugin Settings: every Plugin in the Plugin Order, and a way to its own settings. */
 function pluginSettingsSection(plugins: Plugins): string {
   const rows =
     plugins.kind === 'untold'
@@ -303,7 +303,7 @@ function pluginSettingsSection(plugins: Plugins): string {
 ${plugins.plugins.map(pluginSettingsRow).join('\n')}
 </div>`;
   return `<section id="plugin-settings">
-<h2>Plugin settings</h2>
+<h2>Plugin Settings</h2>
 <p class="hint">Each Plugin keeps its own settings in its own Plugin Page. Open settings shows that
 page at <code>#settings</code>; a Plugin with no settings shows its page as it always does.</p>
 ${rows}
