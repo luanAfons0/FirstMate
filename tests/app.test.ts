@@ -17,7 +17,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { gunzipSync } from 'node:zlib';
-import { bootHost, packageApp, type Booted } from './helpers/host.ts';
+import { bootHost, packageApp } from './helpers/host.ts';
+import { callTool } from './helpers/plugins.ts';
 
 /** What packaging makes on one system, and how the packaged App is started there. */
 type Packaged = {
@@ -166,20 +167,6 @@ function cannotStart(): string | false {
 
 const skip = cannotStart();
 
-/** One tool call, as a Plugin Page makes it: from its own page, same-origin. */
-function ask(host: Booted, name: string, call: unknown): Promise<Response> {
-  return host.fetch(`/p/${name}/rpc`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      origin: host.origin,
-      referer: `${host.origin}/p/${name}/`,
-      'sec-fetch-site': 'same-origin',
-    },
-    body: JSON.stringify(call),
-  });
-}
-
 test(
   'the packaged App holds a Host, and a second start holds no second one',
   { skip },
@@ -230,27 +217,17 @@ test(
 
     // The Plugin Server runs on FIRSTMATE_NODE, which is the App itself: an
     // answer proves the App runs as Node for a Plugin Server.
-    const answer = await ask(host, 'server-only', {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: { name: 'ping', arguments: {} },
+    assert.deepEqual(await callTool(host, 'server-only', 'ping'), {
+      status: 200,
+      text: 'pong from server-only',
     });
-    const said = (await answer.json()) as { result: { content: { text: string }[] } };
-    assert.equal(answer.status, 200);
-    assert.equal(said.result.content[0]?.text, 'pong from server-only');
 
     // A Plugin with only mcp.ts is started by the App as Node, with the file
     // as its one argument, and the App's Node strips its types (ADR-0028).
-    const fromTs = await ask(host, 'node-form', {
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: { name: 'ping', arguments: {} },
+    assert.deepEqual(await callTool(host, 'node-form', 'ping'), {
+      status: 200,
+      text: 'pong from mcp.ts',
     });
-    const saidTs = (await fromTs.json()) as { result: { content: { text: string }[] } };
-    assert.equal(fromTs.status, 200);
-    assert.equal(saidTs.result.content[0]?.text, 'pong from mcp.ts');
 
     const runtime = await readFile(join(host.home, 'runtime.json'), 'utf8');
     const second = spawn(app, [], {

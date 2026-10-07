@@ -34,22 +34,49 @@ import type { HeldPlugin } from '@firstmate/core/plugin-places';
 import type { PluginState, Restarted } from '@firstmate/core/plugin-state';
 import { openToolBus } from './tool-bus.ts';
 
-/** The executable a Plugin ships its Plugin Server as. There is no manifest. */
-const SERVER_FILE = 'mcp';
+/**
+ * How the Host starts a Plugin Server file. The file's name decides it, once,
+ * where the Host finds the file; the start reads only this.
+ */
+type ServerForm =
+  /** The Host's own Node, with the file as its one argument (ADR-0028). */
+  | 'node'
+  /** cmd.exe, which alone starts a `.cmd` file (ADR-0019). */
+  | 'cmd'
+  /** The file itself, as a program. */
+  | 'executable';
+
+/** A file a Plugin can ship its Plugin Server as, and how the Host starts it. */
+type ServerFileName = { readonly name: string; readonly form: ServerForm };
+
+/**
+ * The executable a Plugin ships its Plugin Server as, where its shebang picks
+ * the language. There is no manifest.
+ */
+const EXECUTABLE_SERVER_FILE = {
+  name: 'mcp',
+  form: 'executable',
+} as const satisfies ServerFileName;
 
 /**
  * What a Plugin ships its Plugin Server as for the Host's own Node, in the
  * order the Host looks, before any other form. One file runs on every system,
  * and needs no Node but the one that runs the Host (ADR-0028).
  */
-const NODE_SERVER_FILES = ['mcp.ts', 'mcp.js'] as const;
+const NODE_SERVER_FILES: readonly ServerFileName[] = [
+  { name: 'mcp.ts', form: 'node' },
+  { name: 'mcp.js', form: 'node' },
+];
 
 /**
  * What a Plugin ships its Plugin Server as on Windows, in the order the Host
  * looks. Windows runs no file by its first line, so the form says how it runs
  * (ADR-0019).
  */
-const WINDOWS_SERVER_FILES = ['mcp.exe', 'mcp.cmd'] as const;
+const WINDOWS_SERVER_FILES: readonly ServerFileName[] = [
+  { name: 'mcp.exe', form: 'executable' },
+  { name: 'mcp.cmd', form: 'cmd' },
+];
 
 /** Whether the Host runs on Windows, where a Plugin Server starts another way. */
 const ON_WINDOWS = process.platform === 'win32';
@@ -353,7 +380,7 @@ async function startOne(
     return run;
   }
 
-  const child = launch(file.path, plugin);
+  const child = launch(file, plugin);
   child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
   // The calling Plugin Name is this pipe's, closed over here and never taken
   // from anything the Plugin Server says.
@@ -386,6 +413,13 @@ async function startOne(
   return run;
 }
 
+/** A Plugin Server file the Host can start, and how it starts it. */
+type Runnable = {
+  readonly found: 'runnable';
+  readonly path: string;
+  readonly form: ServerForm;
+};
+
 /** What a Plugin directory holds to start a Plugin Server from. */
 type ServerFile =
   /** Nothing: the Plugin ships no Plugin Server. */
@@ -393,53 +427,62 @@ type ServerFile =
   /** A file the Host cannot start, and why. */
   | { readonly found: 'unrunnable'; readonly why: string }
   /** A file the Host can start. */
-  | { readonly found: 'runnable'; readonly path: string };
+  | Runnable;
 
 /** Find the file a Plugin ships its Plugin Server as, where its Plugin Server runs. */
 async function serverFile(plugin: HeldPlugin): Promise<ServerFile> {
   const directory = plugin.files;
-  const shell = join(directory, SERVER_FILE);
+  // A wsl Place's files are read through its root, and a root that cannot be
+  // read is a distribution that is missing or will not start.
+  if (plugin.runner.kind === 'wsl' && (await stat(directory).catch(() => null)) === null) {
+    return {
+      found: 'unrunnable',
+      why:
+        `${directory} cannot be read. Is the distribution ` +
+        `${plugin.runner.distribution} there, and does it start?`,
+    };
+  }
+  const executablePath = join(directory, EXECUTABLE_SERVER_FILE.name);
+  const executable: Runnable = {
+    found: 'runnable',
+    path: executablePath,
+    form: EXECUTABLE_SERVER_FILE.form,
+  };
+  const forNode = await firstFile(directory, NODE_SERVER_FILES);
   if (plugin.runner.kind === 'wsl') {
-    // The files are read through the Place's root, and a root that cannot be
-    // read is a distribution that is missing or will not start. Its `mcp` is
-    // run inside the distribution, which alone knows its executable bit.
-    const reached = await stat(directory).catch(() => null);
-    if (reached === null) {
-      return {
-        found: 'unrunnable',
-        why:
-          `${directory} cannot be read. Is the distribution ` +
-          `${plugin.runner.distribution} there, and does it start?`,
-      };
-    }
-    if (await isFile(shell)) return { found: 'runnable', path: shell };
+    // Its `mcp` is run inside the distribution, which alone knows its
+    // executable bit.
+    if (await isFile(executablePath)) return executable;
     // A Plugin Server for the Host's Node is a Plugin Server all the same, so
     // the Plugin is Stopped, not shipping none. The Host's Node is a Windows
     // program, and is not handed across (ADR-0021, ADR-0028).
-    const node = await firstFile(directory, NODE_SERVER_FILES);
-    return node === null
+    return forNode === null
       ? { found: 'none' }
-      : { found: 'unrunnable', why: `${node} cannot run in a wsl Place, which starts mcp` };
+      : { found: 'unrunnable', why: `${forNode.path} cannot run in a wsl Place, which starts mcp` };
   }
-  const node = await firstFile(directory, NODE_SERVER_FILES);
-  if (node !== null) return { found: 'runnable', path: node };
+  if (forNode !== null) return forNode;
   if (ON_WINDOWS) {
-    const windows = await firstFile(directory, WINDOWS_SERVER_FILES);
-    if (windows !== null) return { found: 'runnable', path: windows };
+    const forWindows = await firstFile(directory, WINDOWS_SERVER_FILES);
+    if (forWindows !== null) return forWindows;
     // An `mcp` alone is a Plugin Server written for Linux. It is a Plugin
     // Server all the same, so the Plugin is Stopped, not shipping none.
-    return (await isFile(shell))
-      ? { found: 'unrunnable', why: `${shell} cannot run on Windows: it needs mcp.cmd or mcp.exe` }
+    // mcp.ts comes first in the sentence: it is the one form that runs here
+    // and on Linux alike (ADR-0028).
+    return (await isFile(executablePath))
+      ? {
+          found: 'unrunnable',
+          why: `${executablePath} cannot run on Windows: it needs mcp.ts, mcp.cmd or mcp.exe`,
+        }
       : { found: 'none' };
   }
-  if (!(await isFile(shell))) return { found: 'none' };
-  const runnable = await access(shell, constants.X_OK).then(
+  if (!(await isFile(executablePath))) return { found: 'none' };
+  const runnable = await access(executablePath, constants.X_OK).then(
     () => true,
     () => false,
   );
   return runnable
-    ? { found: 'runnable', path: shell }
-    : { found: 'unrunnable', why: `${shell} is not executable` };
+    ? executable
+    : { found: 'unrunnable', why: `${executablePath} is not executable` };
 }
 
 /** Whether a Plugin ships a Plugin Page: a web directory, read through its Place. */
@@ -448,17 +491,15 @@ async function shipsPage(plugin: HeldPlugin): Promise<boolean> {
 }
 
 /** The first of these files the directory holds, in this order, or null for none. */
-async function firstFile(directory: string, names: readonly string[]): Promise<string | null> {
-  for (const name of names) {
+async function firstFile(
+  directory: string,
+  names: readonly ServerFileName[],
+): Promise<Runnable | null> {
+  for (const { name, form } of names) {
     const path = join(directory, name);
-    if (await isFile(path)) return path;
+    if (await isFile(path)) return { found: 'runnable', path, form };
   }
   return null;
-}
-
-/** Whether a Plugin Server file is one the Host's own Node runs. */
-function isNodeFile(name: string): boolean {
-  return (NODE_SERVER_FILES as readonly string[]).includes(name);
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -475,7 +516,7 @@ async function isFile(path: string): Promise<boolean> {
  * own, so it reaches the terminal and the log alike (log.ts). It is piped
  * rather than inherited because the App has no console to inherit.
  */
-function launch(path: string, plugin: HeldPlugin): ChildProcess {
+function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
   const options = {
     cwd: plugin.files,
     env: {
@@ -492,20 +533,31 @@ function launch(path: string, plugin: HeldPlugin): ChildProcess {
     // names is a Windows program, and is not handed across (ADR-0021).
     return spawn(
       WSL_EXE,
-      ['-d', plugin.runner.distribution, '--cd', plugin.directory, '--', `./${SERVER_FILE}`],
+      [
+        '-d',
+        plugin.runner.distribution,
+        '--cd',
+        plugin.directory,
+        '--',
+        `./${EXECUTABLE_SERVER_FILE.name}`,
+      ],
       { ...options, cwd: undefined },
     );
   }
-  const name = basename(path);
-  // The Host's own Node, with the file as its one argument, and no shell: a
-  // Plugin Server is started the same way on every system (ADR-0028).
-  if (isNodeFile(name)) return spawn(process.execPath, [name], options);
-  if (!path.endsWith('.cmd')) return spawn(path, [], options);
-  // Node starts a `.cmd` file only through cmd.exe, and only when asked to
-  // (CVE-2024-27980). cmd.exe reads a command line by rules of its own, so it
-  // is handed no path to read: from the Plugin's own directory, `.\\mcp.cmd`
-  // holds no space and nothing cmd.exe treats as special (ADR-0019).
-  return spawn('.\\mcp.cmd', [], { ...options, shell: true });
+  switch (file.form) {
+    case 'node':
+      // The Host's own Node, with the file as its one argument, and no shell: a
+      // Plugin Server is started the same way on every system (ADR-0028).
+      return spawn(process.execPath, [basename(file.path)], options);
+    case 'executable':
+      return spawn(file.path, [], options);
+    case 'cmd':
+      // Node starts a `.cmd` file only through cmd.exe, and only when asked to
+      // (CVE-2024-27980). cmd.exe reads a command line by rules of its own, so it
+      // is handed no path to read: from the Plugin's own directory, `.\\mcp.cmd`
+      // holds no space and nothing cmd.exe treats as special (ADR-0019).
+      return spawn('.\\mcp.cmd', [], { ...options, shell: true });
+  }
 }
 
 /**

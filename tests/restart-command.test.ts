@@ -15,14 +15,7 @@ import {
   type Booted,
   NO_HOST,
 } from './helpers/host.ts';
-
-/** The state the Host says one Plugin is in. */
-async function stateOf(host: Booted, name: string): Promise<string | undefined> {
-  const { plugins } = (await (await host.fetch('/plugins.json')).json()) as {
-    plugins: { name: string; state: string }[];
-  };
-  return plugins.find((plugin) => plugin.name === name)?.state;
-}
+import { stateOf } from './helpers/plugins.ts';
 
 /** How many times the Host's output says this. */
 function times(host: Booted, said: RegExp): number {

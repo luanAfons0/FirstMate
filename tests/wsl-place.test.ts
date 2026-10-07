@@ -8,20 +8,14 @@ import assert from 'node:assert/strict';
 import { cp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { bootHostIn, firstmate, fixture, makeHome, type Booted } from './helpers/host.ts';
+import { bootHostIn, firstmate, fixture, makeHome } from './helpers/host.ts';
+import { callTool, stateOf } from './helpers/plugins.ts';
 import { fakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
 
 /** A Plugin fixture, put inside the fake distribution at this path. */
 async function inDistribution(wsl: Wsl, plugin: string, path: string): Promise<void> {
   await mkdir(join(wsl.root, path), { recursive: true });
   await cp(fixture(plugin), join(wsl.root, path), { recursive: true });
-}
-
-async function stateOf(host: Booted, name: string): Promise<string | undefined> {
-  const listed = (await (await host.fetch('/plugins.json')).json()) as {
-    plugins: { name: string; state: string }[];
-  };
-  return listed.plugins.find((plugin) => plugin.name === name)?.state;
 }
 
 test(
@@ -149,9 +143,17 @@ test(
   },
 );
 
+// A wsl Place is reached through wsl.exe, and a test never starts the real
+// one. The fake is a shell script, so this test runs on Linux and skips on
+// Windows, like every test of a wsl Place. The Host decides what a wsl Place
+// starts in the same code on both systems.
 test(
   'a wsl Plugin that ships only mcp.ts is Stopped, because a wsl Place starts mcp',
-  { skip: NO_FAKE_WSL },
+  {
+    skip:
+      NO_FAKE_WSL &&
+      `${NO_FAKE_WSL}: this test runs on Linux alone, like every test of a wsl Place`,
+  },
   async (t) => {
     const home = await makeHome(t);
     const wsl = await fakeWsl(t, ['Debian']);
@@ -243,23 +245,8 @@ test(
     await firstmate(home, ['grant', 'asker', 'server-only']);
     const host = await bootHostIn(t, home, wsl.env);
 
-    const answer = await host.fetch('/p/asker/rpc', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        origin: host.origin,
-        referer: `${host.origin}/p/asker/`,
-        'sec-fetch-site': 'same-origin',
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 7,
-        method: 'tools/call',
-        params: { name: 'reach', arguments: { plugin: 'server-only', tool: 'ping' } },
-      }),
-    });
+    const answer = await callTool(host, 'asker', 'reach', { plugin: 'server-only', tool: 'ping' });
 
-    const said = (await answer.json()) as { result?: { content?: { text: string }[] } };
-    assert.equal(said.result?.content?.[0]?.text, 'pong from server-only');
+    assert.equal(answer.text, 'pong from server-only');
   },
 );
