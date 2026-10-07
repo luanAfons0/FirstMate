@@ -64,6 +64,9 @@ test('the log never grows past its cap, and keeps the older half', async (t) => 
     CHATTER_BYTES: String(5 * 1024 * 1024),
   });
   await until(host, /chatter: done/, 30_000);
+  // The Host writes its log through a buffer, so the last line reaches the
+  // file a little after it reaches the Host's output (ADR-0022).
+  await waitFor(async () => (await readLog(host.home)).includes('chatter: done'));
 
   const log = await stat(join(host.home, 'firstmate.log'));
   const old = await stat(join(host.home, 'firstmate.log.old'));
@@ -99,10 +102,15 @@ test('with no log yet, logs says where it will be', async (t) => {
 });
 
 /** Wait until this is true, or fail after a few seconds. */
-async function waitFor(done: () => boolean): Promise<void> {
+async function waitFor(done: () => boolean | Promise<boolean>): Promise<void> {
   const deadline = Date.now() + 5_000;
-  while (!done()) {
+  while (!(await done())) {
     if (Date.now() > deadline) throw new Error('waited five seconds, and it never came');
     await new Promise((later) => setTimeout(later, 20));
   }
+}
+
+/** The log as it is on disk now, or nothing when there is none yet. */
+async function readLog(home: string): Promise<string> {
+  return readFile(join(home, 'firstmate.log'), 'utf8').catch(() => '');
 }
