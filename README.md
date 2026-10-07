@@ -220,7 +220,8 @@ its own, when it has local changes to tracked files, when it is at a detached
 HEAD or its branch has no upstream, when the branch has diverged from its
 upstream, and when the new commit would overwrite an untracked file. git not
 on the PATH, or a fetch that fails, ends with exit code `1` and git's reason.
-For now `update` reaches a Plugin in a `local` Place only.
+In a `wsl` Place git runs inside the distribution (see [Places](#places)), and
+git not installed there ends with exit code `1` too.
 
 A copied Plugin, one installed from a directory or registered with `add`, is
 not a clone of its own, and `update` never copies over it: that would risk its
@@ -280,7 +281,10 @@ The Host starts a `wsl` Plugin as `wsl.exe -d <distribution> --cd <directory>
 distribution's own. A Plugin whose distribution is missing or will not start is
 Stopped with one sentence, and nothing retries it. Its default Shelf is
 `~/.firstmate/shelf` inside the distribution, and `install` makes the fetched
-`mcp` executable there again. `FIRSTMATE_NODE` is not handed across, because it
+`mcp` executable there again. `update` runs git inside the distribution, as
+`wsl.exe -d <distribution> --cd <directory> --exec env … git …`, with the same
+steps, refusals and restart as in a `local` Place, so the distribution needs
+git of its own. `FIRSTMATE_NODE` is not handed across, because it
 names a Windows program, so a `wsl` Place starts `mcp` only: a Plugin there
 with `mcp.ts` and no `mcp` is Stopped, with one sentence that says so
 (ADR-0028).

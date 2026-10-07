@@ -204,6 +204,10 @@ test('help places explains Places, the default Place and a wsl Place', async (t)
   assert.match(helped.stdout, /A Place is where Plugins are installed/);
   assert.match(helped.stdout, /The\s+default Place is this machine/);
   assert.match(helped.stdout, /place add <name> wsl <distribution>/);
+  assert.match(helped.stdout, /update\s+runs\s+git\s+inside\s+the\s+distribution/);
+
+  const update = await firstmate(home, ['update', '--help']);
+  assert.match(update.stdout, /A Place is where Plugins are installed/, 'update reaches a Place');
 });
 
 test('an unknown help topic is refused in one sentence that names the topics', async (t) => {

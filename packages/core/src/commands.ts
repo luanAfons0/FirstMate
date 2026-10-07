@@ -31,7 +31,7 @@ import { inPluginOrder, readSettings, writeSettings, type Settings } from './set
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 import { gitHere, moveForward, type Moved } from './update-plugin.ts';
-import { homeIn, makeExecutable } from './wsl.ts';
+import { gitInside, homeIn, makeExecutable } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
 export function notAPluginName(name: string): string {
@@ -331,18 +331,16 @@ export async function updatePlugin(home: string, name: string): Promise<Moved | 
   if (plugin.runner.kind === 'nowhere') {
     throw refuse('invalid', `${name} cannot be updated: ${plugin.runner.why}.`);
   }
-  if (plugin.runner.kind === 'wsl') {
-    throw refuse(
-      'invalid',
-      `${name} is in ${plugin.place}, a wsl Place, and update does not reach a wsl Place yet: ` +
-        `run git pull --ff-only in ${plugin.directory} inside ${plugin.runner.distribution}, ` +
-        `then firstmate restart ${name}.`,
-    );
-  }
   if (statSync(plugin.files, { throwIfNoEntry: false })?.isDirectory() !== true) {
     throw refuse('invalid', `${plugin.directory} is not a directory.`);
   }
-  return moveForward(gitHere(plugin.files), name, plugin.directory);
+  // A wsl Place's clone is moved by the distribution's own git, in the path
+  // the distribution knows it by, as its Plugin Server runs there.
+  const git =
+    plugin.runner.kind === 'wsl'
+      ? gitInside(plugin.runner.distribution, plugin.directory)
+      : gitHere(plugin.files);
+  return moveForward(git, name, plugin.directory);
 }
 
 /**

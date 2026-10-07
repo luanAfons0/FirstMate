@@ -6,11 +6,14 @@
  *
  * It needs no network: every clone comes from a bare repository made in the
  * test's own temporary directory, over `file://`, and each test skips itself
- * where git is absent.
+ * where git is absent. A Plugin in a `wsl` Place is updated through the fake
+ * `wsl.exe`, which runs git here, in the folder that stands for the
+ * distribution.
  */
 import assert from 'node:assert/strict';
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { chmod, mkdir, readFile, rename, symlink, writeFile } from 'node:fs/promises';
+import { delimiter, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import {
   addCommitTo,
@@ -22,6 +25,7 @@ import {
 } from './helpers/git.ts';
 import { bootHostIn, firstmate, fixture, makeHome, until } from './helpers/host.ts';
 import { stateOf } from './helpers/plugins.ts';
+import { fakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
 
 /** A Plugin installed from git, and where everything about it is. */
 type Installed = {
@@ -361,3 +365,106 @@ test('an unknown name is refused as restart refuses it, and no name is typed wro
     );
   }
 });
+
+/** Where `install` clones a Plugin named both in the fake distribution's Shelf. */
+const INSIDE = '/home/mate/.firstmate/shelf/both';
+
+/** A Plugin installed from git into a `wsl` Place, and the fake WSL it is in. */
+type InWsl = Installed & { readonly wsl: Wsl; readonly env: NodeJS.ProcessEnv };
+
+/** Install the `both` fixture from its bare repository into a `wsl` Place. */
+async function installedInWsl(t: TestContext): Promise<InWsl> {
+  const bare = await bareRepositoryOf(t, 'both', 'both');
+  const home = await makeHome(t);
+  const wsl = await fakeWsl(t, ['Debian']);
+  const env = { ...wsl.env, ...NO_GIT_CONFIGURATION };
+  const placed = await firstmate(home, ['place', 'add', 'deb', 'wsl', 'Debian', wsl.root], env);
+  assert.equal(placed.code, 0, placed.stderr);
+  const done = await firstmate(home, ['install', `file://${bare}`, '--place', 'deb'], env);
+  assert.equal(done.code, 0, done.stderr);
+  return { home, bare, clone: join(wsl.root, INSIDE), wsl, env };
+}
+
+test(
+  'a clone in a wsl Place moves forward through wsl.exe, with hooks and fsmonitor off',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    if (!(await needsGit(t))) return;
+    const { home, bare, clone, wsl, env } = await installedInWsl(t);
+    const before = await headOf(clone);
+    const after = await addCommitTo(bare, { 'web/index.html': 'the new Plugin Page\n' });
+
+    const updated = await firstmate(home, ['update', 'both'], env);
+
+    assert.equal(updated.code, 0, updated.stderr);
+    assertMoved(updated.stdout, 'both', before, after);
+    assert.equal(await headOf(clone), after);
+    const calls = (await wsl.calls()).filter((line) => / git /.test(line));
+    assert.ok(
+      calls.some((line) => / git .* fetch /.test(line)),
+      calls.join('\n'),
+    );
+    for (const line of calls) {
+      assert.ok(line.startsWith(`wsl.exe -d Debian --cd ${INSIDE} --exec `), line);
+      assert.match(line, / git -c core\.hooksPath=\/dev\/null -c core\.fsmonitor=false /);
+    }
+  },
+);
+
+test(
+  'a tracked local change in a wsl Place is refused as in a local Place, and kept',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    if (!(await needsGit(t))) return;
+    const { home, bare, clone, env } = await installedInWsl(t);
+    await writeFile(join(clone, 'web', 'index.html'), 'my own edit\n');
+    await addCommitTo(bare, { 'web/index.html': 'the new Plugin Page\n' });
+    const before = await stateOfClone(clone);
+
+    const refused = await firstmate(home, ['update', 'both'], env);
+
+    assert.equal(refused.code, 3, refused.stderr);
+    assert.match(
+      refused.stderr,
+      /^firstmate: both has local changes to tracked files, which update would not keep/,
+    );
+    assert.equal(refused.stderr.trimEnd().split('\n').length, 1, 'in one line');
+    assert.equal(await stateOfClone(clone), before, 'nothing changed');
+  },
+);
+
+test(
+  'git missing in the distribution fails with a sentence that names it',
+  { skip: NO_FAKE_WSL },
+  async (t) => {
+    if (!(await needsGit(t))) return;
+    const { home, clone, wsl, env } = await installedInWsl(t);
+    const before = await stateOfClone(clone);
+    // The fake runs its command with this PATH alone: env is there, git is not.
+    const tools = await makeHome(t);
+    await symlink(onThePath('env'), join(tools, 'env'));
+    const bin = (wsl.env['PATH'] ?? '').split(delimiter)[0] ?? '';
+
+    const noGit = await firstmate(home, ['update', 'both'], {
+      ...env,
+      PATH: `${bin}${delimiter}${tools}`,
+    });
+
+    assert.equal(noGit.code, 1, noGit.stderr);
+    assert.equal(
+      noGit.stderr,
+      'firstmate: git is not installed in Debian, and update needs it. Install git there.\n',
+    );
+    assert.equal(await stateOfClone(clone), before);
+  },
+);
+
+/** Where this machine has a program, as the shell finds it on PATH. */
+function onThePath(program: string): string {
+  const found = (process.env['PATH'] ?? '')
+    .split(delimiter)
+    .map((directory) => join(directory, program))
+    .find((path) => existsSync(path));
+  assert.ok(found !== undefined, `${program} is on the PATH`);
+  return found;
+}

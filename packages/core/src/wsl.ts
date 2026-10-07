@@ -10,6 +10,7 @@
  */
 import { spawn } from 'node:child_process';
 import { refuse } from './refusal.ts';
+import type { GitRunner } from './update-plugin.ts';
 
 /** The program that runs a command inside a WSL distribution. */
 export const WSL_EXE = 'wsl.exe';
@@ -85,6 +86,57 @@ export async function makeExecutable(distribution: string, directory: string): P
   if (answer.code !== 0) {
     throw new Error(`${directory}/mcp could not be made executable: ${why(answer)}.`);
   }
+}
+
+/**
+ * The environment git runs in inside a distribution, given on its command
+ * line through `env`: a variable set on this side reaches the distribution
+ * only when WSLENV names it, so none is left to it. It is the environment of
+ * the `local` runner: git never asks on a terminal, reads its words in the C
+ * locale, and is pointed at no repository but the Plugin's own.
+ */
+const GIT_INSIDE = [
+  'env',
+  '-u',
+  'GIT_DIR',
+  '-u',
+  'GIT_WORK_TREE',
+  '-u',
+  'GIT_INDEX_FILE',
+  '-u',
+  'GIT_COMMON_DIR',
+  'GIT_TERMINAL_PROMPT=0',
+  'GIT_SSH_COMMAND=ssh -o BatchMode=yes',
+  'LC_ALL=C',
+  'git',
+];
+
+/** The exit code `env` gives when the program it was asked to run is not there. */
+const NOT_FOUND = 127;
+
+/**
+ * The git runner of a `wsl` Place: the distribution's own git, in the
+ * Plugin's directory as the distribution names it, as its Plugin Server runs
+ * there. It fails, with a sentence, when the distribution has no git.
+ */
+export function gitInside(distribution: string, directory: string): GitRunner {
+  return async (argv) => {
+    const answer = await ask([
+      '-d',
+      distribution,
+      '--cd',
+      directory,
+      '--exec',
+      ...GIT_INSIDE,
+      ...argv,
+    ]);
+    if (answer.code === NOT_FOUND) {
+      throw new Error(
+        `git is not installed in ${distribution}, and update needs it. Install git there.`,
+      );
+    }
+    return answer;
+  };
 }
 
 /** The systemd user unit a 1.x Host ran as. */
