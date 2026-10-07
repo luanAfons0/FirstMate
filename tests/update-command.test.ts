@@ -379,7 +379,9 @@ test('an ext:: remote the clone allows does not run', async (t) => {
   const { home, clone } = await installed(t, 'both');
   const ran = join(home, 'transport-ran');
   await gitIn(clone, ['config', 'protocol.ext.allow', 'always']);
-  await gitIn(clone, ['remote', 'set-url', 'origin', `ext::sh -c touch% ${ran}`]);
+  // git's sh reads a backslash as an escape, so a Windows path goes in with slashes.
+  const ranForSh = ran.replaceAll('\\', '/');
+  await gitIn(clone, ['remote', 'set-url', 'origin', `ext::sh -c touch% ${ranForSh}`]);
   const before = await stateOfClone(clone);
 
   const updated = await update(home, 'both');
