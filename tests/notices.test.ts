@@ -100,7 +100,9 @@ test('the Host holds the last 20 Notices, and the oldest go first', async (t) =>
     directory: 'notifier',
   }));
   const host = await bootHost(t, plugins);
-  await until(host, /(notifier: sent every notice[\s\S]*){22}/);
+  // 22 Plugin Servers start at once, and on Windows each one is cmd.exe with
+  // Node under it: a slow runner needs more than the usual 15 seconds.
+  await until(host, /(notifier: sent every notice[\s\S]*){22}/, 60_000);
 
   const listed = await noticesOf(host);
 
