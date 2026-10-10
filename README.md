@@ -12,7 +12,7 @@ FirstMate is a local plugin host. It runs a person's own tools on their own
 machine and gives each one a process, a page and an address, so that no tool has
 to build a runtime of its own.
 
-![Registering a Plugin and opening its Plugin Page](docs/brand/demo.gif)
+![Setting FirstMate up, switching Plugins in the App, and adding an Entry from a Shortcut's Popup](https://raw.githubusercontent.com/luanAfons0/FirstMate/main/docs/brand/demo.gif)
 
 ## Install it
 
