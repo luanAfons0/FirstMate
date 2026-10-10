@@ -1,98 +1,67 @@
 # The twenty-second demo
 
-The recording that sits after the first paragraph of the README. One take, no
-cuts, no narration, no mouse wandering. Record it again whenever the Host
-changes what it prints or what the Index Page looks like.
+The GIF that sits after the first paragraph of the README. It shows FirstMate
+2.0 doing its job, start to end, with no narration. Make it again whenever the
+App, the Index Page or `firstmate setup` changes what it shows.
 
 A GIF, not a video. A GIF plays wherever the README is rendered. An uploaded
 video plays on github.com alone, and is blank on npm and on every mirror.
 
-`docs/brand/demo.sh` types this script for you, so that a take never needs a
-second screen: `check` before you record, `take` while you record, `reset` when
-the recording is saved. The beats below stay the source. The script follows
-them, and has to be changed with them.
+The README names it by its absolute address on `main`, never by a relative
+path. npm does not carry `docs/` in the package, and it does not resolve a
+relative image, so a relative path shows nothing there:
+
+```md
+![Setting FirstMate up, switching Plugins in the App, and adding an Entry from a Shortcut's Popup](https://raw.githubusercontent.com/luanAfons0/FirstMate/main/docs/brand/demo.gif)
+```
 
 ## What it has to show
 
 Five things, in this order, and nothing else:
 
-1. **A Plugin is a directory.** One command names it. Nothing is copied.
-2. **A Shortcut is bound from a terminal**, with one more command.
-3. **The Host picks both up** on a restart.
-4. **The Tray opens the FirstMate window** in one click, on the Index Page,
-   which lists the Plugin and says `Running`.
-5. **A Plugin Page is a whole page**, and it calls its own tools.
+1. **`firstmate setup` in a terminal** fetches one Official Plugin, worklog,
+   into a `wsl` Place.
+2. **The App's window** shows the Index Page: every Plugin and its state, one
+   of them Stopped, and the strip says how many are.
+3. **The switcher**: a click on the breadcrumb, `wor` typed, and Enter opens
+   worklog.
+4. **A Plugin Page is a whole page**: worklog at the size of a maximized
+   window, with its own header, its box and its four columns.
+5. **A Shortcut opens the Popup** over another program. An Entry is typed and
+   saved with Shift+Enter, and it is on the worklog page when the window
+   comes back.
 
-## Before you record
+A short line under each scene says what it shows, and the take ends on the
+anchor, the name and `npx @luan-afonso/firstmate desktop`.
 
-`docs/brand/demo.sh check` proves every line of this section in one go.
+## How it is made
 
-Get a real `firstmate` command. Install the tarball of this repository, which
-behaves exactly as the published package does, so the take shows the code you
-have:
+It is rendered, not recorded, so that a frame never shows a person's own data
+and every take is the same:
 
-```sh
-cd ~/.first-mate
-npm pack --pack-destination /tmp
-npm install -g /tmp/luan-afonso-firstmate-<version>.tgz
-firstmate --help          # proves it is on PATH
-```
+- The strip, the switcher and the Index Page are the real pages, written by
+  `stripPage` and `switcherPage` (`apps/desktop/src/pages.ts`) and `indexPage`
+  (`packages/host/src/index-page.ts`), with the illustrative Plugins `nexus`,
+  `research` (Stopped), `scheduler` and `worklog`.
+- The worklog page and the Popup are screenshots of a real Host, with a fresh
+  clone of worklog filled with demo data through its own tools. Never point it
+  at a worklog that holds real data.
+- The window is 1400×800, so worklog shows its full layout: below 1100 px it
+  folds its board into two columns. The Popup is its real size, 680×540
+  (`apps/desktop/src/popup.ts`).
+- The fonts are Segoe UI and Consolas, as on Windows.
+- The terminal, the window's buttons and the key caps are drawn to match: they
+  are not HTML in the product. The terminal follows the words `setup.ts`
+  prints, with clack's frame.
 
-Then:
+A camera zooms in on the part each scene is about, so the text stays readable
+at the GIF's width.
 
-- A terminal at about 90 columns, nothing else on screen.
-- Nothing else on the Windows desktop, and the Tray running in the
-  notification area: `firstmate desktop`, from Windows, with its window
-  closed. It picks the Shortcut up within a few seconds of `bind`.
-- `Ctrl+Alt+D` free: no Shortcut of FirstMate's and no other program holds it.
-- The demo Plugin at `~/firstmate-demo/notes`. It ships a `web/` directory and
-  an executable `mcp`, so it reaches `Running` and answers one tool.
-- The Host running as its service, against the real `~/.firstmate`. The Tray
-  reads the runtime file from there, so a throwaway `FIRSTMATE_HOME` would
-  leave the Tray with nothing to open.
+## The file
 
-## The take
-
-| Seconds | What is on screen |
-| ------- | ----------------- |
-| 0–2   | `firstmate list` — one Plugin, `nexus`. A Registry already exists. |
-| 2–5   | `firstmate add notes ~/firstmate-demo/notes` — it answers `added notes` and `restart the Host to pick it up`. |
-| 5–8   | `firstmate bind Ctrl+Alt+D notes` — it answers `bound Ctrl+Alt+D to open /p/notes/`. |
-| 8–11  | `systemctl --user restart firstmate` — silent, as a service should be. |
-| 11–14 | Click the FirstMate icon in the Windows notification area. |
-| 14–17 | The FirstMate window opens on the Index Page. `notes` is there, `Running`, beside `nexus`. |
-| 17–20 | Click `notes`. Its Plugin Page fills the window under the narrow strip: its own page, never framed. |
-| 20–23 | Click **Ask my own tools**. The answer appears. End. |
-
-## The token
-
-Do not read the token out and do not type it. The Tray carries it for you, and
-the Host answers the first navigation with a cookie and redirects to the plain
-address, so the address bar settles without it.
-
-One frame may still catch it. A token is minted at every Host start and is
-worthless after the next one, so end the session with:
-
-```sh
-systemctl --user restart firstmate
-```
-
-## Afterwards
-
-Take the demo Plugin back out. It was a prop. `remove` takes its Shortcut with
-it. `docs/brand/demo.sh reset` runs both of these:
-
-```sh
-firstmate remove notes
-systemctl --user restart firstmate
-```
-
-Save the recording as `docs/brand/demo.gif`: silent, about twenty seconds,
-under 10 MB, and at the width you recorded at. Never upscale a screencast: the
-terminal is most of the frame, and enlarged text is the one thing a viewer
-reads as blurred. The GIF in the README is 1120 px for that reason. Then
-replace the demo slot in `README.md` with:
-
-```md
-![Registering a Plugin and opening its Plugin Page](docs/brand/demo.gif)
-```
+- 800 px wide, the width of the README's column on github.com.
+- 12 frames a second and 128 colours: the motion is short UI motion, and a
+  still screen costs almost nothing.
+- Under 5 MB, so github.com and npm load it quickly. The 2.0 take is 3.7 MB
+  and 21.5 seconds.
+- It loops, and it is silent.
