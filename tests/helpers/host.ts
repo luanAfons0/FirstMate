@@ -17,8 +17,14 @@ import type { TestContext } from 'node:test';
 const TESTS = dirname(dirname(fileURLToPath(import.meta.url)));
 const REPOSITORY = dirname(TESTS);
 
-/** How long a Host may take to write its runtime file before a test gives up. */
-const BOOT_TIMEOUT_MS = 10_000;
+/**
+ * How long a Host may take to write its runtime file before a test gives up.
+ * The Host listens only once every Plugin Server has answered the handshake,
+ * or run out of the 10 s FIRSTMATE_HANDSHAKE_MS gives it by default, so a
+ * test must wait longer than that. On a busy CI runner, such as Windows while
+ * app.test.ts packages the App, a Plugin Server can be that slow to start.
+ */
+const BOOT_TIMEOUT_MS = 30_000;
 
 /** The same, for the App, which starts a browser engine before the Host is up. */
 const APP_BOOT_TIMEOUT_MS = 60_000;
