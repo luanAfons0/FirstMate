@@ -4,7 +4,9 @@ The App ships unsigned for the betas (ADR-0020, ADR-0023). On Windows, Smart App
 
 SignPath Foundation signs the App. It signs open-source projects for free, on SignPath's own hardware, and FirstMate meets its terms: an OSI licence (MIT), public source on GitHub, free downloads, and builds in public CI. The certificate is SignPath Foundation's, so Windows names "SignPath Foundation" as the signer, not the maintainer. The README's code signing policy says who commits, who reviews and who approves, as SignPath Foundation's terms ask. The application and the project setup in SignPath are issue #156; the workflow is issue #188.
 
-This is not live yet. The release workflow signs only when the SignPath settings are present: the organization, the project and the signing policy as repository variables, and the API token as a secret (#191). Until then, the same workflow ships an unsigned beta, and a version that is not a prerelease refuses to publish unsigned.
+This is not live yet. The release workflow signs only when the SignPath settings are present: the organization, the project and the signing policy as repository variables, and the API token as a secret (#191). Until then, the same workflow ships the App unsigned and warns in the run.
+
+On 2026-10-10 this changed: 2.0.0 final ships unsigned, because SignPath has not answered and FirstMate should reach other people now. The workflow no longer refuses an unsigned final version. The README says, under "Windows says the App is unknown", that FirstMate has no public signing key yet, what SmartScreen shows, and what Smart App Control can do. The decision to sign with SignPath Foundation stands; the first version it signs is the first one after SignPath accepts FirstMate.
 
 ## Where the key is
 
@@ -56,4 +58,4 @@ The NSIS uninstaller, `Uninstall FirstMate.exe`, stays unsigned. electron-builde
 
 SignPath Foundation is asked whether it signs Electron's own `.dll` files, since Electron is not FirstMate's code. Smart App Control checks them too.
 
-ADR-0020 and ADR-0023 say the betas are unsigned. They stay as they are until a signed version ships, and then they say how the App is signed.
+ADR-0020 and ADR-0023 say the betas are unsigned; 2.0.0 is unsigned too, as above. They stay as they are until a signed version ships, and then they say how the App is signed.

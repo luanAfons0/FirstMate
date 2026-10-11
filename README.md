@@ -12,6 +12,12 @@ FirstMate is a local plugin host. It runs a person's own tools on their own
 machine and gives each one a process, a page and an address, so that no tool has
 to build a runtime of its own.
 
+Write a small tool for yourself, or ask Claude or Codex to write it, as a Plugin:
+a `web/` folder for its page and, if it needs one, an `mcp.ts` that speaks MCP. FirstMate
+runs it, keeps its page in the App's window, opens it from a Shortcut, shows its
+Notices, and lets another Plugin call its tools under a Grant. You build the
+tool; FirstMate is the rest.
+
 ![Setting FirstMate up, switching Plugins in the App, and adding an Entry from a Shortcut's Popup](https://raw.githubusercontent.com/luanAfons0/FirstMate/main/docs/brand/demo.gif)
 
 ## Install it
@@ -36,6 +42,21 @@ the command around:
 npm install -g @luan-afonso/firstmate
 firstmate desktop
 ```
+
+### Windows says the App is unknown
+
+FirstMate has no public signing key yet, so the App and its installer are not
+signed. Windows will probably say that the App is unknown: SmartScreen shows
+"Windows protected your PC" and names the publisher as "Unknown publisher".
+Select **More info**, then **Run anyway**. Each new version, an update too, can
+ask again. Check that a file is the one the Release holds with its SHA-256,
+which `firstmate desktop` checks for you.
+
+On a PC with Smart App Control on, Windows can block the App and give no "Run
+anyway". Then the only way is to turn Smart App Control off, in Windows
+Security. The App will be signed by SignPath Foundation when SignPath accepts
+FirstMate ([Code signing policy](#code-signing-policy)). The Linux AppImage and
+deb are not signed either, and Linux does not ask.
 
 To work on FirstMate itself, see [Work on FirstMate](#work-on-firstmate).
 
@@ -430,8 +451,9 @@ where it downloads from.
 
 To build it yourself from a clone, on Windows, see
 [Work on FirstMate](#work-on-firstmate). Both the installer and the App it
-holds are unsigned, so Windows may warn before they run. How the App will be
-signed is in [Code signing policy](#code-signing-policy).
+holds are unsigned, so Windows may warn before they run, as
+[Windows says the App is unknown](#windows-says-the-app-is-unknown) says. How
+the App will be signed is in [Code signing policy](#code-signing-policy).
 
 To try a change to the App before it is released, you need no clone on
 Windows: the Windows check of every pull request keeps the installer it built,
@@ -630,8 +652,9 @@ installer that holds them. The AppImage and the deb are not
 signed. Windows names "SignPath Foundation" as the signer
 ([ADR-0027](docs/adr/0027-the-app-is-signed-by-signpath-foundation.md)).
 
-Signing is not on yet. Until SignPath accepts FirstMate, the betas ship
-unsigned, as [The App](#the-app) says.
+Signing is not on yet. Until SignPath accepts FirstMate, every version ships
+unsigned, as [Windows says the App is unknown](#windows-says-the-app-is-unknown)
+says.
 
 ### The team
 

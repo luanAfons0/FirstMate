@@ -109,7 +109,7 @@ the GitHub Release of the tag with these files, for version `<version>`:
 
 | File                                     | What it is                                        |
 | ---------------------------------------- | ------------------------------------------------- |
-| `FirstMate-Setup-<version>.exe`          | The App's installer, unsigned for the betas.      |
+| `FirstMate-Setup-<version>.exe`          | The App's installer, unsigned until SignPath signs it. |
 | `FirstMate-Setup-<version>.exe.sha256`   | Its SHA-256, as `sha256sum` writes it.            |
 | `FirstMate-Setup-<version>.exe.blockmap` | What the App's updater downloads parts of it by.  |
 | `latest.yml`                             | The update feed, for every version, a beta's too. |

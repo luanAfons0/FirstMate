@@ -1,6 +1,6 @@
 {
   "name": "@firstmate/desktop",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.0",
   "private": true,
   "description": "The FirstMate App: the Host, the Tray and the window, in one program for Windows and Linux.",
   "author": "Luan Afonso",
