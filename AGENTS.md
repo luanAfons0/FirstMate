@@ -107,7 +107,7 @@ knip and every test.
   Host, and its executable, told `ELECTRON_RUN_AS_NODE=1`, is the Node every
   Plugin Server gets as `FIRSTMATE_NODE`. Keep Electron's `RunAsNode` fuse on.
   **electron-vite** builds it, **electron-builder** packages it as a
-  per-user NSIS installer, unsigned for the betas, and **electron-updater**
+  per-user NSIS installer, unsigned until SignPath signs it, and **electron-updater**
   keeps it up to date. All four are dev dependencies of a private package, so
   the bundle carries the updater, and the App's build is not on the npm
   publish path (ADR-0020). One tag releases both: the installer on the GitHub
