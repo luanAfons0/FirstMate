@@ -82,8 +82,9 @@ jobs:
   # can only ask: SignPath signs nothing until the maintainer approves the
   # request on its site, and the key never leaves SignPath's hardware. The two
   # artifact configurations SignPath reads are kept in apps/desktop/signpath/.
-  # With no settings, a beta ships unsigned and says so; a version that is not
-  # a prerelease refuses to.
+  # With no settings, the App ships unsigned and the run says so. Until
+  # SignPath accepts FirstMate, a final version ships unsigned too, and the
+  # README says what Windows shows for it (ADR-0027).
   windows:
     name: Package the App (windows)
     # No signing request goes out for a tag that fails the check.
@@ -99,17 +100,12 @@ jobs:
         working-directory: apps/desktop
 
     steps:
-      - name: A final version ships signed
+      - name: Say when the App ships unsigned
         env:
-          PRERELEASE: ${{ needs.check.outputs.prerelease }}
           VERSION: ${{ needs.check.outputs.version }}
         working-directory: .
         run: |
           if ($env:SIGNING -eq 'true') { exit 0 }
-          if ($env:PRERELEASE -ne 'true') {
-            Write-Error "$env:VERSION is not a prerelease, and signing is off: set the SignPath settings first."
-            exit 1
-          }
           Write-Output "::warning::Signing is off, so the App of $env:VERSION ships unsigned."
 
       - uses: actions/checkout@v7
