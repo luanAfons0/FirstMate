@@ -12,6 +12,7 @@
  *   node apps/cli/src/cli.ts help [<command> | <topic>]
  *   node apps/cli/src/cli.ts setup
  *   node apps/cli/src/cli.ts desktop
+ *   node apps/cli/src/cli.ts ask [<question>]
  *   node apps/cli/src/cli.ts place [add <name> <kind> [...] | remove <name>] [--json]
  *   node apps/cli/src/cli.ts import <place>
  *   node apps/cli/src/cli.ts add <name> <directory> [--place <name>]
@@ -133,6 +134,14 @@ const COMMANDS: readonly Command[] = [
     takes: '',
     does: 'install the App of this version, and open it.',
     run: desktop,
+  },
+  {
+    name: 'ask',
+    group: 'Start',
+    short: 'ask your own Agent a question, through the Mate',
+    takes: '[<question>]',
+    does: 'ask the Mate, and print the answer as it arrives.',
+    run: (argv) => askMate(home(), argv),
   },
   {
     name: 'install',
@@ -404,6 +413,16 @@ reload: it starts the Plugins added, stops the ones removed, takes the new
 Grants, and leaves every other Plugin alone, Stopped or not. With no Host
 running, the command writes the files and says nothing more.`,
   },
+  {
+    about: ['ask'],
+    text: `ask runs your own Agent, Claude Code, in the default Place, with its own
+defaults, its own login and no tool approved. The question is the words after
+ask, or standard input when there are none; it is sent on standard input, and
+never as an argument. The answer is printed as it arrives. The ID of the new
+Conversation is printed on standard error. Conversations are kept in the home
+directory, under conversations/, where the App reads them too. ask needs no
+running Host. Ctrl+C stops the answer and keeps the part that came.`,
+  },
 ];
 
 /** Every way a command can end. A refusal says which kind of refusal it is. */
@@ -419,7 +438,7 @@ const EXIT_CODES: Readonly<Record<Ending, { readonly code: number; readonly mean
   failed: { code: 1, means: 'it failed: a damaged file, a fetch that went wrong, or a fault.' },
   'typed-wrong': { code: 2, means: 'it was typed wrong: no such command, or the wrong words.' },
   invalid: { code: 3, means: 'it refused a value that is not what it must be.' },
-  missing: { code: 4, means: 'it refused a Plugin or a Shortcut that is not there.' },
+  missing: { code: 4, means: 'it refused a Plugin, a Shortcut or an Agent that is not there.' },
   taken: { code: 5, means: 'it refused a name, keys or a directory that is taken already.' },
   'no-host': { code: 6, means: 'it needs a running Host, and none answers.' },
 };
@@ -698,6 +717,33 @@ async function desktop(argv: readonly string[]): Promise<number> {
   }
   const { installApp } = await import('./install-app.ts');
   return installApp();
+}
+
+/**
+ * Ask the Mate, with the words after ask as the question, or standard input
+ * when there are none (ADR-0031).
+ *
+ * It is imported here rather than at the top of this file, so that no other
+ * command loads the Agent's run.
+ */
+async function askMate(home: string, argv: readonly string[]): Promise<number> {
+  const question = (argv.length > 0 ? argv.join(' ') : await readStandardInput()).trim();
+  if (question === '') {
+    return typedWrong('ask', 'ask needs a question, as words or on standard input.');
+  }
+  const { ask } = await import('./ask.ts');
+  const answered = await ask(home, question);
+  return answered === 'stopped' ? INTERRUPTED : exit(answered);
+}
+
+/** The exit code of an answer stopped with Ctrl+C, as a shell counts it. */
+const INTERRUPTED = 130;
+
+/** Everything on standard input, until it closes. */
+async function readStandardInput(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 async function add(home: string, argv: readonly string[], place?: string): Promise<number> {

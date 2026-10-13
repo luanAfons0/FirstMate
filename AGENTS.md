@@ -8,7 +8,8 @@ client.
 
 Read [`CONTEXT.md`](CONTEXT.md) first. It defines every word this repo uses —
 App, Host, Place, Plugin, Plugin Page, Plugin Server, Registry, Plugin Order,
-Index Page, Tray, Settings View, Grant, Tool Bus, Stopped — and the synonyms to
+Index Page, Tray, Settings View, Grant, Tool Bus, Stopped, Mate, Agent,
+Conversation — and the synonyms to
 avoid. Use its words in code, in
 comments, in tests, in issues and in commit messages.
 
@@ -37,6 +38,7 @@ Run every command from the repository root.
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows, Linux or WSL. |
+| `node apps/cli/src/cli.ts ask [<question>]`   | Ask the Mate: run your own Claude, print the answer. |
 | `node apps/cli/src/cli.ts --help`             | Every command in its group, in one screen.      |
 | `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `help <command>` says the same. |
 | `node apps/cli/src/cli.ts help [<topic>]`     | The help topics: exit-codes, environment, places. |
@@ -101,7 +103,8 @@ knip and every test.
   questions asked on a terminal; the Host still takes no dependency
   (ADR-0025). `install` runs the `git`
   binary to clone a Plugin, and `update` runs it to move the clone forward
-  (ADR-0030), and a `wsl` Place runs `wsl.exe`: external tools
+  (ADR-0030), a `wsl` Place runs `wsl.exe`, and the Mate runs the operator's
+  own `claude` (ADR-0031): external tools
   the command line assumes, not package dependencies.
 - **Electron 44**, in `apps/desktop`, for the App: its main process holds the
   Host, and its executable, told `ELECTRON_RUN_AS_NODE=1`, is the Node every
@@ -159,6 +162,9 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    a git URL, and run none of what lands.
   update-plugin.ts move a Plugin that is a git clone forward, with no merge,
                    through a runner of one git command (ADR-0030).
+  agent-run.ts     run the operator's own Agent: the question on stdin, the
+                   answer as events, and a stop that ends its tree (ADR-0031).
+  conversations.ts keep the Mate's Conversations, one JSON-lines file each.
 packages/host/src/  the Host. Every file is one job.
   start.ts         start the Host: read the Registry, mint the token,
                    supervise, listen; and stop it. The App calls it too.
@@ -189,6 +195,8 @@ apps/cli/           the npm package, @luan-afonso/firstmate: the command line
                    `--version` says it, and `desktop` installs the App of it.
   src/setup.ts     firstmate setup: the conversation, and nothing else. Each
                    step calls commands.ts.
+  src/ask.ts       firstmate ask: the Mate with no window. It prints the
+                   answer as it arrives and keeps the Conversation.
   src/prompt.ts    ask for text, yes or no, or from a list: with clack on a
                    terminal, over node:readline from a pipe (ADR-0025).
   src/progress.ts  a long wait on a terminal: a spinner, or a progress bar

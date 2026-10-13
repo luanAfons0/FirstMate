@@ -111,3 +111,23 @@ _Avoid_: permission, scope, capability, ACL
 **Sampling**:
 A Plugin asking the Host for a model completion instead of holding a model key of its own.
 _Avoid_: inference, completion, LLM call, AI call
+
+### The Mate
+
+**Mate**:
+The App's chat with the operator's own Agent, in the window and from
+`firstmate ask`. The App holds it; the Host serves no part of it (ADR-0031).
+_Avoid_: assistant, sidekick, copilot, bot, chat
+
+**Agent**:
+The program on the operator's own account that the Mate runs, `claude` or
+`codex`, with its own login and its own plan. FirstMate holds no model key.
+_Avoid_: model, LLM, AI, provider
+
+**Conversation**:
+One chat with the Mate: its messages, the Agent and Place it runs with, and the
+Agent session it resumes. FirstMate keeps it in its home directory; the Agent
+keeps its own session.
+_Avoid_: thread, chat, session, history
+
+Sampling is not the Mate: it is a Plugin asking the Host for a model completion.

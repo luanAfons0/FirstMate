@@ -376,6 +376,31 @@ The Host keeps its output, and every Plugin Server's stderr with it, in
 two megabytes: the older half is kept as `firstmate.log.old`, and `logs` prints
 it first. The token never reaches either file.
 
+## Ask the Mate
+
+```sh
+firstmate ask Where did I leave the map?
+git diff | firstmate ask
+```
+
+The Mate is a chat with your own Agent, Claude Code, which runs on your own
+account with its own login and plan. FirstMate holds no model key and calls no
+model of its own
+([ADR-0031](docs/adr/0031-the-app-holds-the-mate.md)). `ask` runs `claude` in
+the default Place, in your home directory, with Claude's own defaults and no
+tool approved, so it edits no file and runs no command.
+
+The question is the words after `ask`, or standard input when there are none.
+It is sent to Claude on standard input, never as an argument. The answer is
+printed as it arrives, and the ID of the new Conversation on standard error, so
+a script reads a clean answer. Each Conversation is kept in `conversations/` in
+the home directory, where the App reads it too. `ask` needs no running Host.
+
+Ctrl+C stops the answer, keeps the part that came, and ends with `130`. An
+answer Claude could not finish keeps the part that came too, says why in one
+sentence, and ends with `1`. With no `claude` on the `PATH`, `ask` says so, keeps
+nothing, and ends with `4`.
+
 ## Help and exit codes
 
 ```sh
@@ -418,7 +443,7 @@ refusal from another without reading the sentence:
 | `1`  | It failed: a damaged file, a fetch that went wrong, or a fault.       |
 | `2`  | It was typed wrong: no such command, or the wrong words for it.       |
 | `3`  | It refused a value that is not what it must be: a Plugin Name, a path, keys, a position. |
-| `4`  | It refused a Plugin or a Shortcut that is not there.                  |
+| `4`  | It refused a Plugin, a Shortcut or an Agent that is not there.        |
 | `5`  | It refused a name, keys or a directory that is taken already.         |
 | `6`  | It needs a running Host, and none answers.                            |
 
@@ -829,6 +854,8 @@ process; no address on the Host changes it
 - `settings.json` — the settings FirstMate remembers: the Shelf, the Places,
   the Shortcuts, the Plugin Order, and the App's permission answers. It is
   absent until you choose one of them.
+- `conversations/` — the Mate's Conversations, one file of JSON lines each,
+  written for you alone.
 
 ## Addresses
 
