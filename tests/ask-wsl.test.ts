@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
-import { fakeClaude, fakeCodex, type FakeAgent } from './helpers/agents.ts';
+import { CONTEXT_ENDS, fakeClaude, fakeCodex, type FakeAgent } from './helpers/agents.ts';
 import { firstmate, makeHome } from './helpers/host.ts';
 import { pathWith } from './helpers/path.ts';
 import { fakeWsl, NO_FAKE_WSL, type Wsl } from './helpers/wsl.ts';
@@ -60,7 +60,7 @@ test(
     assert.equal(asked.stdout, 'Ahoy.\n');
     const [call, ...more] = await claude.calls();
     assert.deepEqual(more, []);
-    assert.equal(call?.stdin, 'Where is the treasure?', 'the question on stdin alone');
+    assert.ok(call?.stdin.endsWith(`${CONTEXT_ENDS}Where is the treasure?`), call?.stdin);
     assert.equal(call?.cwd, join(wsl.root, wsl.home), "the home of the distribution's user");
     const started = (await wsl.calls()).at(-1) ?? '';
     assert.ok(

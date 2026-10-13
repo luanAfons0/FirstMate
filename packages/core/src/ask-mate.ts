@@ -22,6 +22,7 @@ import {
   startConversation,
   type Head,
 } from './conversations.ts';
+import { withContext } from './mate-context.ts';
 import { allPlaces, type Place } from './places.ts';
 import { refuse, sentenceOf } from './refusal.ts';
 import { readRuntimeFile } from './runtime.ts';
@@ -146,8 +147,9 @@ function keepAnswer(home: string, id: string, answer: string, end: AgentEnd): vo
 }
 
 /**
- * Start a new Conversation, with what the Mate settings choose. The head
- * keeps what the Conversation started with.
+ * Start a new Conversation, with what the Mate settings choose. The Agent
+ * hears the Mate's context before the question; the Conversation keeps the
+ * question alone, and its head what the Conversation started with.
  */
 async function begin(
   home: string,
@@ -155,7 +157,7 @@ async function begin(
   hide: (text: string) => string,
 ): Promise<Asking> {
   const choice = mateChoice(home);
-  const run = await runAgent({ ...choice, question });
+  const run = await runAgent({ ...choice, question: withContext(home, question, hide) });
   const started = { ...choice, place: choice.place.name };
   const id = startConversation(home, started, hide(question));
   return { id, head: readConversation(home, id), run };
@@ -164,9 +166,10 @@ async function begin(
 /**
  * Continue a Conversation: resume its Agent session, with the Agent, the
  * Place, the model, the effort and the program its head names, whatever the
- * Mate settings say now. A Conversation that holds no session yet, because
- * its first answer never began, starts a new one with the same. The question
- * is kept once the Agent has started.
+ * Mate settings say now. The session holds the Mate's context already, so the
+ * question goes alone. A Conversation that holds no session yet, because its
+ * first answer never began, starts a new one with the same, and sends the
+ * context again. The question is kept once the Agent has started.
  */
 async function resume(
   home: string,
@@ -186,8 +189,9 @@ async function resume(
   const run = await runAgent({
     agent: head.agent,
     place,
-    question,
-    ...(head.session === undefined ? {} : { session: head.session }),
+    ...(head.session === undefined
+      ? { question: withContext(home, question, hide) }
+      : { question, session: head.session }),
     ...tuningOf(head),
   });
   addMessage(home, id, { who: 'operator', text: hide(question), when: new Date().toISOString() });

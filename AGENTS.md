@@ -172,6 +172,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    start, append, list, read and delete one.
   ask-mate.ts      ask the Mate: start or continue a Conversation, hear the
                    answer, and keep it. The App and firstmate ask both ask here.
+  mate-context.ts  what a new Conversation tells the Agent first: the primer
+                   about FirstMate, as data, the Plugins and mate.md.
 packages/host/src/  the Host. Every file is one job.
   start.ts         start the Host: read the Registry, mint the token,
                    supervise, listen; and stop it. The App calls it too.

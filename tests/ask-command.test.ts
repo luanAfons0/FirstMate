@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { fakeClaude } from './helpers/agents.ts';
+import { CONTEXT_ENDS, fakeClaude } from './helpers/agents.ts';
 import { DEFAULT_PLACE, firstmate, firstmateRunning, makeHome } from './helpers/host.ts';
 import { pathWith } from './helpers/path.ts';
 
@@ -30,7 +30,7 @@ function idOf(stderr: string): string {
   return stderr.split('\n')[0] ?? '';
 }
 
-test('ask runs claude with a new session, and sends the question on stdin alone', async (t) => {
+test('ask runs claude with a new session, and sends the question on stdin, after the context', async (t) => {
   const home = await makeHome(t);
   const claude = await fakeClaude(t);
 
@@ -47,7 +47,7 @@ test('ask runs claude with a new session, and sends the question on stdin alone'
   );
   assert.match(session ?? '', UUID);
   assert.deepEqual(rest, [], 'no model, no effort and no permission mode: Claude decides');
-  assert.equal(call.stdin, 'Where is the treasure?');
+  assert.ok(call.stdin.endsWith(`${CONTEXT_ENDS}Where is the treasure?`), call.stdin);
   assert.ok(!call.argv.some((word) => word.includes('treasure')), 'the question is no argument');
   assert.equal(call.cwd, claude.home, "in the operator's home directory");
 });
@@ -63,7 +63,7 @@ test('a question cmd.exe would read its own way reaches claude unchanged, on std
   assert.equal(asked.code, 0, asked.stderr);
   assert.equal(asked.stdout, 'Ahoy.\n');
   const [call] = await claude.calls();
-  assert.equal(call?.stdin, question);
+  assert.ok(call?.stdin.endsWith(`${CONTEXT_ENDS}${question}`), call?.stdin);
 });
 
 test('ask prints the answer on stdout, and the Conversation ID on stderr', async (t) => {
@@ -110,7 +110,8 @@ test('ask reads the question from stdin when it is given no words', async (t) =>
   const asked = await firstmate(home, ['ask'], claude.env, 'Line one\nLine two\n');
 
   assert.equal(asked.code, 0, asked.stderr);
-  assert.equal((await claude.calls())[0]?.stdin, 'Line one\nLine two');
+  const stdin = (await claude.calls())[0]?.stdin ?? '';
+  assert.ok(stdin.endsWith(`${CONTEXT_ENDS}Line one\nLine two`), stdin);
 });
 
 test('ask with no question at all is refused, and runs nothing', async (t) => {

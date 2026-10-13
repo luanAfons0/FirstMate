@@ -430,6 +430,18 @@ printed as it arrives, and the ID of the new Conversation on standard error, so
 a script reads a clean answer. Each Conversation is kept in `conversations/` in
 the home directory, where the App reads it too. `ask` needs no running Host.
 
+A new Conversation first tells the Agent what FirstMate is. Before the first
+question, on the same standard input, the Agent reads a context between
+`<firstmate-context>` and `</firstmate-context>`: a short primer with the words
+FirstMate uses and the `firstmate` commands that only read; every Plugin of the
+Registry, with its Place, its directory and its address `/p/<name>/`; and
+`mate.md` from the home directory, as you wrote it, when it is there. Write in
+`mate.md` what you want every new Conversation to know. The context is
+FirstMate's own data: no file of a Plugin is read for it
+([ADR-0005](docs/adr/0005-plugins-own-their-data.md)). The Conversation keeps
+your question alone, and a Conversation that goes on sends the question alone,
+because the Agent's own session holds the context already.
+
 `--conversation <id>`, before the question, continues a Conversation, one
 started here or in the App. It resumes the same Agent session, a Claude session
 or a Codex thread (`codex exec resume`), so the memory of the Conversation is
@@ -967,6 +979,8 @@ process; no address on the Host changes it
   absent until you choose one of them.
 - `conversations/` — the Mate's Conversations, one file of JSON lines each,
   written for you alone.
+- `mate.md` — what you want the Mate's Agent to know, sent as it is at the
+  start of every new Conversation. You write it; FirstMate never does.
 
 ## Addresses
 

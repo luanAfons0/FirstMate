@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { fakeCodex } from './helpers/agents.ts';
+import { CONTEXT_ENDS, fakeCodex } from './helpers/agents.ts';
 import { DEFAULT_PLACE, firstmate, firstmateRunning, makeHome } from './helpers/host.ts';
 
 /** The ID a UUID has, as a Codex thread and a Conversation are named. */
@@ -34,7 +34,7 @@ async function conversation(home: string, id: string): Promise<Record<string, un
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-test('ask runs codex exec read-only, and sends the question on stdin alone', async (t) => {
+test('ask runs codex exec read-only, and sends the question on stdin, after the context', async (t) => {
   const home = await makeHome(t);
   const codex = await fakeCodex(t);
   await settle(home, { mate: { agent: 'codex' } });
@@ -52,7 +52,7 @@ test('ask runs codex exec read-only, and sends the question on stdin alone', asy
     '--sandbox',
     'read-only',
   ]);
-  assert.equal(call.stdin, 'Where is the treasure?');
+  assert.ok(call.stdin.endsWith(`${CONTEXT_ENDS}Where is the treasure?`), call.stdin);
   assert.equal(call.cwd, codex.home, "in the operator's home directory");
 });
 
