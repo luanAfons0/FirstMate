@@ -14,7 +14,8 @@
  * Conversation; Shift+Enter starts a new line. The page empties the field
  * itself once it has asked. It is one raised field, no wider than the Plugin
  * list, so the two read as one column, with the line that says who answers a
- * new Conversation, and where.
+ * new Conversation, and where. Its edge and its mark carry the accent, so the
+ * eye finds it at once on the dark ground, before the list.
  */
 import { type IconName, icon } from '@firstmate/core/theme';
 import { TYPED } from './ask.ts';
@@ -64,23 +65,24 @@ function boxStyles(): string {
   .field {
     width: 100%; max-width: 640px; height: 44px; margin: 0 auto; display: flex;
     align-items: center; gap: 10px; padding: 0 8px 0 14px; cursor: text;
-    background: var(--raised); border: 1px solid var(--line-2); border-radius: var(--radius-panel);
+    background: var(--raised); border-radius: var(--radius-panel);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line-2));
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
-  .field:focus-within { border-color: var(--faint); }
-  .lead { color: var(--faint); }
-  .field:focus-within .lead { color: var(--accent); }
+  .field:focus-within { border-color: var(--accent); }
+  .lead { color: var(--accent); }
   textarea {
     flex: 1; min-width: 0; height: 21px; resize: none; border: 0; outline: 0; padding: 0;
     background: none; color: var(--ink); font: inherit; line-height: 21px; overflow-y: auto;
     scrollbar-width: none;
   }
-  textarea::placeholder { color: var(--faint); }
+  textarea::placeholder { color: var(--muted); }
   .meta {
-    flex: 0 1 auto; min-width: 0; max-width: 40%; font: 11px/1 var(--mono); color: var(--faint);
+    flex: 0 1 auto; min-width: 0; max-width: 40%; font: 11px/1 var(--mono); color: var(--muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   kbd {
-    flex: none; font: 11px/1 var(--mono); color: var(--faint); border: 1px solid var(--line-2);
+    flex: none; font: 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--line-2);
     border-radius: 4px; padding: 3px 5px;
   }`;
 }

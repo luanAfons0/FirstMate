@@ -104,9 +104,7 @@ ${mateSection(shown.saved.mate, shown.saved.places, shown)}
   return written(
     'Settings',
     styles(),
-    `<div class="settings"${
-      shown.go === undefined ? '' : ` data-go="${shown.go.count}:${escaped(shown.go.section)}"`
-    }>
+    `<div class="settings">
 <nav class="side" aria-label="Settings">
 <h1>Settings</h1>
 ${read ? SECTIONS.map(sideLink).join('\n') : ''}
@@ -438,7 +436,6 @@ const showKind = () => {
   const wsl = document.querySelector('form.addform .for-wsl');
   if (kind && wsl) wsl.hidden = kind.value !== 'wsl';
 };
-let gone;
 const showAgent = () => {
   const agent = document.querySelector('form.mateform select[name=agent]');
   if (!agent) return;
@@ -496,14 +493,6 @@ whenShown(() => {
 whenShown(showAdding);
 whenShown(showKind);
 whenShown(showAgent);
-whenShown(() => {
-  const go = document.querySelector('.settings')?.dataset.go;
-  if (go === undefined || go === gone) return;
-  gone = go;
-  current = go.slice(go.indexOf(':') + 1);
-  showCurrent();
-  document.getElementById(current)?.scrollIntoView({ block: 'start' });
-});
 whenShown(() => {
   if (current === '') current = document.querySelector('.side a[data-to]')?.dataset.to ?? '';
   showCurrent();
