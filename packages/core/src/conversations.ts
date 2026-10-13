@@ -14,7 +14,8 @@
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Agent } from './agent-run.ts';
+import { isAgent, type Agent } from './agent-run.ts';
+import { refuse } from './refusal.ts';
 
 /** The directory the Conversations are in, inside the home directory. */
 const CONVERSATIONS_DIRECTORY = 'conversations';
@@ -23,7 +24,7 @@ const CONVERSATIONS_DIRECTORY = 'conversations';
 const TITLE_LENGTH = 60;
 
 /** The first line of a Conversation: what it is, and what it resumes. */
-type Head = {
+export type Head = {
   readonly agent: Agent;
   /** The Place the Agent runs in, by name. */
   readonly place: string;
@@ -97,6 +98,65 @@ export function nameSession(home: string, id: string, session: string): void {
   if (head.session === session) return;
   const rest = lines.slice(1).map((line) => JSON.parse(line) as unknown);
   writeWhole(path, [{ ...head, session }, ...rest]);
+}
+
+/** The shape of a Conversation ID: a UUID, as the Mate makes one. Nothing else names a file. */
+const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Read a Conversation's head, once every line of its file is read. An ID with
+ * no Conversation is refused, and a line that cannot be read fails this
+ * Conversation alone, in one sentence that names its file.
+ */
+export function readConversation(home: string, id: string): Head {
+  const path = fileOf(home, id);
+  let text: string;
+  try {
+    if (!CONVERSATION_ID.test(id)) throw new Error('not an ID');
+    text = readFileSync(path, 'utf8');
+  } catch {
+    throw refuse('missing', `there is no Conversation ${id}.`);
+  }
+  const lines = text.trimEnd().split('\n');
+  lines.forEach((line, index) => {
+    const value = parseObject(line);
+    if (value === undefined || !(index === 0 ? isHead(value) : isMessage(value))) {
+      throw new Error(`Line ${index + 1} of the Conversation at ${path} cannot be read.`);
+    }
+  });
+  return JSON.parse(lines[0] ?? '') as Head;
+}
+
+/** One line of a Conversation, as a JSON object, or nothing when it is not one. */
+function parseObject(line: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(line);
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isHead(line: Record<string, unknown>): boolean {
+  return (
+    isAgent(line['agent']) &&
+    typeof line['place'] === 'string' &&
+    (line['session'] === undefined || typeof line['session'] === 'string') &&
+    typeof line['title'] === 'string' &&
+    typeof line['when'] === 'string'
+  );
+}
+
+function isMessage(line: Record<string, unknown>): boolean {
+  return (
+    (line['who'] === 'operator' || line['who'] === 'agent') &&
+    typeof line['text'] === 'string' &&
+    typeof line['when'] === 'string' &&
+    (line['ended'] === undefined || line['ended'] === 'stopped' || line['ended'] === 'failed') &&
+    (line['why'] === undefined || typeof line['why'] === 'string')
+  );
 }
 
 /** Write these lines as a Conversation file, whole, for this user alone. */

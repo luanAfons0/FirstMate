@@ -12,7 +12,7 @@
  *   node apps/cli/src/cli.ts help [<command> | <topic>]
  *   node apps/cli/src/cli.ts setup
  *   node apps/cli/src/cli.ts desktop
- *   node apps/cli/src/cli.ts ask [<question>]
+ *   node apps/cli/src/cli.ts ask [--conversation <id>] [<question>]
  *   node apps/cli/src/cli.ts place [add <name> <kind> [...] | remove <name>] [--json]
  *   node apps/cli/src/cli.ts import <place>
  *   node apps/cli/src/cli.ts add <name> <directory> [--place <name>]
@@ -139,7 +139,7 @@ const COMMANDS: readonly Command[] = [
     name: 'ask',
     group: 'Start',
     short: 'ask your own Agent a question, through the Mate',
-    takes: '[<question>]',
+    takes: '[--conversation <id>] [<question>]',
     does: 'ask the Mate, and print the answer as it arrives.',
     run: (argv) => askMate(home(), argv),
   },
@@ -419,9 +419,11 @@ running, the command writes the files and says nothing more.`,
 defaults, its own login and no tool approved. The question is the words after
 ask, or standard input when there are none; it is sent on standard input, and
 never as an argument. The answer is printed as it arrives. The ID of the new
-Conversation is printed on standard error. Conversations are kept in the home
-directory, under conversations/, where the App reads them too. ask needs no
-running Host. Ctrl+C stops the answer and keeps the part that came.`,
+Conversation is printed on standard error. --conversation <id>, before the
+question, continues that Conversation: it resumes the same Agent session, with
+the Agent and the Place the Conversation started with. Conversations are kept
+in the home directory, under conversations/, where the App reads them too. ask
+needs no running Host. Ctrl+C stops the answer and keeps the part that came.`,
   },
 ];
 
@@ -721,20 +723,30 @@ async function desktop(argv: readonly string[]): Promise<number> {
 
 /**
  * Ask the Mate, with the words after ask as the question, or standard input
- * when there are none (ADR-0031).
+ * when there are none (ADR-0031). --conversation is read only before the
+ * question, so a question may hold the word itself.
  *
  * It is imported here rather than at the top of this file, so that no other
  * command loads the Agent's run.
  */
 async function askMate(home: string, argv: readonly string[]): Promise<number> {
-  const question = (argv.length > 0 ? argv.join(' ') : await readStandardInput()).trim();
+  const continues = argv[0] === CONVERSATION_WORD;
+  const conversation = continues ? argv[1] : undefined;
+  if (continues && (conversation === undefined || conversation.startsWith('-'))) {
+    return typedWrong('ask', `${CONVERSATION_WORD} takes the ID of a Conversation.`);
+  }
+  const words = continues ? argv.slice(2) : argv;
+  const question = (words.length > 0 ? words.join(' ') : await readStandardInput()).trim();
   if (question === '') {
     return typedWrong('ask', 'ask needs a question, as words or on standard input.');
   }
   const { ask } = await import('./ask.ts');
-  const answered = await ask(home, question);
+  const answered = await ask(home, question, conversation);
   return answered === 'stopped' ? INTERRUPTED : exit(answered);
 }
+
+/** The word that names the Conversation ask continues. */
+const CONVERSATION_WORD = '--conversation';
 
 /** The exit code of an answer stopped with Ctrl+C, as a shell counts it. */
 const INTERRUPTED = 130;

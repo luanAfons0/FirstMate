@@ -13,7 +13,7 @@ import { firstmate, fixture, makeHome } from './helpers/host.ts';
 const COMMANDS: readonly [string, string][] = [
   ['setup', ''],
   ['desktop', ''],
-  ['ask', ' [<question>]'],
+  ['ask', ' [--conversation <id>] [<question>]'],
   ['place', ' [add <name> <kind> [...] | remove <name>]'],
   ['import', ' <place>'],
   ['add', ' <name> <directory> [--place <name>]'],
