@@ -12,8 +12,8 @@
  * The question goes on standard input and never in an argument, and the
  * program is started from a list of words with no shell, so no shell or
  * cmd.exe rule can change what the question means. The Agent runs in its own
- * non-interactive mode with no tool approved, in the operator's home
- * directory, and a stop ends its whole process tree.
+ * non-interactive mode, and FirstMate approves no tool for it, in the
+ * operator's home directory, and a stop ends its whole process tree.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -130,8 +130,8 @@ type Invocation = {
 function claude(request: AgentRequest): Invocation {
   const session = request.session ?? randomUUID();
   const which = request.session === undefined ? '--session-id' : '--resume';
-  // No --permission-mode: Claude approves no tool, so it edits no file and
-  // runs no command while nobody is asked.
+  // No --permission-mode: FirstMate approves no tool. Claude may use what the
+  // operator's own settings allow, as in their terminal (ADR-0031).
   const argv = [
     ...['-p', '--output-format', 'stream-json', '--verbose', which, session],
     ...(request.model === undefined ? [] : ['--model', request.model]),

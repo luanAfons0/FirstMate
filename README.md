@@ -388,8 +388,9 @@ The Mate is a chat with your own Agent, Claude Code or Codex, which runs on
 your own account with its own login and plan. FirstMate holds no model key and
 calls no model of its own
 ([ADR-0031](docs/adr/0031-the-app-holds-the-mate.md)). `ask` runs `claude` in
-your home directory, with no tool approved, so it edits no file and runs no
-command. With Codex it runs `codex exec --json --skip-git-repo-check --sandbox
+your home directory, and FirstMate approves no tool for it: what Claude may do
+is what your own Claude settings allow, as in your terminal, so a tool your
+settings allow runs without a question. With Codex it runs `codex exec --json --skip-git-repo-check --sandbox
 read-only`, so Codex writes no file either.
 
 The Mate settings, under `mate` in `settings.json`, say how it runs:
