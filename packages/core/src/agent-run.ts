@@ -131,6 +131,23 @@ function notLoggedIn(agent: Agent, place: string): string {
   );
 }
 
+/** The words that say a Conversation's session cannot be resumed, which end its one sentence. */
+const CANNOT_RESUME =
+  'cannot resume the session of this Conversation, so start a new Conversation.';
+
+/** The one sentence that says an Agent holds no session of a Conversation any more. */
+function cannotResume(agent: Agent, place: string): string {
+  return `${AGENT_NAMES[agent]} in the ${place} Place ${CANNOT_RESUME}`;
+}
+
+/**
+ * Whether a failure says the Conversation's session cannot be resumed, so
+ * the panel offers a new Conversation beside it.
+ */
+export function saysCannotResume(sentence: string): boolean {
+  return sentence.endsWith(CANNOT_RESUME);
+}
+
 /** What a text block is joined to the one before it with: a new paragraph. */
 const BETWEEN_BLOCKS = '\n\n';
 
@@ -460,12 +477,7 @@ function claudeFailed(
       ? result['result']
       : undefined) ??
     (said !== '' ? said : `it ended with code ${String(code)}`);
-  if (CLAUDE_NO_SESSION.test(reason)) {
-    return (
-      `Claude in the ${place} Place cannot resume the session of this Conversation, ` +
-      'so start a new Conversation.'
-    );
-  }
+  if (CLAUDE_NO_SESSION.test(reason)) return cannotResume('claude', place);
   return `Claude stopped before its answer was done: ${reason.replace(/[.\s]*$/, '')}.`;
 }
 
@@ -547,12 +559,7 @@ const CODEX_NO_LOGIN = /\b401 Unauthorized\b/;
 /** The one sentence that says why Codex's answer ended early. */
 function codexFailed(reason: string, place: string): string {
   if (CODEX_NO_LOGIN.test(reason)) return notLoggedIn('codex', place);
-  if (CODEX_NO_SESSION.test(reason)) {
-    return (
-      `Codex in the ${place} Place cannot resume the session of this Conversation, ` +
-      'so start a new Conversation.'
-    );
-  }
+  if (CODEX_NO_SESSION.test(reason)) return cannotResume('codex', place);
   const plain = reason.replace(/^Error:\s*/, '').replace(/[.\s]*$/, '');
   return `Codex stopped before its answer was done: ${plain}.`;
 }

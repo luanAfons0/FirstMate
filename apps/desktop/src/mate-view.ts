@@ -29,6 +29,7 @@
  * for a width from where the drag started, in screen pixels, so it does not
  * matter that the view moves under the pointer as it narrows the page.
  */
+import { saysCannotResume } from '@firstmate/core/agent-run';
 import { type IconName, icon } from '@firstmate/core/theme';
 import { ASK, mateCopyAsk, mateDeleteAsk, mateOpenAsk, TYPED } from './ask.ts';
 import { markdown } from './markdown.ts';
@@ -270,10 +271,16 @@ ${escaped(said.text)}</div></div>`;
   const drawn = markdown(said.text);
   const ended = drawn.endsWith('</p>') ? `${drawn.slice(0, -4)}${caret}</p>` : `${drawn}${caret}`;
   const text = said.text === '' && caret === '' ? '' : `<div class="txt md">${ended}</div>`;
+  // A session the Agent no longer holds is never resumed, so the way on is
+  // a new Conversation, offered where the failure is said.
+  const anew = saysCannotResume(said.why ?? '')
+    ? `<button class="again" type="button" data-ask="${ASK.mateNew}">\
+${icon('note-pencil')}New Conversation</button>`
+    : '';
   const failed =
     said.ended === 'failed'
       ? `<div class="err" role="alert">${icon('warning-circle')}\
-<p>${escaped(said.why ?? '')}</p></div>`
+<div><p>${escaped(said.why ?? '')}</p>${anew}</div></div>`
       : '';
   const stopped = said.ended === 'stopped' ? '<span class="ended">Stopped</span>' : '';
   const copy =
@@ -497,6 +504,14 @@ function mateStyles(): string {
   }
   .err > svg.i { color: var(--stopped); margin-top: 2px; }
   .err p { margin: 0; overflow-wrap: anywhere; user-select: text; }
+  .again {
+    display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-top: 8px;
+    padding: 0 9px; border-radius: var(--radius-control); border: 1px solid var(--line-2);
+    background: var(--bg); color: var(--text); font: 12px/1 var(--sans); cursor: pointer;
+  }
+  .again svg.i { width: 13px; height: 13px; }
+  .again:hover { border-color: var(--faint); color: var(--ink); }
+  .again:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .empty {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; gap: 6px; padding: 0 24px; user-select: none;

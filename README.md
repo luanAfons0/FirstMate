@@ -412,7 +412,9 @@ defaults in the default Place. A command that writes the settings keeps them. A
 damaged one fails every command, says why in one sentence, and ends with `1`;
 a `place` that names no Place is damaged too, so `place remove` refuses the
 Place the Mate runs in, and ends with `5`.
-A new Conversation keeps the Agent, model, effort and Place it started with.
+A new Conversation keeps the Agent, model, effort, Place and program it started
+with, and goes on with them whatever the settings say later. `width` is the
+Mate panel's width, which the App keeps when you drag its edge.
 
 In a `wsl` Place the Agent runs inside the distribution, as a Plugin Server
 does: `wsl.exe -d <distribution> --cd <home> --exec <program> …`, in the home
@@ -432,8 +434,9 @@ the home directory, where the App reads it too. `ask` needs no running Host.
 started here or in the App. It resumes the same Agent session, a Claude session
 or a Codex thread (`codex exec resume`), so the memory of the Conversation is
 the Agent's own, and it runs with the Agent, the Place, the
-model and the effort the Conversation started with, whatever the settings say
-now. Both messages
+model, the effort and the program the Conversation started with, whatever the
+settings say now. When the first answer failed before it began, the Agent may
+hold no session of it, so the next message starts a new one. Both messages
 are added to the same Conversation, and its ID is printed on standard error
 again. An unknown ID is refused and ends with `4`. A Conversation file with a
 line that cannot be read is refused, with its path, and ends with `1`; the
@@ -442,7 +445,9 @@ other Conversations are not touched. When the Agent no longer holds the session,
 
 Ctrl+C stops the answer, keeps the part that came, and ends with `130`. An
 answer the Agent could not finish keeps the part that came too, says why in one
-sentence, and ends with `1`. With no `claude` or `codex` on the `PATH` of its
+sentence, and ends with `1`. The Agent can read `runtime.json`, so wherever
+it says the Host's token, the answer and the Conversation say `[the Host's
+token]` instead. With no `claude` or `codex` on the `PATH` of its
 Place, or none at the `program` the settings name, `ask` says so in one
 sentence, with the Place and the `PATH` it searched, keeps nothing, and ends
 with `4`. A distribution that does not answer is refused, and ends with `3`.
@@ -495,6 +500,7 @@ refusal from another without reading the sentence:
 | `4`  | It refused a Plugin, a Shortcut or an Agent that is not there.        |
 | `5`  | It refused a name, keys or a directory that is taken already.         |
 | `6`  | It needs a running Host, and none answers.                            |
+| `130` | It was stopped with Ctrl+C: `firstmate ask` alone.                |
 
 ## The App
 
@@ -581,7 +587,8 @@ the field says which Agent answers, with its model, its effort and its Place.
 The next message continues the same Conversation, and New Conversation starts
 another; an answer that still arrives in the last one goes on, and is kept. The
 panel stays open with its Conversation when you open another Plugin, and opens
-again on it, at the width you left, until the App quits. Its gear opens the
+again on it until the App quits; it opens at the width you left after a
+restart too. Its gear opens the
 Mate section of the Settings View, and the Mate's Conversations are the ones `firstmate ask` keeps.
 
 While the window shows the Plugin list, a box that says "Ask the Mate" sits
@@ -596,7 +603,7 @@ The panel's Recents button lists every Conversation, those `firstmate ask`
 made too, by title, with its Agent and model, the one you said something in
 last at the top, under Today, Yesterday, Previous 7 days and Older. Click one
 to open it with all its messages; the next message resumes its own Agent
-session, with the Agent, model, effort and Place it started with. Back, or
+session, with the Agent, model, effort, Place and program it started with. Back, or
 Esc, returns to the Conversation you were in, and New Conversation starts an
 empty one. Delete, under the pointer, asks once more in the row, and then
 deletes FirstMate's file of the Conversation alone: the Agent keeps its own

@@ -141,7 +141,7 @@ const COMMANDS: readonly Command[] = [
     short: 'ask your own Agent a question, through the Mate',
     takes: '[--conversation <id>] [<question>]',
     does: 'ask the Mate, and print the answer as it arrives.',
-    run: (argv) => askMate(home(), argv),
+    run: (argv) => ask(home(), argv),
   },
   {
     name: 'install',
@@ -433,6 +433,9 @@ needs no running Host. Ctrl+C stops the answer and keeps the part that came.`,
 /** Every way a command can end. A refusal says which kind of refusal it is. */
 type Ending = 'done' | 'failed' | 'typed-wrong' | Refusal | 'no-host';
 
+/** The exit code of an answer stopped with Ctrl+C, as a shell counts it. */
+const INTERRUPTED = 130;
+
 /**
  * The exit code of each way a command can end, and what it means, so that a
  * script can tell one refusal from another without reading the sentence.
@@ -456,7 +459,8 @@ function exit(ending: Ending): number {
 const EXIT_HELP = `A command ends with one of these exit codes:
 ${Object.values(EXIT_CODES)
   .map(({ code, means }) => `  ${code}  ${means}`)
-  .join('\n')}`;
+  .join('\n')}
+  ${INTERRUPTED}  it was stopped with Ctrl+C.`;
 
 const ENVIRONMENT_HELP = `The command line reads these environment variables:
 
@@ -505,8 +509,7 @@ function shortLine(name: string, short: string, column: number): string {
  * group with its few words, and where the rest of the help is.
  */
 function shortHelp(stream: NodeJS.WriteStream): string {
-  return `firstmate: run your own tools on your own machine.
-usage: firstmate <command> [...]
+  return `firstmate: run your own tools on your own machine. usage: firstmate <command>
 
 ${GROUPS.map((group) =>
   [
@@ -732,7 +735,7 @@ async function desktop(argv: readonly string[]): Promise<number> {
  * It is imported here rather than at the top of this file, so that no other
  * command loads the Agent's run.
  */
-async function askMate(home: string, argv: readonly string[]): Promise<number> {
+async function ask(home: string, argv: readonly string[]): Promise<number> {
   const continues = argv[0] === CONVERSATION_WORD;
   const conversation = continues ? argv[1] : undefined;
   if (continues && (conversation === undefined || conversation.startsWith('-'))) {
@@ -750,9 +753,6 @@ async function askMate(home: string, argv: readonly string[]): Promise<number> {
 
 /** The word that names the Conversation ask continues. */
 const CONVERSATION_WORD = '--conversation';
-
-/** The exit code of an answer stopped with Ctrl+C, as a shell counts it. */
-const INTERRUPTED = 130;
 
 /** Everything on standard input, until it closes. */
 async function readStandardInput(): Promise<string> {

@@ -64,6 +64,8 @@ export type MateSettings = {
   readonly place?: string;
   /** The absolute path of the Agent's program, for an Agent that is not on PATH. */
   readonly program?: string;
+  /** How wide the operator left the Mate panel, in logical pixels: the App's alone. */
+  readonly width?: number;
 };
 
 /**
@@ -152,6 +154,7 @@ const MATE_FIELDS: readonly (keyof MateSettings)[] = [
   'effort',
   'place',
   'program',
+  'width',
 ];
 
 /**
@@ -197,7 +200,13 @@ function mateFault(
           `and not ${JSON.stringify(field)}.`,
       };
     }
-    if (field !== 'agent' && typeof given !== 'string') {
+    if (field === 'width' && (!Number.isInteger(given) || (given as number) <= 0)) {
+      return {
+        field,
+        sentence: `${where} need "width" to be a whole number of pixels, and not ${JSON.stringify(given)}.`,
+      };
+    }
+    if (field !== 'agent' && field !== 'width' && typeof given !== 'string') {
       return {
         field,
         sentence: `${where} need "${field}" to be a string, and not ${JSON.stringify(given)}.`,

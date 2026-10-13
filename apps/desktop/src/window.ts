@@ -23,7 +23,8 @@
  * width below the strip, and the shown view is hidden and stays loaded. It
  * covers no part of a page (ADR-0008). It stays open, with its Conversation,
  * when the operator opens another Plugin, and it opens again on the same
- * Conversation and at the same width while the App runs. Recents shows in
+ * Conversation while the App runs. Its width is kept in the Mate settings,
+ * once a drag of its edge ends, so it opens at that width after a restart. Recents shows in
  * the panel, in place of its Conversation, and opens an older one. The strip's Mate
  * button and Ctrl+Shift+K open and close it; the window reads that key in
  * every view before the page does, a Plugin Page too, and keeps it from the
@@ -53,6 +54,8 @@
  * cookie.
  */
 import { fileURLToPath } from 'node:url';
+import { keepMateWidth } from '@firstmate/core/commands';
+import { readSettings } from '@firstmate/core/settings';
 import { titleBarColours, windowBackground } from '@firstmate/core/theme';
 import {
   app,
@@ -207,6 +210,7 @@ export function openWindow(
     quitting = true;
     // Every answer that still arrives ends with the App: no Agent runs on.
     mate.stopAll();
+    keepWidth();
   });
   window.on('close', (event) => {
     if (quitting) return;
@@ -244,8 +248,22 @@ export function openWindow(
   let mateOpen = false;
   /** Whether the open Mate panel has the whole width below the strip. */
   let mateExpanded = false;
-  /** How wide the operator left the Mate panel, kept while the App runs. */
-  let mateWidth = MATE_WIDTH;
+  /** How wide the operator left the Mate panel, kept in the Mate settings across restarts. */
+  let mateWidth = keptWidth(settingsNeeds.home);
+  /** The wait before a new width is kept, so that one drag writes the settings once. */
+  let widthWait: NodeJS.Timeout | undefined;
+  /** Keep the Mate panel's width in the settings file now, if a new one waits. */
+  const keepWidth = (): void => {
+    if (widthWait === undefined) return;
+    clearTimeout(widthWait);
+    widthWait = undefined;
+    try {
+      keepMateWidth(settingsNeeds.home, mateWidth);
+    } catch {
+      // A settings file that cannot be read is said by the Settings View and
+      // by every command; the width waits until it is mended.
+    }
+  };
   /** How many times the Mate panel has opened, so its page knows a new opening. */
   let mateOpened = 0;
   /**
@@ -694,6 +712,8 @@ export function openWindow(
     } else if (asked.kind === 'mate-width') {
       mateWidth = fitWidth(asked.width);
       layout();
+      clearTimeout(widthWait);
+      widthWait = setTimeout(keepWidth, WIDTH_WAIT_MS);
     } else if (asked.kind === 'mate-ask') {
       // The box starts a new Conversation in the panel, which opens on it.
       recents = undefined;
@@ -866,6 +886,21 @@ export function openWindow(
       redraw();
     },
   };
+}
+
+/** How long the Mate panel's width waits after the last drag before it is kept. */
+const WIDTH_WAIT_MS = 500;
+
+/**
+ * The Mate panel's width the settings file keeps, held to what the panel can
+ * be; the first width when none is kept, or the settings cannot be read.
+ */
+function keptWidth(home: string): number {
+  try {
+    return fitWidth(readSettings(home).mate?.width ?? MATE_WIDTH);
+  } catch {
+    return MATE_WIDTH;
+  }
 }
 
 /**

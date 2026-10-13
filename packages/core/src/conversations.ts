@@ -48,6 +48,8 @@ export type Head = {
   readonly model?: string;
   /** The effort it started with, absent for the Agent's own default. */
   readonly effort?: string;
+  /** The Agent's program it started with, absent for the one found on PATH. */
+  readonly program?: string;
   /** The Agent's own session, which the next message resumes, once it is known. */
   readonly session?: string;
   /** The first line of the first message, cut to a short length. */
@@ -90,7 +92,7 @@ function titleOf(question: string): string {
  */
 export function startConversation(
   home: string,
-  head: Pick<Head, 'agent' | 'place' | 'model' | 'effort'>,
+  head: Pick<Head, 'agent' | 'place' | 'model' | 'effort' | 'program'>,
   question: string,
 ): string {
   const id = randomUUID();
@@ -263,6 +265,7 @@ function isHead(line: Record<string, unknown>): boolean {
     (line['model'] === undefined ||
       (typeof line['model'] === 'string' && isModelName(line['model']))) &&
     (line['effort'] === undefined || typeof line['effort'] === 'string') &&
+    (line['program'] === undefined || typeof line['program'] === 'string') &&
     (line['session'] === undefined || typeof line['session'] === 'string') &&
     typeof line['title'] === 'string' &&
     typeof line['when'] === 'string'

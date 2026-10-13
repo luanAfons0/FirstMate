@@ -113,7 +113,7 @@ test('help exit-codes names every exit code and what it means', async (t) => {
   const helped = await firstmate(home, ['help', 'exit-codes']);
 
   assert.equal(helped.code, 0, helped.stderr);
-  for (const code of [0, 1, 2, 3, 4, 5, 6]) {
+  for (const code of [0, 1, 2, 3, 4, 5, 6, 130]) {
     assert.match(helped.stdout, new RegExp(`^  ${code}  it \\w`, 'm'), `exit code ${code}`);
   }
   assert.equal(helped.stderr, '');
@@ -140,7 +140,7 @@ test('the short help names every command once, and fits in one screen', async (t
   const helped = await firstmate(home, ['--help']);
   const lines = helped.stdout.trimEnd().split('\n');
 
-  assert.ok(lines.length <= 30, `at most 30 lines, not ${lines.length}`);
+  assert.ok(lines.length < 30, `under 30 lines, not ${lines.length}`);
   for (const line of lines) assert.ok(line.length <= 80, `under 80 columns: ${line}`);
   for (const [name] of COMMANDS) {
     const rows = lines.filter((line) => new RegExp(`^ {2}${name} {2,}\\S`).test(line));

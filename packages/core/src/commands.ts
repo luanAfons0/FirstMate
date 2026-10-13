@@ -595,6 +595,19 @@ export function setMate(home: string, change: MateChange): MateSettings {
     if (word !== '' || field === 'agent') given[field] = word;
   }
   const mate = checkMate(home, given);
-  writeSettings(home, { ...readSettings(home), mate });
+  const settings = readSettings(home);
+  const width = settings.mate?.width;
+  writeSettings(home, { ...settings, mate: width === undefined ? mate : { ...mate, width } });
   return mate;
+}
+
+/**
+ * Keep how wide the operator left the Mate panel, so it opens at that width
+ * after a restart. Only the App's main process writes it, with every other
+ * setting written back as it was (ADR-0012).
+ */
+export function keepMateWidth(home: string, width: number): void {
+  const settings = readSettings(home);
+  const mate = checkMate(home, { ...(settings.mate ?? { agent: 'claude' }), width });
+  writeSettings(home, { ...settings, mate });
 }

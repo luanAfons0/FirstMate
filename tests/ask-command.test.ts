@@ -373,3 +373,47 @@ test('claude with no login is refused in one sentence that names the login comma
       'Run claude auth login there, then ask again.',
   );
 });
+
+test("the Host's token never reaches the answer printed or the Conversation kept", async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const token = 'f3a9c2e1d0b8a7f6e5d4c3b2a1908f7e';
+  await writeFile(join(home, 'runtime.json'), `${JSON.stringify({ port: 4747, token })}\n`);
+  await claude.script([
+    { say: `The token is ${token}, from runtime.json.` },
+    { result: 'success' },
+  ]);
+
+  const asked = await firstmate(home, ['ask', `Is ${token} the token?`], claude.env);
+
+  assert.equal(asked.code, 0, asked.stderr);
+  assert.equal(asked.stdout, "The token is [the Host's token], from runtime.json.\n");
+  const id = idOf(asked.stderr);
+  const kept = await readFile(join(home, 'conversations', `${id}.jsonl`), 'utf8');
+  assert.ok(!kept.includes(token), `the token is in the Conversation: ${kept}`);
+  const [head, question, answer] = await conversation(home, id);
+  assert.equal(head?.['title'], "Is [the Host's token] the token?");
+  assert.equal(question?.['text'], "Is [the Host's token] the token?");
+  assert.equal(answer?.['text'], "The token is [the Host's token], from runtime.json.");
+});
+
+test('a first answer that failed before it began leaves no session, so the next starts anew', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  await claude.script([{ die: 1, stderr: 'API Error: Connection error.' }]);
+  const first = await firstmate(home, ['ask', 'Where is the treasure?'], claude.env);
+  assert.equal(first.code, 1, first.stderr);
+  const id = idOf(first.stderr);
+  // The Agent kept no session of a run that never answered.
+  await claude.forget();
+  await claude.script([{ say: 'Under the palm.' }, { result: 'success' }]);
+
+  const next = await firstmate(home, ['ask', '--conversation', id, 'Where?'], claude.env);
+
+  assert.equal(next.code, 0, next.stderr);
+  assert.equal(next.stdout, 'Under the palm.\n');
+  const [, call] = await claude.calls();
+  assert.equal(call?.argv[4], '--session-id', 'a new session, not a resume');
+  const [head] = await conversation(home, id);
+  assert.equal(head?.['session'], call?.argv[5], 'the Conversation keeps the new session');
+});
