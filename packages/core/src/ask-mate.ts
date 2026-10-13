@@ -7,8 +7,11 @@
  * Conversation started in one goes on in the other (ADR-0031). A new
  * Conversation takes the Agent, model, effort, Place and program the Mate
  * settings name now. A Conversation that goes on resumes with the Agent, the
- * Place, the model and the effort its head names, whatever the settings say
- * now, so a change of settings never breaks an older Conversation.
+ * Place, the model, the effort and the program its head names, whatever the
+ * settings say now, so a change of settings never breaks an older Conversation.
+ *
+ * The Agent runs on the operator's account and can read `runtime.json`, so
+ * the Host's token is hidden in everything shown and kept here.
  */
 import { runAgent, type Agent, type AgentEvent, type AgentRun } from './agent-run.ts';
 import {
@@ -20,6 +23,7 @@ import {
 } from './conversations.ts';
 import { allPlaces, DEFAULT_PLACE, type Place } from './places.ts';
 import { refuse } from './refusal.ts';
+import { readRuntimeFile } from './runtime.ts';
 import { chosen, readSettings } from './settings.ts';
 
 /** What a new Conversation would start with: the Mate settings, with every default in force. */
@@ -62,15 +66,52 @@ type Asking = { readonly id: string; readonly head: Head; readonly run: AgentRun
  * Ask the Mate this question, in a new Conversation or in the one this ID
  * names. A refusal before the Agent starts is thrown, and keeps nothing.
  */
-export function askMate(home: string, question: string, conversation?: string): Promise<Asking> {
-  return conversation === undefined ? begin(home, question) : resume(home, conversation, question);
+export async function askMate(
+  home: string,
+  question: string,
+  conversation?: string,
+): Promise<Asking> {
+  const hide = hider(home);
+  const asking =
+    conversation === undefined
+      ? await begin(home, question, hide)
+      : await resume(home, conversation, question, hide);
+  return { ...asking, run: { events: hidden(asking.run.events, hide), stop: asking.run.stop } };
+}
+
+/** What the Host's token is shown as, wherever the Agent said it. */
+const TOKEN_MARK = "[the Host's token]";
+
+/**
+ * Hide the Host's token in what the Mate shows and keeps. The Agent runs on
+ * the operator's account and can read `runtime.json`, so it may say the token;
+ * no Conversation and no printed answer ever holds it. With no runtime file,
+ * there is no token to hide.
+ */
+function hider(home: string): (text: string) => string {
+  const token = readRuntimeFile(home)?.token;
+  return token === undefined ? (text) => text : (text) => text.replaceAll(token, TOKEN_MARK);
+}
+
+/** The Agent's events, with the token hidden in every part of the answer and every sentence. */
+async function* hidden(
+  events: AsyncIterable<AgentEvent>,
+  hide: (text: string) => string,
+): AsyncGenerator<AgentEvent> {
+  for await (const event of events) {
+    if (event.kind === 'text') yield { ...event, text: hide(event.text) };
+    else if (event.kind === 'failed') yield { ...event, sentence: hide(event.sentence) };
+    else yield event;
+  }
 }
 
 /**
  * Keep the answer to the newest question, once the run has ended: whole,
  * stopped with the part that arrived, or failed with its one sentence. The
  * Agent session the run named is kept with the Conversation, for the next
- * message to resume.
+ * message to resume. A first run that ended before its answer began is the
+ * exception: the Agent may keep no session of it, so the Conversation keeps
+ * none, and its next message starts a new session rather than fail to resume.
  */
 export function keepAnswer(
   home: string,
@@ -78,7 +119,9 @@ export function keepAnswer(
   answer: string,
   end: Exclude<AgentEvent, { kind: 'text' }>,
 ): void {
-  if (end.session !== undefined) nameSession(home, id, end.session);
+  const began = end.kind === 'done' || answer !== '';
+  const resumed = readConversation(home, id).session !== undefined;
+  if (end.session !== undefined && (began || resumed)) nameSession(home, id, end.session);
   const when = new Date().toISOString();
   if (end.kind === 'done') {
     addMessage(home, id, { who: 'agent', text: answer, when });
@@ -93,7 +136,11 @@ export function keepAnswer(
  * Start a new Conversation, with what the Mate settings choose. The head
  * keeps what the Conversation started with.
  */
-async function begin(home: string, question: string): Promise<Asking> {
+async function begin(
+  home: string,
+  question: string,
+  hide: (text: string) => string,
+): Promise<Asking> {
   const { agent, place, model, effort, program } = mateChoice(home);
   const run = await runAgent({
     agent,
@@ -108,19 +155,25 @@ async function begin(home: string, question: string): Promise<Asking> {
     place: place.name,
     ...(model === undefined ? {} : { model }),
     ...(effort === undefined ? {} : { effort }),
+    ...(program === undefined ? {} : { program }),
   };
-  const id = startConversation(home, started, question);
+  const id = startConversation(home, started, hide(question));
   return { id, head: readConversation(home, id), run };
 }
 
 /**
  * Continue a Conversation: resume its Agent session, with the Agent, the
- * Place, the model and the effort its head names. The program the Mate
- * settings name is used only when they name the same Agent in the same Place,
- * because a program is one Agent's, at a path of one Place. The question is
- * kept once the Agent has started.
+ * Place, the model, the effort and the program its head names, whatever the
+ * Mate settings say now. A Conversation that holds no session yet, because
+ * its first answer never began, starts a new one with the same. The question
+ * is kept once the Agent has started.
  */
-async function resume(home: string, id: string, question: string): Promise<Asking> {
+async function resume(
+  home: string,
+  id: string,
+  question: string,
+  hide: (text: string) => string,
+): Promise<Asking> {
   const head = readConversation(home, id);
   const settings = readSettings(home);
   const place = allPlaces(settings.places).find((one) => one.name === head.place);
@@ -131,21 +184,15 @@ async function resume(home: string, id: string, question: string): Promise<Askin
         'Add the Place again, or start a new Conversation.',
     );
   }
-  if (head.session === undefined) {
-    throw new Error(`Conversation ${id} holds no Agent session to resume. Start a new one.`);
-  }
-  const mate = settings.mate;
-  const same = mate?.agent === head.agent && (chosen(mate.place) ?? DEFAULT_PLACE) === head.place;
-  const program = same ? chosen(mate.program) : undefined;
   const run = await runAgent({
     agent: head.agent,
     place,
     question,
-    session: head.session,
+    ...(head.session === undefined ? {} : { session: head.session }),
     ...(head.model === undefined ? {} : { model: head.model }),
     ...(head.effort === undefined ? {} : { effort: head.effort }),
-    ...(program === undefined ? {} : { program }),
+    ...(head.program === undefined ? {} : { program: head.program }),
   });
-  addMessage(home, id, { who: 'operator', text: question, when: new Date().toISOString() });
+  addMessage(home, id, { who: 'operator', text: hide(question), when: new Date().toISOString() });
   return { id, head, run };
 }

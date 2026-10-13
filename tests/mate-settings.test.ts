@@ -241,3 +241,46 @@ test('the Place the Mate runs in is not removed, so the Mate settings stay whole
   );
   assert.equal((await firstmate(home, ['list'])).code, 0, 'every command still runs');
 });
+
+test('a Conversation resumes with the program it started with, whatever the settings say', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  await settle(home, { mate: { agent: 'claude', program: claude.program } });
+  const bare = { ...claude.env, PATH: await pathWith(t, []) };
+  const first = await firstmate(home, ['ask', 'Where is the treasure?'], bare);
+  assert.equal(first.code, 0, first.stderr);
+  assert.equal((await headOf(home, first.stderr))['program'], claude.program);
+  await settle(home, { mate: { agent: 'claude' } });
+  const id = first.stderr.split('\n')[0] ?? '';
+
+  const next = await firstmate(home, ['ask', '--conversation', id, 'How far?'], bare);
+
+  assert.equal(next.code, 0, next.stderr);
+  assert.equal(next.stdout, 'Ahoy.\n');
+  assert.equal((await claude.calls()).length, 2);
+});
+
+test('the width of the Mate panel is kept in the Mate settings, and every command keeps it', async (t) => {
+  const home = await makeHome(t);
+  await settle(home, { mate: { agent: 'claude', width: 520 } });
+
+  const bound = await firstmate(home, ['order']);
+
+  assert.equal(bound.code, 0, bound.stderr);
+  const placed = await firstmate(home, ['place', 'add', 'galley', 'local']);
+  assert.equal(placed.code, 0, placed.stderr);
+  assert.deepEqual((await settingsOf(home)) as Record<string, unknown>, {
+    places: [{ name: 'galley', kind: 'local' }],
+    mate: { agent: 'claude', width: 520 },
+  });
+});
+
+test('a width of the Mate panel that is not a whole number of pixels fails every command', async (t) => {
+  const home = await makeHome(t);
+  await settle(home, { mate: { agent: 'claude', width: '520' } });
+
+  const listed = await firstmate(home, ['list']);
+
+  assert.equal(listed.code, 1, listed.stderr);
+  assert.match(listed.stderr, /need "width" to be a whole number of pixels/);
+});
