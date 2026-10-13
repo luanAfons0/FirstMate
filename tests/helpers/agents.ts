@@ -1,20 +1,21 @@
 /**
  * A machine with a fake Agent, for the tests of the Mate.
  *
- * No test reaches a real Agent, an account or the network. `claude` is a small
- * program first on `PATH` that writes down how it was started and what it read
- * on standard input, then writes the JSON lines the real `claude -p
- * --output-format stream-json --verbose` writes, as a script of the test's own
- * tells it to. The shapes are copied from a real run of Claude Code on
- * 2026-10-12, so the Mate reads here what it reads on the operator's machine.
+ * No test reaches a real Agent, an account or the network. `claude` and
+ * `codex` are each a small program first on `PATH` that writes down how it was
+ * started and what it read on standard input, then writes the JSON lines the
+ * real one writes, as a script of the test's own tells it to. The shapes are
+ * copied from real runs on 2026-10-12: `claude -p --output-format stream-json
+ * --verbose` of Claude Code, and `codex exec --json` of codex-cli 0.147.0. So
+ * the Mate reads here what it reads on the operator's machine.
  *
- * Like the real one, the fake remembers each session it started, and refuses
- * to resume one it does not know: it says so on stderr, writes a `result` line
- * with that error, and ends with 1.
+ * Like the real ones, each fake remembers each session it started, and refuses
+ * to resume one it does not know, in the words and with the code the real one
+ * uses.
  *
- * The fake is a Node program, started by a shell script and, on Windows, by a
- * `claude.cmd` beside it, which is how an npm install of Claude Code is found
- * there (ADR-0019).
+ * A fake is a Node program, started by a shell script and, on Windows, by a
+ * `.cmd` beside it, which is how an npm install of either Agent is found there
+ * (ADR-0019).
  */
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
@@ -27,8 +28,10 @@ type Step =
   | { readonly say: string }
   /** Wait until this file is there, so a test can see what came before it. */
   | { readonly waitFor: string }
-  /** Write the `result` line of an answer that is done. */
+  /** Write the `result` line of an answer that is done: `turn.completed` for Codex. */
   | { readonly result: 'success' }
+  /** Codex alone: write an `error` line and a `turn.failed` line with this message, and end with 1. */
+  | { readonly fail: string }
   /** Write this on standard error, and end with this code, with no `result` line. */
   | { readonly die: number; readonly stderr: string };
 
@@ -45,7 +48,7 @@ export type FakeAgent = {
   readonly env: Readonly<Record<string, string>>;
   /** The home directory the operator has, where the Agent is started. */
   readonly home: string;
-  /** The fake's own program, by its absolute path: `claude.cmd` on Windows. */
+  /** The fake's own program, by its absolute path: `claude.cmd` or `codex.cmd` on Windows. */
   readonly program: string;
   /** Say what the fake does on its next start, and every start after it. */
   script(steps: readonly Step[]): Promise<void>;
@@ -103,21 +106,90 @@ for (const step of steps) {
 `;
 
 /**
+ * The fake `codex` itself. Its session is a thread, which it names in its
+ * first line, `thread.started`, and a resume names the thread as its last
+ * word. Each part of the answer is one whole `agent_message` item: the real
+ * one writes no part of a message before it is whole. The `error` item of the
+ * first turn is a warning the real one writes too, and is not the answer.
+ */
+const FAKE_CODEX = `import { randomUUID } from 'node:crypto';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const argv = process.argv.slice(2);
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const stdin = Buffer.concat(chunks).toString('utf8');
+appendFileSync(join(here, 'calls.jsonl'), JSON.stringify({ argv, stdin, cwd: process.cwd() }) + '\\n');
+
+const write = (line) => process.stdout.write(JSON.stringify(line) + '\\n');
+const known = join(here, 'sessions.jsonl');
+const sessions = existsSync(known) ? readFileSync(known, 'utf8').split('\\n') : [];
+const resuming = argv[0] === 'exec' && argv[1] === 'resume';
+const thread = resuming ? argv.at(-1) : randomUUID();
+if (resuming && !sessions.includes(thread)) {
+  process.stderr.write('Reading prompt from stdin...\\n');
+  process.stderr.write('Error: thread/resume: thread/resume failed: no rollout found for thread id ' + thread + ' (code -32600)\\n');
+  process.exit(1);
+}
+if (!resuming) appendFileSync(known, thread + '\\n');
+const steps = JSON.parse(readFileSync(join(here, 'script.json'), 'utf8'));
+
+process.stderr.write('Reading prompt from stdin...\\n');
+write({ type: 'thread.started', thread_id: thread });
+write({ type: 'turn.started' });
+write({ type: 'item.completed', item: { id: 'item_0', type: 'error', message: 'Skill descriptions were shortened to fit the skills context budget.' } });
+let item = 1;
+for (const step of steps) {
+  if ('say' in step) {
+    write({ type: 'item.completed', item: { id: 'item_' + item++, type: 'agent_message', text: step.say } });
+  } else if ('waitFor' in step) {
+    while (!existsSync(step.waitFor)) await new Promise((done) => setTimeout(done, 20));
+  } else if ('result' in step) {
+    write({ type: 'turn.completed', usage: { input_tokens: 18420, cached_input_tokens: 0, output_tokens: 6, reasoning_output_tokens: 0 } });
+  } else if ('fail' in step) {
+    const message = JSON.stringify({ type: 'error', status: 400, error: { type: 'invalid_request_error', message: step.fail } });
+    write({ type: 'error', message });
+    write({ type: 'turn.failed', error: { message } });
+    process.exit(1);
+  } else if ('die' in step) {
+    process.stderr.write(step.stderr + '\\n');
+    process.exit(step.die);
+  }
+}
+`;
+
+/**
  * A fake `claude`, alone on PATH with nothing else, so that a command finds no
  * real Agent the test did not ask for. Until a test says otherwise, it answers
  * "Ahoy." and is done.
  */
-export async function fakeClaude(t: TestContext): Promise<FakeAgent> {
+export function fakeClaude(t: TestContext): Promise<FakeAgent> {
+  return fakeAgent(t, 'claude', FAKE_CLAUDE);
+}
+
+/**
+ * A fake `codex`, alone on PATH with nothing else, as `fakeClaude` is. Until
+ * a test says otherwise, it answers "Ahoy." and is done.
+ */
+export function fakeCodex(t: TestContext): Promise<FakeAgent> {
+  return fakeAgent(t, 'codex', FAKE_CODEX);
+}
+
+/** A fake Agent of this name, from this Node program, alone on PATH. */
+async function fakeAgent(t: TestContext, name: string, source: string): Promise<FakeAgent> {
   const scratch = await makeHome(t);
   const bin = join(scratch, 'bin');
   const home = join(scratch, 'operator');
   await mkdir(bin);
   await mkdir(home);
-  const program = join(bin, 'fake-claude.mjs');
-  await writeFile(program, FAKE_CLAUDE);
-  await writeFile(join(bin, 'claude'), `#!/bin/sh\nexec '${process.execPath}' '${program}' "$@"\n`);
-  await chmod(join(bin, 'claude'), 0o755);
-  await writeFile(join(bin, 'claude.cmd'), `@"${process.execPath}" "${program}" %*\r\n`);
+  const program = join(bin, `fake-${name}.mjs`);
+  await writeFile(program, source);
+  await writeFile(join(bin, name), `#!/bin/sh\nexec '${process.execPath}' '${program}' "$@"\n`);
+  await chmod(join(bin, name), 0o755);
+  await writeFile(join(bin, `${name}.cmd`), `@"${process.execPath}" "${program}" %*\r\n`);
   const script = (steps: readonly Step[]): Promise<void> =>
     writeFile(join(bin, 'script.json'), JSON.stringify(steps));
   await script([{ say: 'Ahoy.' }, { result: 'success' }]);
@@ -128,7 +200,7 @@ export async function fakeClaude(t: TestContext): Promise<FakeAgent> {
       USERPROFILE: home,
     },
     home,
-    program: join(bin, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
+    program: join(bin, process.platform === 'win32' ? `${name}.cmd` : name),
     script,
     calls: async () => {
       const text = await readFile(join(bin, 'calls.jsonl'), 'utf8').catch(() => '');

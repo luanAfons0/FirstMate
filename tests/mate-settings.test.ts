@@ -149,8 +149,8 @@ test('a command that writes the settings keeps the Mate settings', async (t) => 
 test('a damaged Mate setting fails every command loudly, in one sentence', async (t) => {
   const damage: [unknown, RegExp][] = [
     ['claude', /need to be a JSON object/],
-    [{}, /need "agent" to be "claude"/],
-    [{ agent: 'parrot' }, /need "agent" to be "claude", and not "parrot"/],
+    [{}, /need "agent" to be "claude" or "codex"/],
+    [{ agent: 'parrot' }, /need "agent" to be "claude" or "codex", and not "parrot"/],
     [{ agent: 'claude', model: 42 }, /need "model" to be a string/],
     [{ agent: 'claude', model: 'opus&calc' }, /need "model" to be a model name.*"opus&calc"/],
     [{ agent: 'claude', model: 'opus 4' }, /need "model" to be a model name/],
@@ -158,6 +158,10 @@ test('a damaged Mate setting fails every command loudly, in one sentence', async
     [{ agent: 'claude', model: '"%PATH%"' }, /need "model" to be a model name/],
     [{ agent: 'claude', effort: 'extreme' }, /"effort" to be one of low, medium, high, xhigh, max/],
     [{ agent: 'claude', effort: 'minimal' }, /"effort" to be one of .* for Claude.*"minimal"/],
+    [
+      { agent: 'codex', effort: 'ultra' },
+      /"effort" to be one of minimal, low, medium, high, xhigh, max for Codex.*"ultra"/,
+    ],
     [{ agent: 'claude', place: true }, /need "place" to be a string/],
     [{ agent: 'claude', program: 'bin/claude' }, /need "program" to be an absolute path/],
     [{ agent: 'claude', colour: 'red' }, /may hold only "agent", .*and not "colour"/],

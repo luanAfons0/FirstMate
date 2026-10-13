@@ -176,7 +176,9 @@ function parseMate(value: unknown, path: string): MateSettings {
   }
   const { agent, model, effort, program } = record;
   if (!isAgent(agent)) {
-    throw new Error(`${where} need "agent" to be "claude", and not ${JSON.stringify(agent)}.`);
+    throw new Error(
+      `${where} need "agent" to be "claude" or "codex", and not ${JSON.stringify(agent)}.`,
+    );
   }
   if (typeof model === 'string' && model !== '' && !isModelName(model)) {
     throw new Error(

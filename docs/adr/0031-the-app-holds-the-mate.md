@@ -12,7 +12,7 @@ The Agent runs with the least it needs:
 
 - From a list of words, with no shell. A `.cmd` form on Windows runs through cmd.exe and is handed nothing cmd.exe would read as its own, as a Plugin Server is (ADR-0019).
 - With the question on standard input, never in an argument, so no shell or cmd.exe rule can change what it means.
-- In its own non-interactive mode, with no tool approved: Claude gets no `--permission-mode`, so it edits no file and runs no command while nobody is asked.
+- In its own non-interactive mode, with no tool approved: Claude gets no `--permission-mode`, so it edits no file and runs no command while nobody is asked. Codex runs as `codex exec` with `--sandbox read-only`, and a resume, which takes no `--sandbox`, sets `sandbox_mode=read-only` through its config, so it writes no file either.
 - In the operator's home directory of its Place.
 - As a process tree of its own, which a stop ends whole: the process group on Linux, `taskkill /T /F` on Windows.
 

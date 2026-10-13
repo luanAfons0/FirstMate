@@ -25,7 +25,7 @@ import type { Place } from './places.ts';
 import { refuse } from './refusal.ts';
 
 /** Every Agent the Mate can run. */
-const AGENTS = ['claude'] as const;
+const AGENTS = ['claude', 'codex'] as const;
 
 /** One Agent the Mate can run: the program on the operator's own account. */
 export type Agent = (typeof AGENTS)[number];
@@ -36,11 +36,20 @@ export function isAgent(value: unknown): value is Agent {
 }
 
 /** The name each Agent is known by in a sentence the operator reads. */
-export const AGENT_NAMES: Readonly<Record<Agent, string>> = { claude: 'Claude' };
+export const AGENT_NAMES: Readonly<Record<Agent, string>> = {
+  claude: 'Claude',
+  codex: 'Codex',
+};
 
-/** The levels of effort each Agent knows, as its own `--effort` names them. */
+/**
+ * The levels of effort each Agent knows: Claude's `--effort`, and Codex's
+ * `model_reasoning_effort`. Codex's are the ones codex-cli 0.147.0 hands to
+ * its models, and which a model does not take, its answer refuses in one
+ * sentence of its own.
+ */
 export const EFFORTS: Readonly<Record<Agent, readonly string[]>> = {
   claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
 };
 
 /**
@@ -79,11 +88,11 @@ export type AgentEvent =
   /** The next part of the answer, ready to be shown after the parts before it. */
   | { readonly kind: 'text'; readonly text: string }
   /** The answer is whole. */
-  | { readonly kind: 'done'; readonly session: string }
+  | { readonly kind: 'done'; readonly session?: string }
   /** The answer ended early, for the reason this one sentence gives. */
-  | { readonly kind: 'failed'; readonly sentence: string; readonly session: string }
+  | { readonly kind: 'failed'; readonly sentence: string; readonly session?: string }
   /** The answer ended because it was stopped. */
-  | { readonly kind: 'stopped'; readonly session: string };
+  | { readonly kind: 'stopped'; readonly session?: string };
 
 /** One run of the Agent, under way. */
 export type AgentRun = {
@@ -102,25 +111,66 @@ const BETWEEN_BLOCKS = '\n\n';
  */
 export function runAgent(request: AgentRequest): AgentRun {
   const program = programOf(request);
-  const session = request.session ?? randomUUID();
-  const which = request.session === undefined ? '--session-id' : '--resume';
-  // Claude's own non-interactive mode, with no --permission-mode: it approves
-  // no tool, so it edits no file and runs no command while nobody is asked.
-  const argv = [
-    ...['-p', '--output-format', 'stream-json', '--verbose', which, session],
-    ...(request.model === undefined ? [] : ['--model', request.model]),
-    ...(request.effort === undefined ? [] : ['--effort', request.effort]),
-  ];
+  const { argv, read } = request.agent === 'codex' ? codex(request) : claude(request);
   const child = start(program, argv, homedir());
   child.stdin?.end(request.question);
   let stopped = false;
   return {
-    events: readClaude(child, session, request.place.name, () => stopped),
+    events: read(child, request.place.name, () => stopped),
     stop: () => {
       stopped = true;
       killTree(child);
     },
   };
+}
+
+/** How one Agent is started, and how its JSON lines are read as events. */
+type Invocation = {
+  readonly argv: readonly string[];
+  readonly read: (
+    child: ChildProcess,
+    place: string,
+    wasStopped: () => boolean,
+  ) => AsyncGenerator<AgentEvent>;
+};
+
+/**
+ * Claude, in its own non-interactive mode. A new session gets an ID the Mate
+ * makes, so the Conversation knows it before Claude says a word.
+ */
+function claude(request: AgentRequest): Invocation {
+  const session = request.session ?? randomUUID();
+  const which = request.session === undefined ? '--session-id' : '--resume';
+  // No --permission-mode: Claude approves no tool, so it edits no file and
+  // runs no command while nobody is asked.
+  const argv = [
+    ...['-p', '--output-format', 'stream-json', '--verbose', which, session],
+    ...(request.model === undefined ? [] : ['--model', request.model]),
+    ...(request.effort === undefined ? [] : ['--effort', request.effort]),
+  ];
+  return { argv, read: (child, ...rest) => readClaude(child, session, ...rest) };
+}
+
+/**
+ * Codex, with `codex exec`. Its sandbox is read-only, so it edits no file and
+ * runs nothing that writes. `exec resume` takes no `--sandbox`, so a resume
+ * sets the same sandbox through its config, and the thread is its last word,
+ * after `--`, so it is never read as a flag. A new thread gets the ID Codex
+ * makes, and names in its first line.
+ */
+function codex(request: AgentRequest): Invocation {
+  const tuning = [
+    ...(request.model === undefined ? [] : ['-m', request.model]),
+    ...(request.effort === undefined ? [] : ['-c', `model_reasoning_effort=${request.effort}`]),
+  ];
+  const argv =
+    request.session === undefined
+      ? ['exec', '--json', '--skip-git-repo-check', '--sandbox', 'read-only', ...tuning]
+      : [
+          ...['exec', 'resume', '--json', '--skip-git-repo-check'],
+          ...['-c', 'sandbox_mode=read-only', ...tuning, '--', request.session],
+        ];
+  return { argv, read: (child, ...rest) => readCodex(child, request.session, ...rest) };
 }
 
 /** Whether this process runs on Windows, where a program is found and ended its own way. */
@@ -289,7 +339,7 @@ async function* readClaude(
   }
 }
 
-/** One line Claude wrote, as a JSON object, or nothing when it is not one. */
+/** One line the Agent wrote, as a JSON object, or nothing when it is not one. */
 function parseLine(line: string): Record<string, unknown> | undefined {
   if (!line.startsWith('{')) return undefined;
   try {
@@ -341,4 +391,85 @@ function claudeFailed(
     );
   }
   return `Claude stopped before its answer was done: ${reason.replace(/[.\s]*$/, '')}.`;
+}
+
+/**
+ * Codex's JSON lines, read as events. Its first line, `thread.started`, names
+ * the thread, which is the Conversation's session. Each `agent_message` item
+ * is a part of the answer; an `error` item is a warning, not the answer.
+ * `turn.completed` says the answer is whole, and `turn.failed` or an `error`
+ * line says why it is not. A resume keeps the thread it asked for.
+ */
+async function* readCodex(
+  child: ChildProcess,
+  asked: string | undefined,
+  place: string,
+  wasStopped: () => boolean,
+): AsyncGenerator<AgentEvent> {
+  const ended = ending(child);
+  let session = asked;
+  let parts = 0;
+  let completed = false;
+  let error: string | undefined;
+  if (child.stdout !== null) {
+    for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
+      const event = parseLine(line);
+      const type = event?.['type'];
+      if (type === 'thread.started' && typeof event?.['thread_id'] === 'string') {
+        session ??= event['thread_id'];
+      } else if (type === 'item.completed') {
+        const { type: kind, text } = (event?.['item'] ?? {}) as Record<string, unknown>;
+        if (kind === 'agent_message' && typeof text === 'string' && text !== '') {
+          yield { kind: 'text', text: parts === 0 ? text : `${BETWEEN_BLOCKS}${text}` };
+          parts += 1;
+        }
+      } else if (type === 'turn.completed') {
+        completed = true;
+      } else if (type === 'turn.failed') {
+        const failure = (event?.['error'] ?? {}) as Record<string, unknown>;
+        error = codexMessage(failure['message']) ?? error;
+      } else if (type === 'error') {
+        error ??= codexMessage(event?.['message']);
+      }
+    }
+  }
+  const { code, said } = await ended;
+  const named = session === undefined ? {} : { session };
+  if (wasStopped()) {
+    yield { kind: 'stopped', ...named };
+  } else if (completed && error === undefined && code === 0) {
+    yield { kind: 'done', ...named };
+  } else {
+    const reason = error ?? (said !== '' ? said : `it ended with code ${String(code)}`);
+    yield { kind: 'failed', sentence: codexFailed(reason, place), ...named };
+  }
+}
+
+/**
+ * What Codex says in an error: often the whole error of its model's API, as
+ * JSON, whose own message is the one sentence worth reading.
+ */
+function codexMessage(message: unknown): string | undefined {
+  if (typeof message !== 'string' || message === '') return undefined;
+  const inner = (parseLine(message)?.['error'] ?? {}) as Record<string, unknown>;
+  const said = inner['message'];
+  return typeof said === 'string' && said !== '' ? said : message;
+}
+
+/**
+ * What Codex says on stderr when it holds no thread of the ID it was asked to
+ * resume: its files are gone, or it is another account's.
+ */
+const CODEX_NO_SESSION = /no rollout found for thread id/;
+
+/** The one sentence that says why Codex's answer ended early. */
+function codexFailed(reason: string, place: string): string {
+  if (CODEX_NO_SESSION.test(reason)) {
+    return (
+      `Codex in the ${place} Place cannot resume the session of this Conversation, ` +
+      'so start a new Conversation.'
+    );
+  }
+  const plain = reason.replace(/^Error:\s*/, '').replace(/[.\s]*$/, '');
+  return `Codex stopped before its answer was done: ${plain}.`;
 }

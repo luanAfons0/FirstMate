@@ -38,7 +38,7 @@ Run every command from the repository root.
 | `node packages/host/src/main.ts`                   | Run the Host at `http://127.0.0.1:4747/`.       |
 | `node apps/cli/src/cli.ts setup`              | Ask a few questions, and set FirstMate up.      |
 | `node apps/cli/src/cli.ts desktop`            | Install the App of this version, and open it. Windows, Linux or WSL. |
-| `node apps/cli/src/cli.ts ask [--conversation <id>] [<question>]` | Ask the Mate: run your own Claude, print the answer. |
+| `node apps/cli/src/cli.ts ask [--conversation <id>] [<question>]` | Ask the Mate: run your own Claude or Codex, print the answer. |
 | `node apps/cli/src/cli.ts --help`             | Every command in its group, in one screen.      |
 | `node apps/cli/src/cli.ts <command> --help`   | How one command is typed. `help <command>` says the same. |
 | `node apps/cli/src/cli.ts help [<topic>]`     | The help topics: exit-codes, environment, places. |
@@ -104,7 +104,7 @@ knip and every test.
   (ADR-0025). `install` runs the `git`
   binary to clone a Plugin, and `update` runs it to move the clone forward
   (ADR-0030), a `wsl` Place runs `wsl.exe`, and the Mate runs the operator's
-  own `claude` (ADR-0031): external tools
+  own `claude` or `codex` (ADR-0031): external tools
   the command line assumes, not package dependencies.
 - **Electron 44**, in `apps/desktop`, for the App: its main process holds the
   Host, and its executable, told `ELECTRON_RUN_AS_NODE=1`, is the Node every
