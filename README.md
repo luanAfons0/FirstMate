@@ -405,11 +405,22 @@ model_reasoning_effort=<effort>`, one of `minimal`, `low`, `medium`, `high`,
 `xhigh` and `max`; a level the model does not take is refused by Codex, in its
 own sentence. `place` names the
 Place it runs in. `program` is the absolute path of the Agent's program when it
-is not on the `PATH`. Each but `agent` may be left out or empty, and then the
+is not on the `PATH`; in a `wsl` Place it is a path inside the distribution.
+Each but `agent` may be left out or empty, and then the
 Agent's own default holds; with no `mate` key at all, `ask` runs Claude with its own
 defaults in the default Place. A command that writes the settings keeps them. A
-damaged one fails every command, says why in one sentence, and ends with `1`.
+damaged one fails every command, says why in one sentence, and ends with `1`;
+a `place` that names no Place is damaged too, so `place remove` refuses the
+Place the Mate runs in, and ends with `5`.
 A new Conversation keeps the Agent, model, effort and Place it started with.
+
+In a `wsl` Place the Agent runs inside the distribution, as a Plugin Server
+does: `wsl.exe -d <distribution> --cd <home> --exec <program> …`, in the home
+directory of the distribution's user. `ask` looks for it there first, on the
+`PATH` that `wsl.exe` gives a command. That `PATH` reads no profile, so it often
+lacks `~/.local/bin` and an nvm Node, which a terminal there has. When the
+Agent is not on it, set `program` to where `command -v claude` says it is in a
+terminal there.
 
 The question is the words after `ask`, or standard input when there are none.
 It is sent to the Agent on standard input, never as an argument. The answer is
@@ -431,9 +442,13 @@ other Conversations are not touched. When the Agent no longer holds the session,
 
 Ctrl+C stops the answer, keeps the part that came, and ends with `130`. An
 answer the Agent could not finish keeps the part that came too, says why in one
-sentence, and ends with `1`. With no `claude` or `codex` on the `PATH`, or none at the
-`program` the settings name, or no Place of the name they give, `ask` says so,
-keeps nothing, and ends with `4`.
+sentence, and ends with `1`. With no `claude` or `codex` on the `PATH` of its
+Place, or none at the `program` the settings name, `ask` says so in one
+sentence, with the Place and the `PATH` it searched, keeps nothing, and ends
+with `4`. A distribution that does not answer is refused, and ends with `3`.
+When the Agent is not logged in, `ask` says so in one sentence with the command
+to run in a terminal of its Place, `claude auth login` or `codex login`, and
+ends with `1`.
 
 ## Help and exit codes
 

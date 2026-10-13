@@ -52,6 +52,20 @@ test('ask runs claude with a new session, and sends the question on stdin alone'
   assert.equal(call.cwd, claude.home, "in the operator's home directory");
 });
 
+test('a question cmd.exe would read its own way reaches claude unchanged, on stdin', async (t) => {
+  // On Windows the fake is claude.cmd, which runs through cmd.exe (ADR-0019).
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const question = 'Is "%PATH%" & calc | more ^ <safe> !here!?';
+
+  const asked = await firstmate(home, ['ask', question], claude.env);
+
+  assert.equal(asked.code, 0, asked.stderr);
+  assert.equal(asked.stdout, 'Ahoy.\n');
+  const [call] = await claude.calls();
+  assert.equal(call?.stdin, question);
+});
+
 test('ask prints the answer on stdout, and the Conversation ID on stderr', async (t) => {
   const home = await makeHome(t);
   const claude = await fakeClaude(t);
@@ -194,14 +208,17 @@ test('claude failing mid-answer keeps the part that came, marked failed', async 
 test('ask with no claude on PATH says so in one sentence, and keeps nothing', async (t) => {
   const home = await makeHome(t);
 
-  const asked = await firstmate(home, ['ask', 'Anyone there?'], {
-    PATH: await pathWith(t, []),
-  });
+  const path = await pathWith(t, []);
+
+  const asked = await firstmate(home, ['ask', 'Anyone there?'], { PATH: path });
 
   assert.equal(asked.code, 4, asked.stderr);
   assert.equal(asked.stdout, '');
-  assert.match(asked.stderr, /^firstmate: .*claude.*PATH.*\n$/);
-  assert.equal(asked.stderr.trimEnd().split('\n').length, 1, 'one sentence');
+  assert.equal(
+    asked.stderr,
+    `firstmate: cannot find claude on the PATH of the ${DEFAULT_PLACE} Place, which is ${path}. ` +
+      'Install Claude there, or set "program" in the Mate settings to where it is.\n',
+  );
   assert.equal(await stat(join(home, 'conversations')).catch(() => null), null);
 });
 
@@ -315,4 +332,22 @@ test('ask --conversation resumes in the Place its head names, not the default on
   assert.equal(added.code, 0, added.stderr);
   const back = await firstmate(home, ['ask', '--conversation', id, 'Still there?'], claude.env);
   assert.equal(back.code, 0, back.stderr);
+});
+
+test('claude with no login is refused in one sentence that names the login command', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  await claude.script([{ loggedOut: true }]);
+
+  const asked = await firstmate(home, ['ask', 'Where is the treasure?'], claude.env);
+
+  assert.equal(asked.code, 1, asked.stderr);
+  assert.equal(asked.stdout, '', 'what claude says about its login is not the answer');
+  const [, sentence, ...more] = asked.stderr.trimEnd().split('\n');
+  assert.deepEqual(more, [], `one sentence: ${asked.stderr}`);
+  assert.equal(
+    sentence,
+    `firstmate: Claude in the ${DEFAULT_PLACE} Place is not logged in. ` +
+      'Run claude auth login there, then ask again.',
+  );
 });

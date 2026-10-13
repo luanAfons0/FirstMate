@@ -7,7 +7,8 @@
  * real one writes, as a script of the test's own tells it to. The shapes are
  * copied from real runs on 2026-10-12: `claude -p --output-format stream-json
  * --verbose` of Claude Code, and `codex exec --json` of codex-cli 0.147.0. So
- * the Mate reads here what it reads on the operator's machine.
+ * the Mate reads here what it reads on the operator's machine. What each says
+ * with no login was copied on 2026-10-13, from runs with a home of their own.
  *
  * Like the real ones, each fake remembers each session it started, and refuses
  * to resume one it does not know, in the words and with the code the real one
@@ -33,7 +34,9 @@ type Step =
   /** Codex alone: write an `error` line and a `turn.failed` line with this message, and end with 1. */
   | { readonly fail: string }
   /** Write this on standard error, and end with this code, with no `result` line. */
-  | { readonly die: number; readonly stderr: string };
+  | { readonly die: number; readonly stderr: string }
+  /** Answer as the real one does with no login on this account, and end with 1. */
+  | { readonly loggedOut: true };
 
 /** How the fake Agent was started, once. */
 type Call = {
@@ -101,6 +104,11 @@ for (const step of steps) {
   } else if ('die' in step) {
     process.stderr.write(step.stderr + '\\n');
     process.exit(step.die);
+  } else if ('loggedOut' in step) {
+    const said = 'Not logged in \u00b7 Please run /login';
+    write({ type: 'assistant', message: { model: '<synthetic>', type: 'message', role: 'assistant', content: [{ type: 'text', text: said }], stop_reason: 'stop_sequence' }, parent_tool_use_id: null, session_id: session, error: 'authentication_failed', is_api_error_message: true });
+    write({ type: 'result', subtype: 'success', is_error: true, result: said, session_id: session, stop_reason: 'stop_sequence', terminal_reason: 'api_error' });
+    process.exit(1);
   }
 }
 `;
@@ -157,6 +165,14 @@ for (const step of steps) {
   } else if ('die' in step) {
     process.stderr.write(step.stderr + '\\n');
     process.exit(step.die);
+  } else if ('loggedOut' in step) {
+    const refused = 'unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses';
+    process.stderr.write('ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized\\n');
+    write({ type: 'error', message: 'Reconnecting... 1/5 (' + refused + ')' });
+    write({ type: 'item.completed', item: { id: 'item_' + item++, type: 'error', message: 'Falling back from WebSockets to HTTPS transport. ' + refused } });
+    write({ type: 'error', message: refused });
+    write({ type: 'turn.failed', error: { message: refused } });
+    process.exit(1);
   }
 }
 `;

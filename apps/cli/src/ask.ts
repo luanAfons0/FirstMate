@@ -1,12 +1,13 @@
 /**
  * firstmate ask: the Mate from a terminal.
  *
- * It runs the operator's own Agent in the default Place, prints the answer on
- * standard output as it arrives, and keeps the Conversation where the App's
- * Recents read it. A Conversation it continues resumes with the Agent and the
- * Place its head names, whatever the settings say now, so a change of
- * settings never breaks an older Conversation. The Conversation's ID goes to standard error, so the answer
- * on standard output stays clean for a script. It needs no running Host: the
+ * It runs the operator's own Agent in the Place the Mate settings name,
+ * prints the answer on standard output as it arrives, and keeps the
+ * Conversation where the App's Recents read it. A Conversation it continues
+ * resumes with the Agent and the Place its head names, whatever the settings
+ * say now, so a change of settings never breaks an older Conversation. The
+ * Conversation's ID goes to standard error, so the answer on standard output
+ * stays clean for a script. It needs no running Host: the
  * Mate is the App's, and this is the same Mate with no window (ADR-0031).
  */
 import { runAgent, type AgentEvent, type AgentRun } from '@firstmate/core/agent-run';
@@ -35,7 +36,9 @@ export async function ask(
   conversation?: string,
 ): Promise<Answered> {
   const { id, run } =
-    conversation === undefined ? begin(home, question) : resume(home, conversation, question);
+    conversation === undefined
+      ? await begin(home, question)
+      : await resume(home, conversation, question);
   console.error(id);
   const stop = (): void => run.stop();
   process.once('SIGINT', stop);
@@ -87,23 +90,18 @@ type Asking = { readonly id: string; readonly run: AgentRun };
  * the Mate settings name. No `mate` key is Claude with its own defaults, in
  * the default Place. The head keeps what the Conversation started with.
  */
-function begin(home: string, question: string): Asking {
+async function begin(home: string, question: string): Promise<Asking> {
   const settings = readSettings(home);
   const mate = settings.mate ?? { agent: 'claude' };
   const places = allPlaces(settings.places);
-  const named = chosen(mate.place);
-  const place = named === undefined ? places[0] : places.find((one) => one.name === named);
-  if (place === undefined) {
-    throw refuse(
-      'missing',
-      `the ${String(named)} Place the Mate settings name is not there. ` +
-        'Add the Place, or choose another for the Mate.',
-    );
-  }
+  // The settings refuse a Place that is not there, so this one is.
+  const named = chosen(mate.place) ?? DEFAULT_PLACE;
+  const place = places.find((one) => one.name === named);
+  if (place === undefined) throw new Error(`The Place ${named} of the Mate settings is not there.`);
   const model = chosen(mate.model);
   const effort = chosen(mate.effort);
   const program = chosen(mate.program);
-  const run = runAgent({
+  const run = await runAgent({
     agent: mate.agent,
     place,
     question,
@@ -128,7 +126,7 @@ function begin(home: string, question: string): Asking {
  * because a program is one Agent's, at a path of one Place. The question is
  * kept once the Agent has started.
  */
-function resume(home: string, id: string, question: string): Asking {
+async function resume(home: string, id: string, question: string): Promise<Asking> {
   const head = readConversation(home, id);
   const settings = readSettings(home);
   const place = allPlaces(settings.places).find((one) => one.name === head.place);
@@ -145,7 +143,7 @@ function resume(home: string, id: string, question: string): Asking {
   const mate = settings.mate;
   const same = mate?.agent === head.agent && (chosen(mate.place) ?? DEFAULT_PLACE) === head.place;
   const program = same ? chosen(mate.program) : undefined;
-  const run = runAgent({
+  const run = await runAgent({
     agent: head.agent,
     place,
     question,
