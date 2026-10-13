@@ -12,7 +12,7 @@ The Agent runs with the least it needs:
 
 - From a list of words, with no shell. A `.cmd` form on Windows runs through cmd.exe and is handed nothing cmd.exe would read as its own, as a Plugin Server is (ADR-0019).
 - With the question on standard input, never in an argument, so no shell or cmd.exe rule can change what it means.
-- In its own non-interactive mode, with no tool approved: Claude gets no `--permission-mode`, so it edits no file and runs no command while nobody is asked. Codex runs as `codex exec` with `--sandbox read-only`, and a resume, which takes no `--sandbox`, sets `sandbox_mode=read-only` through its config, so it writes no file either.
+- In its own non-interactive mode, and FirstMate approves no tool: Claude gets no `--permission-mode`, so it may use a tool only where the operator's own Claude settings allow it, as in their terminal, and asks for nothing else, because nobody can answer. Codex runs as `codex exec` with `--sandbox read-only`, and a resume, which takes no `--sandbox`, sets `sandbox_mode=read-only` through its config, so it writes no file either.
 - In the operator's home directory of its Place. In a `wsl` Place it runs inside the distribution, as a Plugin Server does there (ADR-0021): `wsl.exe -d <distribution> --cd <home> --exec <program>`, where `--exec` hands it its words with no shell between, as on this machine.
 - As a process tree of its own, which a stop ends whole: the process group on Linux, `taskkill /T /F` on Windows.
 
@@ -46,6 +46,6 @@ The Mate needs the Agent installed and logged in, on the `PATH` FirstMate sees i
 
 A `place` that names no Place is a damaged Mate setting, and `place remove` refuses the Place the Mate runs in, as it refuses a Place that holds a Plugin.
 
-What the Agent can do is what its non-interactive mode allows with no tool approved. Tool approval in the window, and the Mate reaching each Plugin's tools, are left out of this decision; the second reverses a consequence of ADR-0005 and amends ADR-0009, and needs a decision of its own.
+What the Agent can do is what its non-interactive mode and the operator's own settings for it allow. FirstMate adds no approval and takes none away: the operator decided, after trying the App, that the Mate keeps the tools their settings allow. Tool approval in the window, and the Mate reaching each Plugin's tools, are left out of this decision; the second reverses a consequence of ADR-0005 and amends ADR-0009, and needs a decision of its own.
 
 `firstmate ask` is the seam the tests drive the Mate through, with a fake Agent on `PATH`. The window has no automated test (ADR-0020).
