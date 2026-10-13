@@ -217,7 +217,10 @@ test('a Place of the Mate settings that is not there is a damaged setting', asyn
     assert.equal(broken.code, 1, `${argv.join(' ')}: ${broken.stderr}`);
     assert.match(
       broken.stderr,
-      /^firstmate: The Mate settings in the settings at .* need "place" to name a Place, one of local, and not "galley"\.\n$/,
+      new RegExp(
+        '^firstmate: The Mate settings in the settings at .* need "place" to name a Place, ' +
+          `one of ${DEFAULT_PLACE}, and not "galley"\\.\\n$`,
+      ),
     );
   }
   assert.deepEqual(await claude.calls(), []);
