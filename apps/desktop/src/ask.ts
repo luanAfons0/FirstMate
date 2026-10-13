@@ -1,6 +1,6 @@
 /**
  * What one of the App's own views asks the main process for: the strip, the
- * switcher and the Settings View.
+ * switcher, the Settings View and the Mate panel.
  *
  * Those views are pages the App writes, never pages the Host serves
  * (ADR-0008), and the one way they reach the main process is the preload that
@@ -58,6 +58,26 @@ export type Asked =
   | { readonly kind: 'shelf-choose'; readonly place: string }
   /** Move one Plugin to a position in the Plugin Order, counted from 1 at the top. */
   | { readonly kind: 'plugin-move'; readonly name: string; readonly position: string }
+  /** Open the Mate panel, or close it when it is open. */
+  | { readonly kind: 'mate' }
+  /** Close the Mate panel. */
+  | { readonly kind: 'mate-close' }
+  /** Start a new Conversation in the Mate panel. */
+  | { readonly kind: 'mate-new' }
+  /** Give the Mate panel the whole width below the strip, or give it back its side. */
+  | { readonly kind: 'mate-expand' }
+  /** Open the Settings View from the Mate panel. */
+  | { readonly kind: 'mate-settings' }
+  /** Ask the Mate this, in the panel's Conversation. */
+  | { readonly kind: 'mate-send'; readonly text: string }
+  /** Stop the answer that arrives in the panel's Conversation. */
+  | { readonly kind: 'mate-stop' }
+  /** Copy one answer of the panel's Conversation, counted from 0 among its messages. */
+  | { readonly kind: 'mate-copy'; readonly message: number }
+  /** Open a link of an answer in the operator's browser. */
+  | { readonly kind: 'mate-link'; readonly address: string }
+  /** Make the Mate panel this many logical pixels wide. */
+  | { readonly kind: 'mate-width'; readonly width: number }
   /** Nothing the App knows. Nothing happens. */
   | { readonly kind: 'nothing' };
 
@@ -68,7 +88,23 @@ export const ASK = {
   switcherKeys: 'switcher-keys',
   switcherClose: 'switcher-close',
   settings: 'settings',
+  mate: 'mate',
+  mateClose: 'mate-close',
+  mateNew: 'mate-new',
+  mateExpand: 'mate-expand',
+  mateSettings: 'mate-settings',
+  mateStop: 'mate-stop',
 } as const;
+
+/** The words that ask to copy one answer of the Mate panel's Conversation. */
+export function mateCopyAsk(message: number): string {
+  return said('mate-copy', String(message));
+}
+
+/** The words that ask to open a link of an answer in the operator's browser. */
+export function mateLinkAsk(address: string): string {
+  return said('mate-link', address);
+}
 
 /** The words that ask to show one Plugin Page. */
 export function openAsk(name: string): string {
@@ -110,7 +146,13 @@ export function shelfChooseAsk(place: string): string {
  * `shelf/<place>/<directory>` and `plugin-move/<name>/<position>`. The page
  * joins each part encoded.
  */
-export const TYPED = { placeAdd: 'place-add', shelf: 'shelf', pluginMove: 'plugin-move' } as const;
+export const TYPED = {
+  placeAdd: 'place-add',
+  shelf: 'shelf',
+  pluginMove: 'plugin-move',
+  mateSend: 'mate-send',
+  mateWidth: 'mate-width',
+} as const;
 
 /** Words, with every part encoded, so that a slash in a part stays inside it. */
 function said(kind: string, ...parts: readonly string[]): string {
@@ -145,6 +187,10 @@ export function readAsked(said: unknown): Asked {
       return { kind, on: first === 'on' };
     if (kind === 'place-remove') return { kind, name: first };
     if (kind === 'shelf-choose') return { kind, place: first };
+    if (kind === 'mate-send') return { kind, text: first };
+    if (kind === 'mate-link') return { kind, address: first };
+    if (kind === 'mate-copy' && /^\d{1,6}$/.test(first)) return { kind, message: Number(first) };
+    if (kind === 'mate-width' && /^\d{1,5}$/.test(first)) return { kind, width: Number(first) };
   } else if (third === undefined) {
     if (kind === 'place-add') return { kind, name: first, placeKind: second };
     if (kind === 'shelf') return { kind, place: first, directory: second };

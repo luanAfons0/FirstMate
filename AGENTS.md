@@ -165,6 +165,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   agent-run.ts     run the operator's own Agent: the question on stdin, the
                    answer as events, and a stop that ends its tree (ADR-0031).
   conversations.ts keep the Mate's Conversations, one JSON-lines file each.
+  ask-mate.ts      ask the Mate: start or continue a Conversation, and keep
+                   the answer. The App and firstmate ask both ask here.
 packages/host/src/  the Host. Every file is one job.
   start.ts         start the Host: read the Registry, mint the token,
                    supervise, listen; and stop it. The App calls it too.
@@ -217,7 +219,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/main.ts      the main process: start the Host, hold the one-App lock,
                    wire the parts below together, stop the Host on Quit.
   src/window.ts    the window: the strip, the switcher, the Settings View,
-                   and one view for the Index Page and each Plugin Page.
+                   the Mate panel and Ctrl+Shift+K, and one view for the
+                   Index Page and each Plugin Page.
   src/pages.ts     the App's own pages, written as data addresses. The Host
                    never serves them (ADR-0008).
   src/preload.ts   the one preload, on the App's own views and never on a
@@ -229,6 +232,12 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/settings.ts  what the Settings View shows, and the changes it asks for,
                    made through core in the main process.
   src/settings-view.ts the Settings View, as a page the App writes.
+  src/mate.ts      the Mate panel's Conversation, and the run of the Agent
+                   that answers it, held in the main process.
+  src/mate-view.ts the Mate panel, as a page the App writes, and where it
+                   sits in the window.
+  src/markdown.ts  the small part of Markdown an answer is shown in. It
+                   escapes everything it does not draw.
   src/notices.ts   Notices, as desktop pop-ups under the App's own ID.
   src/shortcuts.ts the Shortcuts, held with globalShortcut.
   src/popup.ts     the Popup a Shortcut opens.

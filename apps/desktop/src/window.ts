@@ -8,14 +8,26 @@
  * The window shows one view at a time and never reaches inside one: nothing is
  * injected into a Plugin Page, wrapped around it or read out of it (ADR-0008).
  *
- * The strip, the switcher and the Settings View are the App's own views, with
- * pages the App writes (`pages.ts`). They are the only views that carry the
- * preload, so they are the only pages that can ask the main process for
- * anything, and the main process checks which view asked. Each loads its page
- * once; after that the main process sends it what it shows, and the page puts
- * it in place, so a change never loads it again. A Plugin Page cannot
+ * The strip, the switcher, the Settings View and the Mate panel are the App's
+ * own views, with pages the App writes (`pages.ts`). They are the only views
+ * that carry the preload, so they are the only pages that can ask the main
+ * process for anything, and the main process checks which view asked. Each
+ * loads its page once; after that the main process sends it what it shows,
+ * and the page puts it in place, so a change never loads it again. A Plugin
+ * Page cannot
  * reach them, and it cannot reach another Plugin's view: a link to another
  * Plugin's address is refused in its own view and opened in the other one.
+ *
+ * The Mate panel is at the right, below the strip. Open, it narrows the shown
+ * view by its width, as a narrower window would; expanded, it takes the whole
+ * width below the strip, and the shown view is hidden and stays loaded. It
+ * covers no part of a page (ADR-0008). It stays open, with its Conversation,
+ * when the operator opens another Plugin, and it opens again on the same
+ * Conversation and at the same width while the App runs. The strip's Mate
+ * button and Ctrl+Shift+K open and close it; the window reads that key in
+ * every view before the page does, a Plugin Page too, and keeps it from the
+ * page. The Mate runs the operator's Agent, so the main process takes a Mate
+ * ask from the panel alone (ADR-0031).
  *
  * The window shows the Host and nothing else. A link to anywhere else, in a new
  * window or the same one, opens in the operator's own browser.
@@ -37,11 +49,14 @@ import { titleBarColours, windowBackground } from '@firstmate/core/theme';
 import {
   app,
   BaseWindow,
+  clipboard,
   ipcMain,
   nativeTheme,
   shell,
   WebContentsView,
+  type Input,
   type IpcMainEvent,
+  type WebContents,
 } from 'electron';
 import {
   admitted,
@@ -58,6 +73,8 @@ import {
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
 import { askForPlugins, askToRestart, stoppedCount, type Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
+import { holdMate } from './mate.ts';
+import { fitWidth, MATE_WIDTH, mateBounds, matePage } from './mate-view.ts';
 import { APP_ID } from './notices.ts';
 import {
   dataAddress,
@@ -179,6 +196,8 @@ export function openWindow(
   let quitting = false;
   app.on('before-quit', () => {
     quitting = true;
+    // Every answer that still arrives ends with the App: no Agent runs on.
+    mate.stopAll();
   });
   window.on('close', (event) => {
     if (quitting) return;
@@ -210,21 +229,42 @@ export function openWindow(
   /** What to show when the Host is ready. */
   let waiting = '/';
 
+  /** Whether the Mate panel is open, at the right of the window. */
+  let mateOpen = false;
+  /** Whether the open Mate panel has the whole width below the strip. */
+  let mateExpanded = false;
+  /** How wide the operator left the Mate panel, kept while the App runs. */
+  let mateWidth = MATE_WIDTH;
+  /** How many times the Mate panel has opened, so its page knows a new opening. */
+  let mateOpened = 0;
+
   // The order of the children is the order they are drawn in: the strip, the
-  // content views, the Settings View, and the switcher on top of them all.
+  // content views, the Settings View, the Mate panel beside them, and the
+  // switcher on top of them all.
   const strip = appView();
   const settings = appView();
+  const matePanel = appView();
   const switcher = appView();
   // Clear round the panel, so its round corners and its shadow show.
   switcher.setBackgroundColor('#00000000');
   window.contentView.addChildView(strip);
   window.contentView.addChildView(settings);
+  window.contentView.addChildView(matePanel);
   window.contentView.addChildView(switcher);
 
   /** Each App view's page, loaded once and then sent what it shows. */
   const stripShown = ownPage(strip);
   const switcherShown = ownPage(switcher);
   const settingsShown = ownPage(settings);
+  const mateShown = ownPage(matePanel);
+
+  /** The Mate panel's page, as it is now, sent only while the panel is open. */
+  const showMate = (): void => {
+    if (!mateOpen) return;
+    mateShown.show(matePage({ shown: mate.shown(), opened: mateOpened, expanded: mateExpanded }));
+  };
+  /** The Mate, whose every change the panel shows: a question, a part of an answer, an end. */
+  const mate = holdMate(settingsNeeds.home, showMate);
   /** How many times the switcher has opened, so its page knows a new opening. */
   let opened = 0;
   /** Whether the switcher last opened from the keyboard, so it shows with no fade. */
@@ -239,15 +279,28 @@ export function openWindow(
 
   const layout = (): void => {
     const [width = 0, height = 0] = window.getContentSize();
-    const below = { x: 0, y: STRIP_HEIGHT, width, height: Math.max(height - STRIP_HEIGHT, 0) };
+    const tall = Math.max(height - STRIP_HEIGHT, 0);
+    // The open Mate panel narrows the shown view, as a narrower window would,
+    // and covers none of it (ADR-0008). Expanded, it hides the shown view,
+    // which keeps its width and stays loaded behind it.
+    const mateIn = mateBounds(width, { open: mateOpen, expanded: mateExpanded, width: mateWidth });
+    const pageShows = mateIn.page > 0;
+    const below = { x: 0, y: STRIP_HEIGHT, width: pageShows ? mateIn.page : width, height: tall };
     const buttons = BUTTONS_WIDTH ?? 0;
     strip.setBounds({ x: 0, y: 0, width: Math.max(width - buttons, 0), height: STRIP_HEIGHT });
     for (const [owner, view] of contents) {
       view.setBounds(below);
-      view.setVisible(!setting && owner === current);
+      view.setVisible(pageShows && !setting && owner === current);
     }
     settings.setBounds(below);
-    settings.setVisible(setting);
+    settings.setVisible(pageShows && setting);
+    matePanel.setBounds({
+      x: width - mateIn.panel,
+      y: STRIP_HEIGHT,
+      width: mateIn.panel,
+      height: tall,
+    });
+    matePanel.setVisible(mateOpen);
     // The view is the panel and the clear room round it for its shadow.
     const room = SWITCHER_ROOM;
     const panel = {
@@ -277,8 +330,10 @@ export function openWindow(
         fault,
         starting: host === undefined,
         stopped: stoppedCount(plugins),
+        mate: mateOpen,
       }),
     );
+    showMate();
     // The switcher and the Settings View load the first time they are shown.
     if (switching) {
       switcherShown.show(
@@ -359,6 +414,7 @@ export function openWindow(
     // Above the strip and below the Settings View and the switcher.
     window.contentView.addChildView(view, 1);
     const page = view.webContents;
+    holdMateKey(page);
     page.on('will-navigate', (event, url) => {
       if (leavesTheHost(host, url)) {
         event.preventDefault();
@@ -430,6 +486,9 @@ export function openWindow(
     current = owner;
     setting = false;
     switching = false;
+    // A page the operator asked for is shown: an expanded Mate panel gives
+    // it back its side, and stays open beside it with its Conversation.
+    mateExpanded = false;
     fault = undefined;
     redraw();
     view.webContents.focus();
@@ -515,13 +574,39 @@ export function openWindow(
       // to the fragment, and the page hears a hashchange. The Settings View
       // closes. The App reads none of what it shows (ADR-0029, ADR-0005).
       if (named(asked.name)?.hasPage === true) open(pluginSettingsPath(asked.name));
-    } else if (asked.kind === 'settings') {
-      setting = !setting;
+    } else if (asked.kind === 'settings' || asked.kind === 'mate-settings') {
+      // The panel's settings button opens the Settings View, and never closes it.
+      setting = asked.kind === 'mate-settings' || !setting;
       switching = false;
       fault = undefined;
       outcome = undefined;
+      // The Settings View shows beside an open Mate panel, as a page does.
+      if (setting) mateExpanded = false;
       redraw();
       if (setting) settings.webContents.focus();
+    } else if (asked.kind === 'mate') {
+      toggleMate();
+    } else if (asked.kind === 'mate-close') {
+      if (mateOpen) toggleMate();
+    } else if (asked.kind === 'mate-new') {
+      mate.fresh();
+      mateOpened += 1;
+      showMate();
+    } else if (asked.kind === 'mate-expand') {
+      mateExpanded = !mateExpanded;
+      redraw();
+    } else if (asked.kind === 'mate-width') {
+      mateWidth = fitWidth(asked.width);
+      layout();
+    } else if (asked.kind === 'mate-send') {
+      mate.send(asked.text);
+    } else if (asked.kind === 'mate-stop') {
+      mate.stop();
+    } else if (asked.kind === 'mate-copy') {
+      const text = mate.textOf(asked.message);
+      if (text !== undefined) clipboard.writeText(text);
+    } else if (asked.kind === 'mate-link') {
+      toBrowser(asked.address);
     } else if (SETTING.has(asked.kind) && !busy) {
       // A setting. One change at a time: a wsl Place can take a while to add.
       busy = true;
@@ -543,15 +628,67 @@ export function openWindow(
     }
   };
 
+  /**
+   * Open the Mate panel, or close it when it is open. Open, it takes the
+   * focus, so the operator can type at once; closed, it gives the focus back
+   * to what is shown.
+   */
+  const toggleMate = (): void => {
+    mateOpen = !mateOpen;
+    switching = false;
+    if (mateOpen) mateOpened += 1;
+    redraw();
+    if (mateOpen) matePanel.webContents.focus();
+    else (setting ? settings : contents.get(current))?.webContents.focus();
+  };
+
+  /**
+   * Hold Ctrl+Shift+K in one of the window's views: it opens and closes the
+   * Mate panel whatever has the focus, a Plugin Page too. The window reads
+   * the key before the page does and keeps that one key from it; it injects
+   * nothing into the page and reads nothing else of it (ADR-0008). It is not
+   * a Shortcut: it is held only while the window has the focus, and nothing
+   * binds it from a terminal (ADR-0013).
+   */
+  const holdMateKey = (page: WebContents): void => {
+    page.on('before-input-event', (event, input) => {
+      if (!isMateKey(input)) return;
+      event.preventDefault();
+      toggleMate();
+    });
+  };
+  for (const view of [strip, settings, matePanel, switcher]) holdMateKey(view.webContents);
+
+  /** What only the Mate panel may ask for: everything it does with the Mate. */
+  const MATE_PANEL_ONLY: ReadonlySet<Asked['kind']> = new Set([
+    'mate-close',
+    'mate-new',
+    'mate-expand',
+    'mate-settings',
+    'mate-send',
+    'mate-stop',
+    'mate-copy',
+    'mate-link',
+    'mate-width',
+  ]);
+
   const ask = (event: IpcMainEvent, said: unknown): void => {
     // Only the App's own views carry the preload. The check is here as well,
     // so that the rule does not rest on the preload alone.
-    const own = [strip, switcher, settings].some((view) => view.webContents === event.sender);
+    const own = [strip, switcher, settings, matePanel].some(
+      (view) => view.webContents === event.sender,
+    );
     if (!own) return;
     const asked = readAsked(said);
     if (SETTINGS_VIEW_ONLY.has(asked.kind) && event.sender !== settings.webContents) return;
     // Only the switcher carries a Restart button.
     if (asked.kind === 'restart' && event.sender !== switcher.webContents) return;
+    // The Mate runs the operator's Agent: it takes an ask from its own panel
+    // alone, and the strip only opens and closes it (ADR-0031).
+    if (MATE_PANEL_ONLY.has(asked.kind) && event.sender !== matePanel.webContents) return;
+    if (asked.kind === 'mate' && event.sender !== strip.webContents) return;
+    // The panel asks for nothing else.
+    if (event.sender === matePanel.webContents && !MATE_PANEL_ONLY.has(asked.kind)) return;
     act(asked);
   };
   ipcMain.on(ASK_CHANNEL, ask);
@@ -563,7 +700,7 @@ export function openWindow(
   window.on('closed', () => {
     ipcMain.off(ASK_CHANNEL, ask);
     nativeTheme.off('updated', followTheme);
-    for (const view of [strip, switcher, settings, ...contents.values()]) {
+    for (const view of [strip, switcher, settings, matePanel, ...contents.values()]) {
       view.webContents.close();
     }
   });
@@ -611,6 +748,22 @@ export function openWindow(
       redraw();
     },
   };
+}
+
+/**
+ * Whether a key is the Mate's: Ctrl+Shift+K, pressed and not held, by the
+ * letter it types, so it follows the operator's keyboard layout.
+ */
+function isMateKey(input: Input): boolean {
+  return (
+    input.type === 'keyDown' &&
+    !input.isAutoRepeat &&
+    input.control &&
+    input.shift &&
+    !input.alt &&
+    !input.meta &&
+    input.key.toLowerCase() === 'k'
+  );
 }
 
 /** The window's own buttons, as tall as the strip and in its colours. */

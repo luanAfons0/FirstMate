@@ -1,13 +1,15 @@
 /**
  * The App's own pages: the strip and the switcher, and what every one of the
- * App's pages shares. The Settings View is `settings-view.ts`.
+ * App's pages shares. The Settings View is `settings-view.ts`, and the Mate
+ * panel `mate-view.ts`.
  *
  * The strip is the window's title bar. It says where the window is as a
  * breadcrumb, the anchor and FirstMate and then what is open, and each part
  * goes somewhere: FirstMate to the Index Page, what is open to the switcher,
  * which lists every Plugin in the Plugin Order. The space between them and
  * the gear is where the window is dragged from. When any Plugin is Stopped, a
- * pill says how many, and it opens the switcher too. The gear opens the
+ * pill says how many, and it opens the switcher too. The Mate button opens
+ * and closes the Mate panel, as Ctrl+Shift+K does, and the gear opens the
  * Settings View. The window's own buttons are the system's, drawn beside it.
  *
  * The switcher has a filter at its top, the rows below it, and a line that
@@ -37,6 +39,7 @@
  * `@firstmate/core/theme`, the look the Index Page takes too, and carries the
  * sprite of the icons it draws inside itself.
  */
+import { createHash } from 'node:crypto';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { type IconName, icon, sprite, THEME_STYLE } from '@firstmate/core/theme';
 import { ASK, openAsk, restartAsk } from './ask.ts';
@@ -70,6 +73,8 @@ export type StripView = {
   readonly starting: boolean;
   /** How many Plugins are Stopped. */
   readonly stopped: number;
+  /** Whether the Mate panel is open. */
+  readonly mate: boolean;
 };
 
 /** How tall the strip is, in logical pixels. It is the title bar, so the
@@ -118,12 +123,19 @@ const AROUND = 10;
 const FADE_MS = 120;
 
 /**
- * What a page may do. It runs its own inline script and style and nothing
- * else: it loads nothing, connects nowhere and is framed by nothing.
+ * What a page may do. It runs its own inline style, and its one script named
+ * by its hash, and nothing else: it loads nothing, connects nowhere and is
+ * framed by nothing. The hash keeps any other script from running, an
+ * inline handler too, so a page that shows text it did not write, such as
+ * the Mate's answers, cannot be made to run one by that text.
  */
-const POLICY =
-  "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; " +
-  "base-uri 'none'; form-action 'none'";
+function policy(script: string): string {
+  const hash = createHash('sha256').update(script).digest('base64');
+  return (
+    `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${hash}'; ` +
+    "base-uri 'none'; form-action 'none'"
+  );
+}
 
 /** How tall the switcher panel needs to be to show the filter, every row and
  *  the key line, up to its greatest height. The window holds it inside its
@@ -172,6 +184,8 @@ ${crumbs}
 ${fault}
 <span class="drag"></span>
 ${pill}
+<a class="gear" href="#" data-ask="${ASK.mate}" title="Mate (Ctrl+Shift+K)" aria-label="Mate" \
+aria-pressed="${view.mate}">${icon('chat-circle-dots')}</a>
 <a class="gear" href="#" data-ask="${ASK.settings}" title="Settings" aria-label="Settings" \
 aria-pressed="${view.here.kind === 'settings'}">${icon('gear-six')}</a>
 </nav>`,
@@ -186,6 +200,7 @@ const STRIP_ICONS: readonly IconName[] = [
   'caret-right',
   'caret-down',
   'warning-circle',
+  'chat-circle-dots',
   'gear-six',
 ];
 
@@ -370,19 +385,7 @@ function page(
   script: string,
   icons: readonly IconName[],
 ): string {
-  return `<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="${POLICY}">
-<title>${title}</title>
-<style>
-${THEME_STYLE}
-#shown { display: contents; }
-${style}
-</style>
-${sprite(icons)}
-<div id="shown">${body}</div>
-<script>
+  const code = `
 addEventListener('click', (event) => {
   const asking = event.target instanceof Element ? event.target.closest('[data-ask]') : null;
   if (asking === null) return;
@@ -395,7 +398,20 @@ addEventListener('click', (event) => {
 });
 ${PUT_IN_PLACE}
 ${script}
-</script>
+`;
+  return `<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${policy(code)}">
+<title>${title}</title>
+<style>
+${THEME_STYLE}
+#shown { display: contents; }
+${style}
+</style>
+${sprite(icons)}
+<div id="shown">${body}</div>
+<script>${code}</script>
 </html>`;
 }
 

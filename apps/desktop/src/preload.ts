@@ -1,6 +1,6 @@
 /**
  * The bridge between the main process and the App's own views: the strip, the
- * switcher and the Settings View.
+ * switcher, the Settings View and the Mate panel.
  *
  * It is loaded into those views and into no other. A Plugin Page, the Index
  * Page and the Popup have no preload at all, so a page the Host serves can
