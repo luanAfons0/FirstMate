@@ -384,12 +384,13 @@ firstmate ask --conversation <id> And the shovel?
 git diff | firstmate ask
 ```
 
-The Mate is a chat with your own Agent, Claude Code, which runs on your own
-account with its own login and plan. FirstMate holds no model key and calls no
-model of its own
+The Mate is a chat with your own Agent, Claude Code or Codex, which runs on
+your own account with its own login and plan. FirstMate holds no model key and
+calls no model of its own
 ([ADR-0031](docs/adr/0031-the-app-holds-the-mate.md)). `ask` runs `claude` in
 your home directory, with no tool approved, so it edits no file and runs no
-command.
+command. With Codex it runs `codex exec --json --skip-git-repo-check --sandbox
+read-only`, so Codex writes no file either.
 
 The Mate settings, under `mate` in `settings.json`, say how it runs:
 
@@ -397,35 +398,40 @@ The Mate settings, under `mate` in `settings.json`, say how it runs:
 { "mate": { "agent": "claude", "model": "opus", "effort": "high", "place": "local", "program": "" } }
 ```
 
-`agent` is `claude`. `model` is passed as `--model`, and `effort` as
-`--effort`, one of `low`, `medium`, `high`, `xhigh` and `max`. `place` names the
-Place it runs in. `program` is the absolute path of `claude` when it is not on
-the `PATH`. Each but `agent` may be left out or empty, and then Claude's own
-default holds; with no `mate` key at all, `ask` runs Claude with its own
+`agent` is `claude` or `codex`. For Claude, `model` is passed as `--model`, and
+`effort` as `--effort`, one of `low`, `medium`, `high`, `xhigh` and `max`. For
+Codex, `model` is passed as `-m`, and `effort` as `-c
+model_reasoning_effort=<effort>`, one of `minimal`, `low`, `medium`, `high`,
+`xhigh` and `max`; a level the model does not take is refused by Codex, in its
+own sentence. `place` names the
+Place it runs in. `program` is the absolute path of the Agent's program when it
+is not on the `PATH`. Each but `agent` may be left out or empty, and then the
+Agent's own default holds; with no `mate` key at all, `ask` runs Claude with its own
 defaults in the default Place. A command that writes the settings keeps them. A
 damaged one fails every command, says why in one sentence, and ends with `1`.
 A new Conversation keeps the Agent, model, effort and Place it started with.
 
 The question is the words after `ask`, or standard input when there are none.
-It is sent to Claude on standard input, never as an argument. The answer is
+It is sent to the Agent on standard input, never as an argument. The answer is
 printed as it arrives, and the ID of the new Conversation on standard error, so
 a script reads a clean answer. Each Conversation is kept in `conversations/` in
 the home directory, where the App reads it too. `ask` needs no running Host.
 
 `--conversation <id>`, before the question, continues a Conversation, one
-started here or in the App. It resumes the same Claude session, so the memory
-of the Conversation is Claude's own, and it runs with the Agent, the Place, the
+started here or in the App. It resumes the same Agent session, a Claude session
+or a Codex thread (`codex exec resume`), so the memory of the Conversation is
+the Agent's own, and it runs with the Agent, the Place, the
 model and the effort the Conversation started with, whatever the settings say
 now. Both messages
 are added to the same Conversation, and its ID is printed on standard error
 again. An unknown ID is refused and ends with `4`. A Conversation file with a
 line that cannot be read is refused, with its path, and ends with `1`; the
-other Conversations are not touched. When Claude no longer holds the session,
+other Conversations are not touched. When the Agent no longer holds the session,
 `ask` says to start a new Conversation, and ends with `1`.
 
 Ctrl+C stops the answer, keeps the part that came, and ends with `130`. An
-answer Claude could not finish keeps the part that came too, says why in one
-sentence, and ends with `1`. With no `claude` on the `PATH`, or none at the
+answer the Agent could not finish keeps the part that came too, says why in one
+sentence, and ends with `1`. With no `claude` or `codex` on the `PATH`, or none at the
 `program` the settings name, or no Place of the name they give, `ask` says so,
 keeps nothing, and ends with `4`.
 

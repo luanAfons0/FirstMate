@@ -58,7 +58,7 @@ export async function ask(
   if (last === undefined || last.kind === 'text') {
     throw new Error('The Agent ended with nothing to say about how.');
   }
-  nameSession(home, id, last.session);
+  if (last.session !== undefined) nameSession(home, id, last.session);
   switch (last.kind) {
     case 'done':
       addMessage(home, id, { who: 'agent', text: answer, when });
