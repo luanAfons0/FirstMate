@@ -2,18 +2,19 @@
  * The settings file: the settings FirstMate remembers.
  *
  * The Host stores a Registry and nothing else, and it keeps no run history, no
- * logs and no settings store of its own. Five settings are the exception: the
+ * logs and no settings store of its own. Six settings are the exception: the
  * Shelf, because nothing can fetch a Plugin without somewhere to put it
  * (ADR-0012), the Places, because a Plugin has to run somewhere (ADR-0021),
  * the Shortcuts, because the App has to learn them from somewhere that
  * survives a restart (ADR-0013), the Plugin Order, because the Registry is
  * read only when the Host starts and a new order should not restart every
- * Plugin Server (ADR-0016), and the operator's answers when a Plugin Page asks
- * for the microphone or a capture of the screen. The Shortcuts and the Plugin
- * Order are written from a terminal alone. The Shelf and the Places are
- * written from a terminal and from the App's Settings View, and the answers by
- * the App's own dialog; both through the App's main process, never by a page
- * (ADR-0012).
+ * Plugin Server (ADR-0016), the operator's answers when a Plugin Page asks
+ * for the microphone or a capture of the screen, and the Mate settings, which
+ * say how the Mate runs the operator's Agent (ADR-0031). The Shortcuts and the
+ * Plugin Order are written from a terminal alone. The Shelf and the Places are
+ * written from a terminal and from the App's Settings View, the answers by the
+ * App's own dialog, and the Mate settings by the App's main process; all
+ * through the App's main process or a terminal, never by a page (ADR-0012).
  *
  * It is written the way the runtime file is written: whole, through a rename,
  * for this user alone. A settings file that is not there means nothing has
@@ -21,7 +22,8 @@
  * operator must see, as a damaged Registry is.
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
+import { AGENT_NAMES, EFFORTS, isAgent, isModelName, type Agent } from './agent-run.ts';
 import { parsePlaces, type Place } from './places.ts';
 import { isPluginName } from './registry.ts';
 import { isPluginPath, normalKeys, type Shortcut } from './shortcut.ts';
@@ -41,6 +43,26 @@ export type Settings = {
   readonly order?: readonly string[];
   /** What the operator answered each Plugin that asked for a device, by Plugin Name. */
   readonly permissions?: Readonly<Record<string, PermissionAnswers>>;
+  /** How the Mate runs the operator's Agent, absent until one is chosen. */
+  readonly mate?: MateSettings;
+};
+
+/**
+ * How the Mate runs the operator's Agent. Each field but the Agent may be
+ * absent or empty, and then the Agent's own default holds: its own model, its
+ * own effort, the default Place, and its program found on PATH. No `mate` key
+ * at all is Claude with every default.
+ */
+type MateSettings = {
+  readonly agent: Agent;
+  /** The model the Agent answers with. */
+  readonly model?: string;
+  /** The effort, one of the Agent's own levels. */
+  readonly effort?: string;
+  /** The Place the Agent runs in, by name. */
+  readonly place?: string;
+  /** The absolute path of the Agent's program, for an Agent that is not on PATH. */
+  readonly program?: string;
 };
 
 /**
@@ -110,13 +132,79 @@ function parseSettings(text: string, path: string): Settings {
   const shortcuts = record['shortcuts'];
   const order = record['order'];
   const permissions = record['permissions'];
+  const mate = record['mate'];
   return {
     ...(shelf === undefined ? {} : { shelf }),
     ...(places === undefined ? {} : { places: parsePlaces(places, path) }),
     ...(shortcuts === undefined ? {} : { shortcuts: parseShortcuts(shortcuts, path) }),
     ...(order === undefined ? {} : { order: parseOrder(order, path) }),
     ...(permissions === undefined ? {} : { permissions: parsePermissions(permissions, path) }),
+    ...(mate === undefined ? {} : { mate: parseMate(mate, path) }),
   };
+}
+
+/** The fields the Mate settings may hold. */
+const MATE_FIELDS: readonly (keyof MateSettings)[] = [
+  'agent',
+  'model',
+  'effort',
+  'place',
+  'program',
+];
+
+/**
+ * The Mate settings, checked. A damaged one fails every command, as a damaged
+ * Shortcut does, so that a wrong Agent, or a word cmd.exe would read as its
+ * own, is never run.
+ */
+function parseMate(value: unknown, path: string): MateSettings {
+  const where = `The Mate settings in the settings at ${path}`;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${where} need to be a JSON object.`);
+  }
+  const record = value as Record<string, unknown>;
+  for (const [field, given] of Object.entries(record)) {
+    if (!MATE_FIELDS.includes(field as keyof MateSettings)) {
+      throw new Error(
+        `${where} may hold only ${MATE_FIELDS.map((one) => `"${one}"`).join(', ')}, ` +
+          `and not ${JSON.stringify(field)}.`,
+      );
+    }
+    if (field !== 'agent' && typeof given !== 'string') {
+      throw new Error(`${where} need "${field}" to be a string, and not ${JSON.stringify(given)}.`);
+    }
+  }
+  const { agent, model, effort, program } = record;
+  if (!isAgent(agent)) {
+    throw new Error(`${where} need "agent" to be "claude", and not ${JSON.stringify(agent)}.`);
+  }
+  if (typeof model === 'string' && model !== '' && !isModelName(model)) {
+    throw new Error(
+      `${where} need "model" to be a model name of letters, digits and . _ - : / @ [ ], ` +
+        `and not ${JSON.stringify(model)}.`,
+    );
+  }
+  const efforts = EFFORTS[agent];
+  if (typeof effort === 'string' && effort !== '' && !efforts.includes(effort)) {
+    throw new Error(
+      `${where} need "effort" to be one of ${efforts.join(', ')} for ${AGENT_NAMES[agent]}, ` +
+        `or empty, and not ${JSON.stringify(effort)}.`,
+    );
+  }
+  if (typeof program === 'string' && program !== '' && !isAbsolute(program)) {
+    throw new Error(
+      `${where} need "program" to be an absolute path, and not ${JSON.stringify(program)}.`,
+    );
+  }
+  return record as MateSettings;
+}
+
+/**
+ * One Mate setting as the Mate uses it: the value given, or nothing when it is
+ * absent or empty, so that the Agent's own default holds.
+ */
+export function chosen(value: string | undefined): string | undefined {
+  return value === undefined || value === '' ? undefined : value;
 }
 
 /**

@@ -14,7 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAgent, type Agent } from './agent-run.ts';
+import { isAgent, isModelName, type Agent } from './agent-run.ts';
 import { refuse } from './refusal.ts';
 
 /** The directory the Conversations are in, inside the home directory. */
@@ -28,6 +28,10 @@ export type Head = {
   readonly agent: Agent;
   /** The Place the Agent runs in, by name. */
   readonly place: string;
+  /** The model it started with, absent for the Agent's own default. */
+  readonly model?: string;
+  /** The effort it started with, absent for the Agent's own default. */
+  readonly effort?: string;
   /** The Agent's own session, which the next message resumes, once it is known. */
   readonly session?: string;
   /** The first line of the first message, cut to a short length. */
@@ -70,7 +74,7 @@ function titleOf(question: string): string {
  */
 export function startConversation(
   home: string,
-  head: Pick<Head, 'agent' | 'place'>,
+  head: Pick<Head, 'agent' | 'place' | 'model' | 'effort'>,
   question: string,
 ): string {
   const id = randomUUID();
@@ -143,6 +147,9 @@ function isHead(line: Record<string, unknown>): boolean {
   return (
     isAgent(line['agent']) &&
     typeof line['place'] === 'string' &&
+    (line['model'] === undefined ||
+      (typeof line['model'] === 'string' && isModelName(line['model']))) &&
+    (line['effort'] === undefined || typeof line['effort'] === 'string') &&
     (line['session'] === undefined || typeof line['session'] === 'string') &&
     typeof line['title'] === 'string' &&
     typeof line['when'] === 'string'

@@ -16,9 +16,9 @@ import {
   readConversation,
   startConversation,
 } from '@firstmate/core/conversations';
-import { allPlaces } from '@firstmate/core/places';
+import { allPlaces, DEFAULT_PLACE } from '@firstmate/core/places';
 import { refuse } from '@firstmate/core/refusal';
-import { readSettings } from '@firstmate/core/settings';
+import { chosen, readSettings } from '@firstmate/core/settings';
 import { refusalPrefix } from './terminal.ts';
 
 /** How an answer ended: whole, failed, or stopped with Ctrl+C. */
@@ -82,22 +82,56 @@ export async function ask(
 /** A Conversation, and the run of the Agent that answers its newest question. */
 type Asking = { readonly id: string; readonly run: AgentRun };
 
-/** Start a new Conversation, with Claude in the default Place. */
+/**
+ * Start a new Conversation, with the Agent, model, effort, Place and program
+ * the Mate settings name. No `mate` key is Claude with its own defaults, in
+ * the default Place. The head keeps what the Conversation started with.
+ */
 function begin(home: string, question: string): Asking {
-  const [place] = allPlaces(readSettings(home).places);
-  if (place === undefined) throw new Error('There is no default Place.');
-  const run = runAgent({ agent: 'claude', place, question });
-  const id = startConversation(home, { agent: 'claude', place: place.name }, question);
+  const settings = readSettings(home);
+  const mate = settings.mate ?? { agent: 'claude' };
+  const places = allPlaces(settings.places);
+  const named = chosen(mate.place);
+  const place = named === undefined ? places[0] : places.find((one) => one.name === named);
+  if (place === undefined) {
+    throw refuse(
+      'missing',
+      `the ${String(named)} Place the Mate settings name is not there. ` +
+        'Add the Place, or choose another for the Mate.',
+    );
+  }
+  const model = chosen(mate.model);
+  const effort = chosen(mate.effort);
+  const program = chosen(mate.program);
+  const run = runAgent({
+    agent: mate.agent,
+    place,
+    question,
+    ...(model === undefined ? {} : { model }),
+    ...(effort === undefined ? {} : { effort }),
+    ...(program === undefined ? {} : { program }),
+  });
+  const head = {
+    agent: mate.agent,
+    place: place.name,
+    ...(model === undefined ? {} : { model }),
+    ...(effort === undefined ? {} : { effort }),
+  };
+  const id = startConversation(home, head, question);
   return { id, run };
 }
 
 /**
- * Continue a Conversation: resume its Agent session, with the Agent and the
- * Place its head names. The question is kept once the Agent has started.
+ * Continue a Conversation: resume its Agent session, with the Agent, the
+ * Place, the model and the effort its head names. The program the Mate
+ * settings name is used only when they name the same Agent in the same Place,
+ * because a program is one Agent's, at a path of one Place. The question is
+ * kept once the Agent has started.
  */
 function resume(home: string, id: string, question: string): Asking {
   const head = readConversation(home, id);
-  const place = allPlaces(readSettings(home).places).find((one) => one.name === head.place);
+  const settings = readSettings(home);
+  const place = allPlaces(settings.places).find((one) => one.name === head.place);
   if (place === undefined) {
     throw refuse(
       'missing',
@@ -108,7 +142,18 @@ function resume(home: string, id: string, question: string): Asking {
   if (head.session === undefined) {
     throw new Error(`Conversation ${id} holds no Agent session to resume. Start a new one.`);
   }
-  const run = runAgent({ agent: head.agent, place, question, session: head.session });
+  const mate = settings.mate;
+  const same = mate?.agent === head.agent && (chosen(mate.place) ?? DEFAULT_PLACE) === head.place;
+  const program = same ? chosen(mate.program) : undefined;
+  const run = runAgent({
+    agent: head.agent,
+    place,
+    question,
+    session: head.session,
+    ...(head.model === undefined ? {} : { model: head.model }),
+    ...(head.effort === undefined ? {} : { effort: head.effort }),
+    ...(program === undefined ? {} : { program }),
+  });
   addMessage(home, id, { who: 'operator', text: question, when: new Date().toISOString() });
   return { id, run };
 }

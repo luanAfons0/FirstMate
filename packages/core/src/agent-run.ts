@@ -36,7 +36,26 @@ export function isAgent(value: unknown): value is Agent {
 }
 
 /** The name each Agent is known by in a sentence the operator reads. */
-const AGENT_NAMES: Readonly<Record<Agent, string>> = { claude: 'Claude' };
+export const AGENT_NAMES: Readonly<Record<Agent, string>> = { claude: 'Claude' };
+
+/** The levels of effort each Agent knows, as its own `--effort` names them. */
+export const EFFORTS: Readonly<Record<Agent, readonly string[]>> = {
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+};
+
+/**
+ * The shape of a model name: letters, digits and `.`, `_`, `-`, `:`, `/`,
+ * `@`, `[` and `]`, as in `opus`, `claude-sonnet-4-5[1m]` or a Bedrock ID. It
+ * starts with a letter or a digit, so it is never read as a flag, and it holds
+ * nothing cmd.exe reads as its own, because a model reaches cmd.exe as an
+ * argument when the Agent is a `.cmd` (ADR-0019).
+ */
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@[\]-]*$/;
+
+/** Whether a value can be handed to an Agent as the name of a model. */
+export function isModelName(value: string): boolean {
+  return MODEL_NAME.test(value);
+}
 
 /** What one run of the Agent is asked. */
 export type AgentRequest = {
@@ -45,6 +64,12 @@ export type AgentRequest = {
   readonly place: Place;
   /** The question, sent on standard input. */
   readonly question: string;
+  /** The model the Agent answers with, or nothing for the Agent's own default. */
+  readonly model?: string;
+  /** The effort, one of the Agent's own levels, or nothing for its own default. */
+  readonly effort?: string;
+  /** The Agent's program, when it is not found on PATH under its own name. */
+  readonly program?: string;
   /** The Agent's own session to resume, or nothing to start a new one. */
   readonly session?: string;
 };
@@ -76,19 +101,16 @@ const BETWEEN_BLOCKS = '\n\n';
  * the Agent's program is not there.
  */
 export function runAgent(request: AgentRequest): AgentRun {
-  const program = findProgram(request.agent, process.env);
-  if (program === undefined) {
-    throw refuse(
-      'missing',
-      `cannot find ${request.agent} on the PATH of the ${request.place.name} Place. ` +
-        `Install ${AGENT_NAMES[request.agent]}, or put ${request.agent} on the PATH.`,
-    );
-  }
+  const program = programOf(request);
   const session = request.session ?? randomUUID();
   const which = request.session === undefined ? '--session-id' : '--resume';
   // Claude's own non-interactive mode, with no --permission-mode: it approves
   // no tool, so it edits no file and runs no command while nobody is asked.
-  const argv = ['-p', '--output-format', 'stream-json', '--verbose', which, session];
+  const argv = [
+    ...['-p', '--output-format', 'stream-json', '--verbose', which, session],
+    ...(request.model === undefined ? [] : ['--model', request.model]),
+    ...(request.effort === undefined ? [] : ['--effort', request.effort]),
+  ];
   const child = start(program, argv, homedir());
   child.stdin?.end(request.question);
   let stopped = false;
@@ -103,6 +125,31 @@ export function runAgent(request: AgentRequest): AgentRun {
 
 /** Whether this process runs on Windows, where a program is found and ended its own way. */
 const ON_WINDOWS = process.platform === 'win32';
+
+/**
+ * The Agent's program: the one the Mate settings name, when they name one,
+ * and otherwise the one of the Agent's own name on PATH. A program the
+ * settings name that is not there is refused, and PATH is not searched in its
+ * place, so the Agent the operator chose is the one that runs or none.
+ */
+function programOf(request: AgentRequest): string {
+  const { agent, place, program } = request;
+  if (program !== undefined) {
+    if (isProgram(program)) return program;
+    throw refuse(
+      'missing',
+      `cannot find ${agent} at ${program} in the ${place.name} Place. ` +
+        `Install ${AGENT_NAMES[agent]} there, or set the Mate's program to where it is.`,
+    );
+  }
+  const found = findProgram(agent, process.env);
+  if (found !== undefined) return found;
+  throw refuse(
+    'missing',
+    `cannot find ${agent} on the PATH of the ${place.name} Place. ` +
+      `Install ${AGENT_NAMES[agent]}, or put ${agent} on the PATH.`,
+  );
+}
 
 /**
  * The Agent's program on PATH: on Windows its `.exe`, or the `.cmd` an npm

@@ -142,7 +142,7 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   registry.ts      read and write registry.json, whole, through a rename.
   runtime.ts       write and remove runtime.json: the port and the token.
   settings.ts      read and write settings.json: the Shelf, the Places, the
-                   Shortcuts and the Plugin Order.
+                   Shortcuts, the Plugin Order and the Mate settings.
   places.ts        the Places, as data: the default one, the kinds, and how
                    each is read from the settings file (ADR-0021).
   plugin-places.ts each Plugin as the Host holds it: where its files are
