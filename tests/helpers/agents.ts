@@ -23,6 +23,12 @@ import { delimiter, join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { makeHome } from './host.ts';
 
+/**
+ * The end of the Mate's context, and the blank line before the operator's
+ * question, on the standard input of an Agent's new session.
+ */
+export const CONTEXT_ENDS = '\n</firstmate-context>\n\n';
+
 /** One step of what the fake Agent does once it has read its question. */
 type Step =
   /** Write one text block of its answer, as an `assistant` line. */

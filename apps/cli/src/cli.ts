@@ -421,7 +421,9 @@ tool approved, as the Mate settings say: "mate" in settings.json, with "agent",
 own defaults in the default Place; in a wsl Place it runs inside the
 distribution, through wsl.exe. The question is the words after ask, or
 standard input when there are none; it is sent on standard input, and never as
-an argument. The answer is printed as it arrives. The ID of the new
+an argument. A new Conversation sends a context before it: what FirstMate is,
+every Plugin of the Registry, and mate.md in the home directory when it is
+there. The answer is printed as it arrives. The ID of the new
 Conversation is printed on standard error. --conversation <id>, before the
 question, continues that Conversation: it resumes the same Agent session, with
 the Agent, Place, model and effort it started with. Conversations are kept

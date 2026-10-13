@@ -33,7 +33,7 @@ import { findInside, WSL_EXE } from './wsl.ts';
 export type AgentRequest = Omit<MateRun, 'place'> & {
   /** The Place the Agent runs in. */
   readonly place: Place;
-  /** The question, sent on standard input. */
+  /** The question, sent on standard input: on a new session, after the Mate's context. */
   readonly question: string;
   /** The Agent's own session to resume, or nothing to start a new one. */
   readonly session?: string;
