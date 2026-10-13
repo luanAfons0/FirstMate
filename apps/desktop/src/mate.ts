@@ -79,6 +79,8 @@ export type Mate = {
   stop(): void;
   /** Show a new Conversation. An answer that still arrives in the last one goes on, and is kept. */
   fresh(): void;
+  /** Who answers a new Conversation, and where, in one line; or why no one can. */
+  ahead(): string;
   /** Every Conversation in the home directory, the one said in last first. */
   recents(): readonly Recent[];
   /**
@@ -217,6 +219,14 @@ export function holdMate(home: string, changed: () => void): Mate {
     fresh: () => {
       talk = { said: [] };
       changed();
+    },
+    ahead: () => {
+      try {
+        const choice = mateChoice(home);
+        return `${AGENT_NAMES[choice.agent]} · ${choice.place.name}`;
+      } catch (fault) {
+        return sentenceOf(fault);
+      }
     },
     recents: () =>
       listConversations(home).map((listed) => ({

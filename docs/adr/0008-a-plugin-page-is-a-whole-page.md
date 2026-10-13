@@ -10,9 +10,11 @@ The Host has no persistent strip to put a control in, so anything a person needs
 
 A Plugin Page owns its whole viewport, and a Plugin is written for a page rather than for FirstMate's chrome.
 
-## Amended: the Mate panel narrows the shown view (2.1)
+## Amended: the Mate panel narrows the shown view, and the Mate box moves the Index Page down (2.1)
 
 The App's window has a strip since 2.0 (ADR-0020), and the Mate (ADR-0031) puts a panel beside the page. The panel is the App's own view, written by the App and loaded as a data address, never served by the Host. When it is open, the window narrows the shown view by the panel's width, as a narrower window would: a Plugin Page gets a resize, and keeps the whole of the area it is given. Expanded, the panel takes the whole width below the strip, and the shown view is hidden and stays loaded, as it is behind the Settings View. Nothing covers, frames or reaches into a page.
+
+While the Index Page is shown, the Mate box, "Ask the Mate", sits between the strip and the Index Page's view, and the window moves that view down by the box's height, so the box covers no part of the Plugin list. The box is the App's own view too, with the App's preload. The Index Page does not change: it carries no field and no word of the Mate, and the Host serves the box nothing, because every Plugin Page shares the Index Page's origin, and a box the Host served would let any Plugin ask the operator's Agent (ADR-0031).
 
 The window holds one key while it has the focus, Ctrl+Shift+K, which opens and closes the panel. It reads each key in each of its views before the page does, a Plugin Page too, and keeps that one key from the page. That is the whole of what it does there: it observes keys, injects nothing and reads nothing else of the page. The key is not a Shortcut: it is not global and nothing binds it from a terminal (ADR-0013).
 

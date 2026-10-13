@@ -8,8 +8,8 @@
  * The window shows one view at a time and never reaches inside one: nothing is
  * injected into a Plugin Page, wrapped around it or read out of it (ADR-0008).
  *
- * The strip, the switcher, the Settings View and the Mate panel are the App's
- * own views, with pages the App writes (`pages.ts`). They are the only views
+ * The strip, the switcher, the Settings View, the Mate panel and the Mate box
+ * are the App's own views, with pages the App writes (`pages.ts`). They are the only views
  * that carry the preload, so they are the only pages that can ask the main
  * process for anything, and the main process checks which view asked. Each
  * loads its page once; after that the main process sends it what it shows,
@@ -29,6 +29,13 @@
  * every view before the page does, a Plugin Page too, and keeps it from the
  * page. The Mate runs the operator's Agent, so the main process takes a Mate
  * ask from the panel alone (ADR-0031).
+ *
+ * While the Index Page is shown, the Mate box sits between the strip and the
+ * Index Page's view, and that view moves down by the box's height, so the box
+ * covers no part of the Plugin list. The box is an App view too, and the
+ * Index Page is the Host's, byte for byte (ADR-0008). Enter there opens the
+ * panel with a new Conversation, and the main process takes that ask from
+ * the box alone.
  *
  * The window shows the Host and nothing else. A link to anywhere else, in a new
  * window or the same one, opens in the operator's own browser.
@@ -75,6 +82,7 @@ import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
 import { askForPlugins, askToRestart, stoppedCount, type Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
 import { holdMate, type Recent } from './mate.ts';
+import { BOX_HEIGHT, boxPage } from './mate-box.ts';
 import { fitWidth, MATE_WIDTH, mateBounds, matePage } from './mate-view.ts';
 import { APP_ID } from './notices.ts';
 import {
@@ -246,17 +254,19 @@ export function openWindow(
   let recents: { readonly rows: readonly Recent[]; readonly fault?: string } | undefined;
 
   // The order of the children is the order they are drawn in: the strip, the
-  // content views, the Settings View, the Mate panel beside them, and the
-  // switcher on top of them all.
+  // content views, the Settings View, the Mate panel beside them, the Mate
+  // box above the Index Page's view, and the switcher on top of them all.
   const strip = appView();
   const settings = appView();
   const matePanel = appView();
+  const mateBox = appView();
   const switcher = appView();
   // Clear round the panel, so its round corners and its shadow show.
   switcher.setBackgroundColor('#00000000');
   window.contentView.addChildView(strip);
   window.contentView.addChildView(settings);
   window.contentView.addChildView(matePanel);
+  window.contentView.addChildView(mateBox);
   window.contentView.addChildView(switcher);
 
   /** Each App view's page, loaded once and then sent what it shows. */
@@ -264,6 +274,7 @@ export function openWindow(
   const switcherShown = ownPage(switcher);
   const settingsShown = ownPage(settings);
   const mateShown = ownPage(matePanel);
+  const boxShown = ownPage(mateBox);
 
   /** The Mate panel's page, as it is now, sent only while the panel is open. */
   const showMate = (): void => {
@@ -299,27 +310,49 @@ export function openWindow(
     return current === INDEX ? { kind: 'list' } : { kind: 'plugin', name: current };
   };
 
+  /** Where the open Mate panel leaves the shown view, in a window this wide. */
+  const mateIn = (width: number) =>
+    mateBounds(width, { open: mateOpen, expanded: mateExpanded, width: mateWidth });
+
+  /**
+   * Whether the Mate box shows: only above the Index Page, once it has a view,
+   * and never while the Settings View or the expanded panel hides it.
+   */
+  const boxShows = (): boolean => {
+    const [width = 0] = window.getContentSize();
+    return mateIn(width).page > 0 && !setting && current === INDEX && contents.has(INDEX);
+  };
+
   const layout = (): void => {
     const [width = 0, height = 0] = window.getContentSize();
     const tall = Math.max(height - STRIP_HEIGHT, 0);
     // The open Mate panel narrows the shown view, as a narrower window would,
     // and covers none of it (ADR-0008). Expanded, it hides the shown view,
     // which keeps its width and stays loaded behind it.
-    const mateIn = mateBounds(width, { open: mateOpen, expanded: mateExpanded, width: mateWidth });
-    const pageShows = mateIn.page > 0;
-    const below = { x: 0, y: STRIP_HEIGHT, width: pageShows ? mateIn.page : width, height: tall };
+    const sides = mateIn(width);
+    const pageShows = sides.page > 0;
+    const pageWidth = pageShows ? sides.page : width;
+    const below = { x: 0, y: STRIP_HEIGHT, width: pageWidth, height: tall };
+    // The Index Page's view sits below the Mate box, which covers none of it.
+    const belowBox = {
+      ...below,
+      y: STRIP_HEIGHT + BOX_HEIGHT,
+      height: Math.max(tall - BOX_HEIGHT, 0),
+    };
     const buttons = BUTTONS_WIDTH ?? 0;
     strip.setBounds({ x: 0, y: 0, width: Math.max(width - buttons, 0), height: STRIP_HEIGHT });
     for (const [owner, view] of contents) {
-      view.setBounds(below);
+      view.setBounds(owner === INDEX ? belowBox : below);
       view.setVisible(pageShows && !setting && owner === current);
     }
+    mateBox.setBounds({ x: 0, y: STRIP_HEIGHT, width: pageWidth, height: BOX_HEIGHT });
+    mateBox.setVisible(boxShows());
     settings.setBounds(below);
     settings.setVisible(pageShows && setting);
     matePanel.setBounds({
-      x: width - mateIn.panel,
+      x: width - sides.panel,
       y: STRIP_HEIGHT,
-      width: mateIn.panel,
+      width: sides.panel,
       height: tall,
     });
     matePanel.setVisible(mateOpen);
@@ -356,6 +389,8 @@ export function openWindow(
       }),
     );
     showMate();
+    // The box loads the first time it is shown, and says who answers now.
+    if (boxShows()) boxShown.show(boxPage(mate.ahead()));
     // The switcher and the Settings View load the first time they are shown.
     if (switching) {
       switcherShown.show(
@@ -648,6 +683,18 @@ export function openWindow(
     } else if (asked.kind === 'mate-width') {
       mateWidth = fitWidth(asked.width);
       layout();
+    } else if (asked.kind === 'mate-ask') {
+      // The box starts a new Conversation in the panel, which opens on it.
+      recents = undefined;
+      mate.fresh();
+      mate.send(asked.text);
+      mateOpened += 1;
+      if (!mateOpen) {
+        toggleMate();
+      } else {
+        redraw();
+        matePanel.webContents.focus();
+      }
     } else if (asked.kind === 'mate-send') {
       mate.send(asked.text);
     } else if (asked.kind === 'mate-stop') {
@@ -709,7 +756,9 @@ export function openWindow(
       toggleMate();
     });
   };
-  for (const view of [strip, settings, matePanel, switcher]) holdMateKey(view.webContents);
+  for (const view of [strip, settings, matePanel, mateBox, switcher]) {
+    holdMateKey(view.webContents);
+  }
 
   /** What only the Mate panel may ask for: everything it does with the Mate. */
   const MATE_PANEL_ONLY: ReadonlySet<Asked['kind']> = new Set([
@@ -731,7 +780,7 @@ export function openWindow(
   const ask = (event: IpcMainEvent, said: unknown): void => {
     // Only the App's own views carry the preload. The check is here as well,
     // so that the rule does not rest on the preload alone.
-    const own = [strip, switcher, settings, matePanel].some(
+    const own = [strip, switcher, settings, matePanel, mateBox].some(
       (view) => view.webContents === event.sender,
     );
     if (!own) return;
@@ -743,6 +792,8 @@ export function openWindow(
     // alone, and the strip only opens and closes it (ADR-0031).
     if (MATE_PANEL_ONLY.has(asked.kind) && event.sender !== matePanel.webContents) return;
     if (asked.kind === 'mate' && event.sender !== strip.webContents) return;
+    // The box asks the Mate one thing, and nothing else asks it that.
+    if ((asked.kind === 'mate-ask') !== (event.sender === mateBox.webContents)) return;
     // The panel asks for nothing else.
     if (event.sender === matePanel.webContents && !MATE_PANEL_ONLY.has(asked.kind)) return;
     act(asked);
@@ -756,7 +807,7 @@ export function openWindow(
   window.on('closed', () => {
     ipcMain.off(ASK_CHANNEL, ask);
     nativeTheme.off('updated', followTheme);
-    for (const view of [strip, switcher, settings, matePanel, ...contents.values()]) {
+    for (const view of [strip, switcher, settings, matePanel, mateBox, ...contents.values()]) {
       view.webContents.close();
     }
   });

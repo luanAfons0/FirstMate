@@ -1,6 +1,6 @@
 /**
  * What one of the App's own views asks the main process for: the strip, the
- * switcher, the Settings View and the Mate panel.
+ * switcher, the Settings View, the Mate panel and the Mate box.
  *
  * Those views are pages the App writes, never pages the Host serves
  * (ADR-0008), and the one way they reach the main process is the preload that
@@ -76,6 +76,8 @@ export type Asked =
   | { readonly kind: 'mate-expand' }
   /** Open the Settings View from the Mate panel. */
   | { readonly kind: 'mate-settings' }
+  /** Ask the Mate this from the box above the Plugin list, in a new Conversation in the panel. */
+  | { readonly kind: 'mate-ask'; readonly text: string }
   /** Ask the Mate this, in the panel's Conversation. */
   | { readonly kind: 'mate-send'; readonly text: string }
   /** Stop the answer that arrives in the panel's Conversation. */
@@ -171,6 +173,7 @@ export const TYPED = {
   shelf: 'shelf',
   pluginMove: 'plugin-move',
   mateSend: 'mate-send',
+  mateAsk: 'mate-ask',
   mateWidth: 'mate-width',
 } as const;
 
@@ -207,7 +210,7 @@ export function readAsked(said: unknown): Asked {
       return { kind, on: first === 'on' };
     if (kind === 'place-remove') return { kind, name: first };
     if (kind === 'shelf-choose') return { kind, place: first };
-    if (kind === 'mate-send') return { kind, text: first };
+    if (kind === 'mate-send' || kind === 'mate-ask') return { kind, text: first };
     if (kind === 'mate-link') return { kind, address: first };
     if (kind === 'mate-open' || kind === 'mate-delete') return { kind, id: first };
     if (kind === 'mate-copy' && /^\d{1,6}$/.test(first)) return { kind, message: Number(first) };
