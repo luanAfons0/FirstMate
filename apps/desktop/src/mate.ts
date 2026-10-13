@@ -8,13 +8,27 @@
  * operator did; it starts nothing itself.
  *
  * One Conversation is shown at a time, and while its answer arrives it takes
- * no other question, so two answers never mix. A new Conversation leaves an
- * answer that still arrives to finish and be kept with its own Conversation.
- * The panel's Conversation is held for as long as the App runs, so the panel
- * opens on it again after it was closed and after a Plugin switch.
+ * no other question, so two answers never mix. A new Conversation, or an
+ * older one opened from Recents, leaves an answer that still arrives to
+ * finish and be kept with its own Conversation; opened again before it ends,
+ * that Conversation shows the answer as it arrives. The panel's Conversation
+ * is held for as long as the App runs, so the panel opens on it again after
+ * it was closed and after a Plugin switch.
+ *
+ * Recents lists every Conversation in the home directory, those the terminal
+ * made too. Delete removes FirstMate's file of a Conversation alone; the
+ * Agent keeps its own session. A Conversation whose answer still arrives is
+ * not deleted, because the answer would be kept in a file that is gone.
  */
 import { AGENT_NAMES, type AgentEvent, type AgentRun } from '@firstmate/core/agent-run';
 import { askMate, keepAnswer, mateChoice } from '@firstmate/core/ask-mate';
+import {
+  deleteConversation,
+  listConversations,
+  readWhole,
+  type Listed,
+  type Message,
+} from '@firstmate/core/conversations';
 import { sentenceOf } from './settings.ts';
 
 /** One message of the panel's Conversation, as the panel shows it. */
@@ -47,6 +61,14 @@ export type MateShown = {
   readonly answering: boolean;
 };
 
+/** One Conversation, as Recents lists it. */
+export type Recent = Listed & {
+  /** Whether it is the Conversation the panel shows. */
+  readonly open: boolean;
+  /** Whether an answer still arrives in it, so it is not deleted. */
+  readonly arriving: boolean;
+};
+
 /** The Mate, as the window asks it for things. */
 export type Mate = {
   /** What the panel shows now. */
@@ -57,6 +79,18 @@ export type Mate = {
   stop(): void;
   /** Show a new Conversation. An answer that still arrives in the last one goes on, and is kept. */
   fresh(): void;
+  /** Every Conversation in the home directory, the one said in last first. */
+  recents(): readonly Recent[];
+  /**
+   * Show this Conversation, with all its messages, so the next message
+   * resumes it. Throws, in one sentence, when it cannot be read.
+   */
+  open(id: string): void;
+  /**
+   * Delete this Conversation's file, and show a new one if it was shown.
+   * Throws, in one sentence, while its answer still arrives.
+   */
+  forget(id: string): void;
   /** Stop every answer that still arrives, in every Conversation, as the App quits. */
   stopAll(): void;
   /** The text of one message of the shown Conversation, for the clipboard. */
@@ -98,8 +132,8 @@ type Answer = {
  */
 export function holdMate(home: string, changed: () => void): Mate {
   let talk: Talk = { said: [] };
-  /** Every answer that still arrives, the shown Conversation's and any other. */
-  const arriving = new Set<Answer>();
+  /** Every Conversation an answer still arrives in, the shown one and any other. */
+  const live = new Set<Talk>();
 
   const send = (question: string): void => {
     const asked = question.trim();
@@ -108,7 +142,7 @@ export function holdMate(home: string, changed: () => void): Mate {
     const answer: Answer = { text: '', stopped: false };
     here.said.push({ who: 'operator', text: asked });
     here.answer = answer;
-    arriving.add(answer);
+    live.add(here);
     changed();
     void askMate(home, asked, here.id).then(
       (asking) => {
@@ -158,7 +192,7 @@ export function holdMate(home: string, changed: () => void): Mate {
   };
 
   const end = (here: Talk, kept: Said): void => {
-    if (here.answer !== undefined) arriving.delete(here.answer);
+    live.delete(here);
     here.said.push(kept);
     here.answer = undefined;
     if (here === talk) changed();
@@ -170,18 +204,65 @@ export function holdMate(home: string, changed: () => void): Mate {
     answer.run?.stop();
   };
 
+  /** The Conversation of this ID an answer still arrives in, if there is one. */
+  const liveOf = (id: string): Talk | undefined => [...live].find((one) => one.id === id);
+
   return {
     shown: () => shownOf(home, talk),
     send,
     stop: () => stop(talk.answer),
     stopAll: () => {
-      for (const answer of arriving) stop(answer);
+      for (const one of live) stop(one.answer);
     },
     fresh: () => {
       talk = { said: [] };
       changed();
     },
+    recents: () =>
+      listConversations(home).map((listed) => ({
+        ...listed,
+        open: listed.id === talk.id,
+        arriving: liveOf(listed.id) !== undefined,
+      })),
+    open: (id) => {
+      talk = liveOf(id) ?? talkOf(home, id);
+      changed();
+    },
+    forget: (id) => {
+      if (liveOf(id) !== undefined) {
+        throw new Error('An answer still arrives in that Conversation. Stop it, then delete it.');
+      }
+      deleteConversation(home, id);
+      if (talk.id === id) talk = { said: [] };
+      changed();
+    },
     textOf: (message) => talk.said[message]?.text,
+  };
+}
+
+/** A Conversation kept in the home directory, as the panel holds it once it is opened. */
+function talkOf(home: string, id: string): Talk {
+  const { head, messages } = readWhole(home, id);
+  return {
+    id,
+    title: head.title,
+    started: {
+      agent: head.agent,
+      place: head.place,
+      ...(head.model === undefined ? {} : { model: head.model }),
+      ...(head.effort === undefined ? {} : { effort: head.effort }),
+    },
+    said: messages.map(saidOfMessage),
+  };
+}
+
+/** One kept message, as the panel shows it. */
+function saidOfMessage(message: Message): Said {
+  return {
+    who: message.who,
+    text: message.text,
+    ...(message.ended === undefined ? {} : { ended: message.ended }),
+    ...(message.why === undefined ? {} : { why: message.why }),
   };
 }
 

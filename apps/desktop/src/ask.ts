@@ -64,6 +64,14 @@ export type Asked =
   | { readonly kind: 'mate-close' }
   /** Start a new Conversation in the Mate panel. */
   | { readonly kind: 'mate-new' }
+  /** Show Recents in the Mate panel: every Conversation. */
+  | { readonly kind: 'mate-recents' }
+  /** Leave Recents, back to the Conversation the panel shows. */
+  | { readonly kind: 'mate-back' }
+  /** Open one Conversation from Recents, by its ID. */
+  | { readonly kind: 'mate-open'; readonly id: string }
+  /** Delete one Conversation from Recents, by its ID: FirstMate's file of it alone. */
+  | { readonly kind: 'mate-delete'; readonly id: string }
   /** Give the Mate panel the whole width below the strip, or give it back its side. */
   | { readonly kind: 'mate-expand' }
   /** Open the Settings View from the Mate panel. */
@@ -91,6 +99,8 @@ export const ASK = {
   mate: 'mate',
   mateClose: 'mate-close',
   mateNew: 'mate-new',
+  mateRecents: 'mate-recents',
+  mateBack: 'mate-back',
   mateExpand: 'mate-expand',
   mateSettings: 'mate-settings',
   mateStop: 'mate-stop',
@@ -99,6 +109,16 @@ export const ASK = {
 /** The words that ask to copy one answer of the Mate panel's Conversation. */
 export function mateCopyAsk(message: number): string {
   return said('mate-copy', String(message));
+}
+
+/** The words that ask to open one Conversation from Recents. */
+export function mateOpenAsk(id: string): string {
+  return said('mate-open', id);
+}
+
+/** The words that ask to delete one Conversation from Recents. */
+export function mateDeleteAsk(id: string): string {
+  return said('mate-delete', id);
 }
 
 /** The words that ask to open a link of an answer in the operator's browser. */
@@ -189,6 +209,7 @@ export function readAsked(said: unknown): Asked {
     if (kind === 'shelf-choose') return { kind, place: first };
     if (kind === 'mate-send') return { kind, text: first };
     if (kind === 'mate-link') return { kind, address: first };
+    if (kind === 'mate-open' || kind === 'mate-delete') return { kind, id: first };
     if (kind === 'mate-copy' && /^\d{1,6}$/.test(first)) return { kind, message: Number(first) };
     if (kind === 'mate-width' && /^\d{1,5}$/.test(first)) return { kind, width: Number(first) };
   } else if (third === undefined) {

@@ -256,6 +256,28 @@ test('ask --conversation resumes its Claude session, and appends to the same Con
   );
 });
 
+test('each message a Conversation keeps says when it was said, the newest last', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const id = idOf((await firstmate(home, ['ask', 'Where is the treasure?'], claude.env)).stderr);
+
+  const next = await firstmate(home, ['ask', '--conversation', id, 'How far?'], claude.env);
+
+  assert.equal(next.code, 0, next.stderr);
+  // Recents puts the Conversation said in last at the top, by its last message.
+  const times = (await conversation(home, id)).map((line) => Date.parse(String(line['when'])));
+  assert.equal(times.length, 5);
+  assert.ok(
+    times.every((time) => !Number.isNaN(time)),
+    'every line says when',
+  );
+  assert.deepEqual(
+    times,
+    [...times].sort((a, b) => a - b),
+    'the head first, then each message in the order it was said',
+  );
+});
+
 test('ask --conversation with an unknown ID is refused in one sentence, and writes nothing', async (t) => {
   const home = await makeHome(t);
   const claude = await fakeClaude(t);

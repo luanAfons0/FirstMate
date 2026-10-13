@@ -23,7 +23,8 @@
  * width below the strip, and the shown view is hidden and stays loaded. It
  * covers no part of a page (ADR-0008). It stays open, with its Conversation,
  * when the operator opens another Plugin, and it opens again on the same
- * Conversation and at the same width while the App runs. The strip's Mate
+ * Conversation and at the same width while the App runs. Recents shows in
+ * the panel, in place of its Conversation, and opens an older one. The strip's Mate
  * button and Ctrl+Shift+K open and close it; the window reads that key in
  * every view before the page does, a Plugin Page too, and keeps it from the
  * page. The Mate runs the operator's Agent, so the main process takes a Mate
@@ -73,7 +74,7 @@ import {
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
 import { askForPlugins, askToRestart, stoppedCount, type Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
-import { holdMate } from './mate.ts';
+import { holdMate, type Recent } from './mate.ts';
 import { fitWidth, MATE_WIDTH, mateBounds, matePage } from './mate-view.ts';
 import { APP_ID } from './notices.ts';
 import {
@@ -88,7 +89,7 @@ import {
   type Here,
   type Written,
 } from './pages.ts';
-import { change, readShown, type ChangeNeeds, type Outcome } from './settings.ts';
+import { change, readShown, sentenceOf, type ChangeNeeds, type Outcome } from './settings.ts';
 import { settingsPage } from './settings-view.ts';
 
 /** The window's title. The strip names what is open inside it. */
@@ -237,6 +238,12 @@ export function openWindow(
   let mateWidth = MATE_WIDTH;
   /** How many times the Mate panel has opened, so its page knows a new opening. */
   let mateOpened = 0;
+  /**
+   * Recents, while the panel shows them: every Conversation as it was read
+   * when Recents opened or last changed, so an answer that arrives does not
+   * read every Conversation again for each of its parts.
+   */
+  let recents: { readonly rows: readonly Recent[]; readonly fault?: string } | undefined;
 
   // The order of the children is the order they are drawn in: the strip, the
   // content views, the Settings View, the Mate panel beside them, and the
@@ -261,7 +268,22 @@ export function openWindow(
   /** The Mate panel's page, as it is now, sent only while the panel is open. */
   const showMate = (): void => {
     if (!mateOpen) return;
-    mateShown.show(matePage({ shown: mate.shown(), opened: mateOpened, expanded: mateExpanded }));
+    mateShown.show(
+      matePage({
+        shown: mate.shown(),
+        opened: mateOpened,
+        expanded: mateExpanded,
+        ...(recents === undefined ? {} : { recents: { ...recents, now: new Date() } }),
+      }),
+    );
+  };
+  /** Every Conversation, read now, with what went wrong with the last thing asked of Recents. */
+  const readRecents = (fault?: string): NonNullable<typeof recents> => {
+    try {
+      return { rows: mate.recents(), ...(fault === undefined ? {} : { fault }) };
+    } catch (unread: unknown) {
+      return { rows: [], fault: fault ?? sentenceOf(unread) };
+    }
   };
   /** The Mate, whose every change the panel shows: a question, a part of an answer, an end. */
   const mate = holdMate(settingsNeeds.home, showMate);
@@ -589,8 +611,36 @@ export function openWindow(
     } else if (asked.kind === 'mate-close') {
       if (mateOpen) toggleMate();
     } else if (asked.kind === 'mate-new') {
+      recents = undefined;
       mate.fresh();
       mateOpened += 1;
+      showMate();
+    } else if (asked.kind === 'mate-recents') {
+      recents = readRecents();
+      showMate();
+    } else if (asked.kind === 'mate-back') {
+      recents = undefined;
+      showMate();
+    } else if (asked.kind === 'mate-open') {
+      // Opened, it shows in place of Recents; one that cannot be read stays
+      // in Recents, which says why.
+      recents = undefined;
+      try {
+        mate.open(asked.id);
+        mateOpened += 1;
+      } catch (fault: unknown) {
+        recents = readRecents(sentenceOf(fault));
+      }
+      showMate();
+    } else if (asked.kind === 'mate-delete') {
+      // FirstMate's file of the Conversation alone; the Agent keeps its own
+      // session (ADR-0031).
+      try {
+        mate.forget(asked.id);
+        recents = readRecents();
+      } catch (fault: unknown) {
+        recents = readRecents(sentenceOf(fault));
+      }
       showMate();
     } else if (asked.kind === 'mate-expand') {
       mateExpanded = !mateExpanded;
@@ -636,6 +686,8 @@ export function openWindow(
   const toggleMate = (): void => {
     mateOpen = !mateOpen;
     switching = false;
+    // The panel opens again on its Conversation, never on Recents.
+    recents = undefined;
     if (mateOpen) mateOpened += 1;
     redraw();
     if (mateOpen) matePanel.webContents.focus();
@@ -663,6 +715,10 @@ export function openWindow(
   const MATE_PANEL_ONLY: ReadonlySet<Asked['kind']> = new Set([
     'mate-close',
     'mate-new',
+    'mate-recents',
+    'mate-back',
+    'mate-open',
+    'mate-delete',
     'mate-expand',
     'mate-settings',
     'mate-send',

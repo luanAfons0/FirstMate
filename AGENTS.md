@@ -164,7 +164,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    through a runner of one git command (ADR-0030).
   agent-run.ts     run the operator's own Agent: the question on stdin, the
                    answer as events, and a stop that ends its tree (ADR-0031).
-  conversations.ts keep the Mate's Conversations, one JSON-lines file each.
+  conversations.ts keep the Mate's Conversations, one JSON-lines file each:
+                   start, append, list, read and delete one.
   ask-mate.ts      ask the Mate: start or continue a Conversation, and keep
                    the answer. The App and firstmate ask both ask here.
 packages/host/src/  the Host. Every file is one job.
@@ -234,8 +235,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/settings-view.ts the Settings View, as a page the App writes.
   src/mate.ts      the Mate panel's Conversation, and the run of the Agent
                    that answers it, held in the main process.
-  src/mate-view.ts the Mate panel, as a page the App writes, and where it
-                   sits in the window.
+  src/mate-view.ts the Mate panel and its Recents, as a page the App writes,
+                   and where it sits in the window.
   src/markdown.ts  the small part of Markdown an answer is shown in. It
                    escapes everything it does not draw.
   src/notices.ts   Notices, as desktop pop-ups under the App's own ID.

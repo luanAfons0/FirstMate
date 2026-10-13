@@ -8,17 +8,33 @@
  * it resumes, and every later line is one message. A message is appended, so
  * a Conversation is never written whole while an answer arrives.
  *
+ * The App's Recents lists them, the one said in last first, and opens one
+ * again whole. A file that cannot be read is listed with the sentence that
+ * says why, so one damaged Conversation never hides the others.
+ *
  * These are FirstMate's own data, not a Plugin's (ADR-0005). The Agent keeps
  * its own session files where it keeps them, and nothing here touches them.
  */
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { isAgent, isModelName, type Agent } from './agent-run.ts';
 import { refuse } from './refusal.ts';
 
 /** The directory the Conversations are in, inside the home directory. */
 const CONVERSATIONS_DIRECTORY = 'conversations';
+
+/** The ending of a Conversation's file name, after its ID. */
+const SUFFIX = '.jsonl';
 
 /** The longest a title is, in characters. */
 const TITLE_LENGTH = 60;
@@ -58,7 +74,7 @@ function directoryOf(home: string): string {
 }
 
 function fileOf(home: string, id: string): string {
-  return join(directoryOf(home), `${id}.jsonl`);
+  return join(directoryOf(home), `${id}${SUFFIX}`);
 }
 
 /** The title of a Conversation: the first line of its first message, cut short. */
@@ -113,6 +129,17 @@ const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
  * Conversation alone, in one sentence that names its file.
  */
 export function readConversation(home: string, id: string): Head {
+  return readWhole(home, id).head;
+}
+
+/** A whole Conversation: its head, and every message in the order it was said. */
+type Whole = { readonly head: Head; readonly messages: readonly Message[] };
+
+/**
+ * Read a whole Conversation, as Recents opens it again. It is refused as
+ * `readConversation` refuses it.
+ */
+export function readWhole(home: string, id: string): Whole {
   const path = fileOf(home, id);
   let text: string;
   try {
@@ -121,14 +148,100 @@ export function readConversation(home: string, id: string): Head {
   } catch {
     throw refuse('missing', `there is no Conversation ${id}.`);
   }
-  const lines = text.trimEnd().split('\n');
-  lines.forEach((line, index) => {
-    const value = parseObject(line);
-    if (value === undefined || !(index === 0 ? isHead(value) : isMessage(value))) {
-      throw new Error(`Line ${index + 1} of the Conversation at ${path} cannot be read.`);
+  const read = text
+    .trimEnd()
+    .split('\n')
+    .map((line, index) => {
+      const value = parseObject(line);
+      if (value === undefined || !(index === 0 ? isHead(value) : isMessage(value))) {
+        throw new Error(`Line ${index + 1} of the Conversation at ${path} cannot be read.`);
+      }
+      return value;
+    });
+  const [head, ...messages] = read;
+  return { head: head as Head, messages: messages as Message[] };
+}
+
+/** One Conversation, as Recents lists it. */
+export type Listed =
+  | {
+      readonly kind: 'read';
+      readonly id: string;
+      readonly title: string;
+      readonly agent: Agent;
+      /** The model it started with, absent for the Agent's own default. */
+      readonly model?: string;
+      /** When it was said in last: its newest message, as an ISO 8601 time. */
+      readonly when: string;
     }
-  });
-  return JSON.parse(lines[0] ?? '') as Head;
+  | {
+      readonly kind: 'unread';
+      readonly id: string;
+      /** Why it cannot be read, in one sentence. */
+      readonly why: string;
+      /** When its file last changed, as an ISO 8601 time. */
+      readonly when: string;
+    };
+
+/**
+ * Every Conversation in the home directory, the one said in last first. One
+ * that cannot be read is listed with the sentence that says why, and the
+ * others list as they are. A file that is not named as a Conversation is not
+ * one, and is passed over.
+ */
+export function listConversations(home: string): Listed[] {
+  let names: string[];
+  try {
+    names = readdirSync(directoryOf(home));
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw cause;
+  }
+  return names
+    .filter((name) => name.endsWith(SUFFIX) && CONVERSATION_ID.test(idOfFile(name)))
+    .map((name) => listedOf(home, idOfFile(name)))
+    .sort((a, b) => Date.parse(b.when) - Date.parse(a.when));
+}
+
+function idOfFile(name: string): string {
+  return name.slice(0, -SUFFIX.length);
+}
+
+function listedOf(home: string, id: string): Listed {
+  try {
+    const { head, messages } = readWhole(home, id);
+    return {
+      kind: 'read',
+      id,
+      title: head.title,
+      agent: head.agent,
+      ...(head.model === undefined ? {} : { model: head.model }),
+      when: messages.at(-1)?.when ?? head.when,
+    };
+  } catch (fault) {
+    const why = fault instanceof Error ? fault.message : String(fault);
+    let when = new Date(0).toISOString();
+    try {
+      when = statSync(fileOf(home, id)).mtime.toISOString();
+    } catch {
+      // Gone since it was listed: it sorts last, and says why.
+    }
+    return { kind: 'unread', id, why, when };
+  }
+}
+
+/**
+ * Delete a Conversation: FirstMate's own file of it, and nothing else. The
+ * Agent keeps its own session where it keeps it, so the Agent's own program
+ * can still resume it (ADR-0031). An ID that names no Conversation is refused.
+ */
+export function deleteConversation(home: string, id: string): void {
+  try {
+    if (!CONVERSATION_ID.test(id)) throw new Error('not an ID');
+    rmSync(fileOf(home, id));
+  } catch {
+    throw refuse('missing', `there is no Conversation ${id}.`);
+  }
 }
 
 /** One line of a Conversation, as a JSON object, or nothing when it is not one. */
