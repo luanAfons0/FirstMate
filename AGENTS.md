@@ -237,6 +237,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
                    that answers it, held in the main process.
   src/mate-view.ts the Mate panel and its Recents, as a page the App writes,
                    and where it sits in the window.
+  src/mate-box.ts  the Mate box above the Plugin list, as a page the App
+                   writes. The Index Page does not change.
   src/markdown.ts  the small part of Markdown an answer is shown in. It
                    escapes everything it does not draw.
   src/notices.ts   Notices, as desktop pop-ups under the App's own ID.

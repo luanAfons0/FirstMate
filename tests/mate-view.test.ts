@@ -60,3 +60,20 @@ test('the Host serves no Mate page, no Conversation and no Mate setting', async 
   assert.deepEqual(await readdir(join(home, 'conversations')), [`${id}.jsonl`]);
   assert.equal((await claude.calls()).length, 1, 'no address asked the Agent anything');
 });
+
+test('the Index Page holds no Mate box: the App draws the box above it, in a view of its own', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const host = await bootHostIn(t, home, claude.env);
+
+  const answer = await host.fetch('/');
+  const page = await answer.text();
+
+  assert.equal(answer.status, 200);
+  // The box is the App's, so the Index Page carries no field and no word of
+  // the Mate, and a Plugin Page that reads it finds no way to ask (ADR-0008).
+  assert.ok(!/ask the mate/i.test(page), 'no "Ask the Mate"');
+  assert.ok(!/\bmate\b/i.test(page.replaceAll('FirstMate', '')), 'no word of the Mate');
+  assert.ok(!/<(textarea|form)\b/i.test(page), 'no field to type a question in');
+  assert.deepEqual(await claude.calls(), [], 'the Agent never ran');
+});

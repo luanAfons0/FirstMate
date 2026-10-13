@@ -584,6 +584,14 @@ panel stays open with its Conversation when you open another Plugin, and opens
 again on it, at the width you left, until the App quits. Its gear opens the
 Settings View, and the Mate's Conversations are the ones `firstmate ask` keeps.
 
+While the window shows the Plugin list, a box that says "Ask the Mate" sits
+above it, and the list moves down to make room, so the box covers none of it.
+Type a question there and press Enter: the Mate panel opens with it as the
+first message of a new Conversation. Shift+Enter starts a new line. The line
+in the box says which Agent a new Conversation runs, and in which Place. The
+box is the App's, like the panel: the Plugin list the Host serves is as it
+was.
+
 The panel's Recents button lists every Conversation, those `firstmate ask`
 made too, by title, with its Agent and model, the one you said something in
 last at the top, under Today, Yesterday, Previous 7 days and Older. Click one
