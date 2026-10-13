@@ -412,31 +412,52 @@ function run(
   });
 }
 
-/** A run of the command line that keeps going until the test stops it. */
+/** A run of the command line that keeps going until it ends or the test stops it. */
 export type Running = {
   /** Everything it has written to stdout so far. */
   output(): string;
+  /** Everything it has written to stderr so far. */
+  errors(): string;
+  /** Settles with its exit code once it has ended. */
+  readonly ended: Promise<number | null>;
 };
 
 /**
- * Start the command line and leave it running, as `logs -f` runs. It is
- * stopped when the test ends, whatever the test did.
+ * Start the command line and leave it running, as `logs -f` runs, so that a
+ * test can read what it writes before it ends. It is stopped when the test
+ * ends, whatever the test did. The environment and the input are as
+ * `firstmate` takes them.
  */
-export function firstmateRunning(t: TestContext, home: string, argv: readonly string[]): Running {
+export function firstmateRunning(
+  t: TestContext,
+  home: string,
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv = {},
+  input?: string,
+): Running {
   const child = spawn(
     process.execPath,
     [join(REPOSITORY, 'apps', 'cli', 'src', 'cli.ts'), ...argv],
     {
       cwd: REPOSITORY,
-      env: { ...process.env, ...NO_COLOUR_GIVEN, WSL_DISTRO_NAME: '', FIRSTMATE_HOME: home },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        ...NO_COLOUR_GIVEN,
+        WSL_DISTRO_NAME: '',
+        FIRSTMATE_HOME: home,
+        ...env,
+      },
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     },
   );
+  if (input !== undefined) child.stdin?.end(input);
   let stdout = '';
+  let stderr = '';
   collectText(child.stdout, (chunk) => (stdout += chunk));
-  collectText(child.stderr, () => undefined);
+  collectText(child.stderr, (chunk) => (stderr += chunk));
+  const ended = new Promise<number | null>((done) => child.once('exit', (code) => done(code)));
   atEnd(t, () => stop(child));
-  return { output: () => stdout };
+  return { output: () => stdout, errors: () => stderr, ended };
 }
 
 /** The cookie the Host admits an already-admitted browser with. */
