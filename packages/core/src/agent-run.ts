@@ -54,6 +54,17 @@ export const EFFORTS: Readonly<Record<Agent, readonly string[]>> = {
 };
 
 /**
+ * The models the Settings View offers for each Agent: Claude's own aliases,
+ * which follow its newest models, and the models codex-cli 0.147.0 lists on
+ * 2026-10-13. They are offered, not required: any model name is accepted, so
+ * a new model works on the day the Agent knows it (ADR-0031).
+ */
+export const KNOWN_MODELS: Readonly<Record<Agent, readonly string[]>> = {
+  claude: ['opus', 'sonnet', 'haiku'],
+  codex: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+};
+
+/**
  * The shape of a model name: letters, digits and `.`, `_`, `-`, `:`, `/`,
  * `@`, `[` and `]`, as in `opus`, `claude-sonnet-4-5[1m]` or a Bedrock ID. It
  * starts with a letter or a digit, so it is never read as a flag, and it holds

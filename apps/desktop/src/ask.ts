@@ -58,6 +58,18 @@ export type Asked =
   | { readonly kind: 'shelf-choose'; readonly place: string }
   /** Move one Plugin to a position in the Plugin Order, counted from 1 at the top. */
   | { readonly kind: 'plugin-move'; readonly name: string; readonly position: string }
+  /**
+   * Keep the Mate settings: the Agent, the model, the effort, the Place and
+   * the program, each as typed, empty for the Agent's own default.
+   */
+  | {
+      readonly kind: 'mate-set';
+      readonly agent: string;
+      readonly model: string;
+      readonly effort: string;
+      readonly place: string;
+      readonly program: string;
+    }
   /** Open the Mate panel, or close it when it is open. */
   | { readonly kind: 'mate' }
   /** Close the Mate panel. */
@@ -165,13 +177,15 @@ export function shelfChooseAsk(place: string): string {
 /**
  * The first words of an ask whose last part the page fills in from what the
  * operator typed or did: `place-add/<name>/<kind>[/<distribution>]`,
- * `shelf/<place>/<directory>` and `plugin-move/<name>/<position>`. The page
- * joins each part encoded.
+ * `shelf/<place>/<directory>`, `plugin-move/<name>/<position>` and
+ * `mate-set/<agent>/<model>/<effort>/<place>/<program>`, whose parts may be
+ * empty. The page joins each part encoded.
  */
 export const TYPED = {
   placeAdd: 'place-add',
   shelf: 'shelf',
   pluginMove: 'plugin-move',
+  mateSet: 'mate-set',
   mateSend: 'mate-send',
   mateAsk: 'mate-ask',
   mateWidth: 'mate-width',
@@ -199,6 +213,18 @@ export function readAsked(said: unknown): Asked {
     parts = encoded.map(decodeURIComponent);
   } catch {
     return { kind: 'nothing' };
+  }
+  if (kind === 'mate-set') {
+    const [agent, model, effort, place, program, ...more] = parts;
+    if (program === undefined || more.length > 0) return { kind: 'nothing' };
+    return {
+      kind,
+      agent: agent ?? '',
+      model: model ?? '',
+      effort: effort ?? '',
+      place: place ?? '',
+      program,
+    };
   }
   const [first, second, third, ...more] = parts;
   if (first === undefined || first === '' || more.length > 0) return { kind: 'nothing' };
