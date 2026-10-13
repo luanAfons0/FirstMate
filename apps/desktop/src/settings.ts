@@ -232,7 +232,7 @@ async function chooseFolder(
 }
 
 /** A refusal is already a sentence; anything else is said as it came. */
-function sentenceOf(fault: unknown): string {
+export function sentenceOf(fault: unknown): string {
   const said = fault instanceof Error ? fault.message : String(fault);
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }

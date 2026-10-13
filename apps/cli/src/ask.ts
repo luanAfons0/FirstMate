@@ -10,16 +10,8 @@
  * stays clean for a script. It needs no running Host: the
  * Mate is the App's, and this is the same Mate with no window (ADR-0031).
  */
-import { runAgent, type AgentEvent, type AgentRun } from '@firstmate/core/agent-run';
-import {
-  addMessage,
-  nameSession,
-  readConversation,
-  startConversation,
-} from '@firstmate/core/conversations';
-import { allPlaces, DEFAULT_PLACE } from '@firstmate/core/places';
-import { refuse } from '@firstmate/core/refusal';
-import { chosen, readSettings } from '@firstmate/core/settings';
+import type { AgentEvent } from '@firstmate/core/agent-run';
+import { askMate, keepAnswer } from '@firstmate/core/ask-mate';
 import { refusalPrefix } from './terminal.ts';
 
 /** How an answer ended: whole, failed, or stopped with Ctrl+C. */
@@ -35,10 +27,7 @@ export async function ask(
   question: string,
   conversation?: string,
 ): Promise<Answered> {
-  const { id, run } =
-    conversation === undefined
-      ? await begin(home, question)
-      : await resume(home, conversation, question);
+  const { id, run } = await askMate(home, question, conversation);
   console.error(id);
   const stop = (): void => run.stop();
   process.once('SIGINT', stop);
@@ -57,101 +46,10 @@ export async function ask(
     process.off('SIGINT', stop);
   }
   if (answer !== '' && !answer.endsWith('\n')) process.stdout.write('\n');
-  const when = new Date().toISOString();
   if (last === undefined || last.kind === 'text') {
     throw new Error('The Agent ended with nothing to say about how.');
   }
-  if (last.session !== undefined) nameSession(home, id, last.session);
-  switch (last.kind) {
-    case 'done':
-      addMessage(home, id, { who: 'agent', text: answer, when });
-      return 'done';
-    case 'stopped':
-      addMessage(home, id, { who: 'agent', text: answer, when, ended: 'stopped' });
-      return 'stopped';
-    case 'failed':
-      addMessage(home, id, {
-        who: 'agent',
-        text: answer,
-        when,
-        ended: 'failed',
-        why: last.sentence,
-      });
-      console.error(`${refusalPrefix()} ${last.sentence}`);
-      return 'failed';
-  }
-}
-
-/** A Conversation, and the run of the Agent that answers its newest question. */
-type Asking = { readonly id: string; readonly run: AgentRun };
-
-/**
- * Start a new Conversation, with the Agent, model, effort, Place and program
- * the Mate settings name. No `mate` key is Claude with its own defaults, in
- * the default Place. The head keeps what the Conversation started with.
- */
-async function begin(home: string, question: string): Promise<Asking> {
-  const settings = readSettings(home);
-  const mate = settings.mate ?? { agent: 'claude' };
-  const places = allPlaces(settings.places);
-  // The settings refuse a Place that is not there, so this one is.
-  const named = chosen(mate.place) ?? DEFAULT_PLACE;
-  const place = places.find((one) => one.name === named);
-  if (place === undefined) throw new Error(`The Place ${named} of the Mate settings is not there.`);
-  const model = chosen(mate.model);
-  const effort = chosen(mate.effort);
-  const program = chosen(mate.program);
-  const run = await runAgent({
-    agent: mate.agent,
-    place,
-    question,
-    ...(model === undefined ? {} : { model }),
-    ...(effort === undefined ? {} : { effort }),
-    ...(program === undefined ? {} : { program }),
-  });
-  const head = {
-    agent: mate.agent,
-    place: place.name,
-    ...(model === undefined ? {} : { model }),
-    ...(effort === undefined ? {} : { effort }),
-  };
-  const id = startConversation(home, head, question);
-  return { id, run };
-}
-
-/**
- * Continue a Conversation: resume its Agent session, with the Agent, the
- * Place, the model and the effort its head names. The program the Mate
- * settings name is used only when they name the same Agent in the same Place,
- * because a program is one Agent's, at a path of one Place. The question is
- * kept once the Agent has started.
- */
-async function resume(home: string, id: string, question: string): Promise<Asking> {
-  const head = readConversation(home, id);
-  const settings = readSettings(home);
-  const place = allPlaces(settings.places).find((one) => one.name === head.place);
-  if (place === undefined) {
-    throw refuse(
-      'missing',
-      `the ${head.place} Place of Conversation ${id} is gone. ` +
-        'Add the Place again, or start a new Conversation.',
-    );
-  }
-  if (head.session === undefined) {
-    throw new Error(`Conversation ${id} holds no Agent session to resume. Start a new one.`);
-  }
-  const mate = settings.mate;
-  const same = mate?.agent === head.agent && (chosen(mate.place) ?? DEFAULT_PLACE) === head.place;
-  const program = same ? chosen(mate.program) : undefined;
-  const run = await runAgent({
-    agent: head.agent,
-    place,
-    question,
-    session: head.session,
-    ...(head.model === undefined ? {} : { model: head.model }),
-    ...(head.effort === undefined ? {} : { effort: head.effort }),
-    ...(program === undefined ? {} : { program }),
-  });
-  addMessage(home, id, { who: 'operator', text: question, when: new Date().toISOString() });
-  return { id, run };
+  keepAnswer(home, id, answer, last);
+  if (last.kind === 'failed') console.error(`${refusalPrefix()} ${last.sentence}`);
+  return last.kind;
 }

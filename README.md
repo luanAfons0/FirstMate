@@ -556,12 +556,35 @@ window's own buttons sit at its right end, in its colours, light or dark as
 the system is. It holds FirstMate, which goes to the Plugin list; then what is
 open, which opens the switcher with every Plugin in the Plugin Order; the space
 you drag the window by; "N Stopped" when any Plugin is Stopped, which opens the
-switcher too; and the gear, which opens the Settings View. In the switcher,
+switcher too; the Mate button, which opens and closes the Mate panel; and the
+gear, which opens the Settings View. In the switcher,
 type to filter the Plugins, use the arrows to move, Enter to open and Esc to
 close. A Stopped Plugin has a Restart button there, which starts its Plugin
 Server again as `firstmate restart` does. Each Plugin Page you open has a view of its own and stays
 loaded until the App quits, so switching to another Plugin and back loses
 nothing. A link that leaves FirstMate opens in your browser.
+
+The Mate panel is the [Mate](#ask-the-mate) in the window. The strip's Mate
+button and Ctrl+Shift+K open and close it, whatever has the focus, a Plugin
+Page too; the key is the window's while it has the focus, not a Shortcut. The
+panel is at the right, below the strip, 380 pixels wide at first: it narrows
+the page beside it and never covers it. Drag its left edge to make it wider or
+narrower. Its expand button gives it the whole width below the strip, and the
+same button gives the page its width back; the page stays loaded behind it.
+An empty panel says "Where should we begin?". Type a question and press Enter
+to send it; Shift+Enter starts a new line. The answer shows as it arrives,
+with headings, lists, code, links and emphasis; a link opens in your browser.
+While it arrives, the send button is Stop, and the panel takes no other
+question. Stop ends the Agent's whole process tree and keeps the part that
+came, marked Stopped. Each answer has a button that copies it. The line under
+the field says which Agent answers, with its model, its effort and its Place.
+The next message continues the same Conversation, and New Conversation starts
+another; an answer that still arrives in the last one goes on, and is kept. The
+panel stays open with its Conversation when you open another Plugin, and opens
+again on it, at the width you left, until the App quits. Its gear opens the
+Settings View, and the Mate's Conversations are the ones `firstmate ask` keeps.
+The Host serves no part of the Mate, so no Plugin Page can type into it or
+read a Conversation.
 
 The Settings View has a side list of its sections, Places, Plugin Order, Start
 at logon, Shortcuts and Plugin Settings, and says the App's version under it. Places shows each Place with
