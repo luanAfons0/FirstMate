@@ -583,6 +583,18 @@ another; an answer that still arrives in the last one goes on, and is kept. The
 panel stays open with its Conversation when you open another Plugin, and opens
 again on it, at the width you left, until the App quits. Its gear opens the
 Settings View, and the Mate's Conversations are the ones `firstmate ask` keeps.
+
+The panel's Recents button lists every Conversation, those `firstmate ask`
+made too, by title, with its Agent and model, the one you said something in
+last at the top, under Today, Yesterday, Previous 7 days and Older. Click one
+to open it with all its messages; the next message resumes its own Agent
+session, with the Agent, model, effort and Place it started with. Back, or
+Esc, returns to the Conversation you were in, and New Conversation starts an
+empty one. Delete, under the pointer, asks once more in the row, and then
+deletes FirstMate's file of the Conversation alone: the Agent keeps its own
+session, so `claude --resume` or `codex resume` still finds it. A Conversation
+whose answer still arrives is not deleted. A Conversation that cannot be read
+is listed with the sentence that says why, and the others list as they are.
 The Host serves no part of the Mate, so no Plugin Page can type into it or
 read a Conversation.
 

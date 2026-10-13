@@ -19,14 +19,20 @@
  * once it has sent it. The Conversation stays scrolled to its end while the
  * answer arrives, unless the operator scrolled up to read.
  *
+ * Recents shows in the panel in place of the Conversation: every
+ * Conversation by title, with its Agent and model, in four groups counted in
+ * calendar days, the one said in last first. Back returns to the
+ * Conversation, as Esc does. Delete asks once more, in the row itself, before
+ * it deletes, because a deleted Conversation does not come back.
+ *
  * The panel's left edge is a 6 px handle that sets its width. The page asks
  * for a width from where the drag started, in screen pixels, so it does not
  * matter that the view moves under the pointer as it narrows the page.
  */
 import { type IconName, icon } from '@firstmate/core/theme';
-import { ASK, mateCopyAsk, TYPED } from './ask.ts';
+import { ASK, mateCopyAsk, mateDeleteAsk, mateOpenAsk, TYPED } from './ask.ts';
 import { markdown } from './markdown.ts';
-import type { MateShown, Said } from './mate.ts';
+import type { MateShown, Recent, Said } from './mate.ts';
 import { escaped, written, type Written } from './pages.ts';
 
 /** How wide the panel is at first, in logical pixels. */
@@ -73,6 +79,18 @@ export type MatePanel = {
   readonly opened: number;
   /** Whether it has the whole width below the strip. */
   readonly expanded: boolean;
+  /** Recents, when the panel shows them in place of its Conversation. */
+  readonly recents?: RecentsShown;
+};
+
+/** Recents, as the panel shows them. */
+type RecentsShown = {
+  /** Every Conversation, the one said in last first, as they were read when Recents opened. */
+  readonly rows: readonly Recent[];
+  /** Now, which the groups are counted from. */
+  readonly now: Date;
+  /** What went wrong with the last thing asked of Recents, until the next one. */
+  readonly fault?: string;
 };
 
 /** The icons any body of the panel may draw. */
@@ -88,11 +106,15 @@ const ICONS: readonly IconName[] = [
   'check',
   'warning-circle',
   'arrow-square-out',
+  'clock-counter-clockwise',
+  'arrow-left',
+  'trash',
 ];
 
 /** The Mate panel. */
 export function matePage(panel: MatePanel): Written {
-  const { shown, opened, expanded } = panel;
+  const { shown, opened, expanded, recents } = panel;
+  if (recents !== undefined) return recentsPage(recents, opened, expanded);
   const title = shown.title === undefined ? 'New Conversation' : escaped(shown.title);
   const conversation =
     shown.said.length === 0
@@ -116,6 +138,7 @@ ${shown.answering ? ' data-answering' : ''}>
 ${expanded ? '' : '<span class="resize" data-key="resize" aria-hidden="true"></span>'}
 <header class="phd">
 <span class="ttl" title="${title}">${title}</span>
+${button(ASK.mateRecents, 'clock-counter-clockwise', 'Recents')}
 ${button(ASK.mateNew, 'note-pencil', 'New Conversation')}
 ${button(
   ASK.mateExpand,
@@ -136,6 +159,94 @@ ${escaped(shown.meta)}</span>${send}</div>
     MATE_SCRIPT,
     ICONS,
   );
+}
+
+/**
+ * Recents in place of the Conversation: Back, New Conversation and Close in
+ * the header, and every Conversation by title below, in four groups. A row
+ * opens its Conversation. Its Delete asks once more before it deletes, as the
+ * page's script says, because a deleted Conversation does not come back.
+ */
+function recentsPage(recents: RecentsShown, opened: number, expanded: boolean): Written {
+  const { rows, now, fault } = recents;
+  const said =
+    fault === undefined
+      ? ''
+      : `<div class="err" role="alert" data-key="fault">${icon('warning-circle')}\
+<p>${escaped(fault)}</p></div>`;
+  const list =
+    rows.length === 0
+      ? `<p class="none" data-key="none">No Conversation yet. Ask the Mate here, or run \
+<code>firstmate ask</code> in a terminal.</p>`
+      : GROUPS.map((group) => {
+          const inGroup = rows.filter((row) => groupOf(row.when, now) === group);
+          if (inGroup.length === 0) return '';
+          return `<div class="grp" data-key="g${group}">${group}</div>
+${inGroup.map(recentRow).join('\n')}`;
+        }).join('\n');
+  return written(
+    'Mate',
+    mateStyles(),
+    `<div class="panel${expanded ? ' wide' : ''}" data-opened="${opened}">
+${expanded ? '' : '<span class="resize" data-key="resize" aria-hidden="true"></span>'}
+<header class="phd">
+${button(ASK.mateBack, 'arrow-left', 'Back to the Conversation')}
+<span class="ttl rttl">Recents</span>
+${button(ASK.mateNew, 'note-pencil', 'New Conversation')}
+${button(ASK.mateClose, 'x', 'Close (Ctrl+Shift+K)')}
+</header>
+<div class="rec" id="rec" data-key="rec">
+${said}
+${list}
+</div>
+</div>`,
+    MATE_SCRIPT,
+    ICONS,
+  );
+}
+
+/** The groups of Recents, in the order they are shown. */
+const GROUPS = ['Today', 'Yesterday', 'Previous 7 days', 'Older'] as const;
+
+/** How long a day is, in milliseconds. */
+const DAY = 86_400_000;
+
+/**
+ * The group of a Conversation said in last at `when`, counted in calendar
+ * days of the operator's own clock: today, the day before, the seven days
+ * before that, or older. A time in the future is today's.
+ */
+function groupOf(when: string, now: Date): (typeof GROUPS)[number] {
+  const dayOf = (time: Date): number =>
+    new Date(time.getFullYear(), time.getMonth(), time.getDate()).getTime();
+  // Rounded, so a day of 23 or 25 hours, when the clock moves, is one day.
+  const days = Math.round((dayOf(now) - dayOf(new Date(when))) / DAY);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days <= 7) return 'Previous 7 days';
+  return 'Older';
+}
+
+/**
+ * One row of Recents: the title, which opens it, and its Agent and model; or,
+ * for a Conversation that cannot be read, the sentence that says why. Each has
+ * Delete, but one whose answer still arrives.
+ */
+function recentRow(row: Recent): string {
+  const remove = row.arriving
+    ? ''
+    : `<button class="del" type="button" data-delete="${escaped(mateDeleteAsk(row.id))}" \
+title="Delete this Conversation" aria-label="Delete this Conversation">${icon('trash')}\
+<span class="sure">Delete</span></button>`;
+  if (row.kind === 'unread') {
+    return `<div class="rrow bad" data-key="r${row.id}">${icon('warning-circle')}\
+<span class="why">${escaped(row.why)}</span>${remove}</div>`;
+  }
+  const who = row.model === undefined ? row.agent : `${row.agent} · ${row.model}`;
+  return `<div class="rrow${row.open ? ' now' : ''}" data-key="r${row.id}">\
+<button class="t" type="button" data-ask="${escaped(mateOpenAsk(row.id))}" \
+title="${escaped(row.title)}"${row.open ? ' aria-current="true"' : ''}>${escaped(row.title)}</button>\
+<span class="ag">${escaped(who)}</span>${remove}</div>`;
 }
 
 /** One button of the header, with the words it says only to a reader and in its title. */
@@ -186,15 +297,16 @@ let opened;
 let following = true;
 const grow = () => {
   const typed = field();
+  if (typed === null) return;
   typed.style.height = 'auto';
   typed.style.height = Math.min(typed.scrollHeight, 168) + 'px';
 };
 const ready = () => {
   const send = document.getElementById('send');
-  if (send !== null) send.classList.toggle('off', field().value.trim() === '');
+  if (send !== null && field() !== null) send.classList.toggle('off', field().value.trim() === '');
 };
 const send = () => {
-  if (panel().dataset.answering !== undefined) return;
+  if (panel().dataset.answering !== undefined || field() === null) return;
   const text = field().value.trim();
   if (text === '') return;
   firstmate.ask('${TYPED.mateSend}/' + encodeURIComponent(text));
@@ -203,12 +315,18 @@ const send = () => {
   grow();
   ready();
 };
+const disarm = () => {
+  for (const row of document.querySelectorAll('.rrow.arm')) row.classList.remove('arm');
+};
 whenShown(() => {
   if (panel() === null) return;
-  if (panel().dataset.opened !== opened) {
-    opened = panel().dataset.opened;
+  const shown = panel().dataset.opened + (field() === null ? 'r' : 'c');
+  if (shown !== opened) {
+    opened = shown;
     following = true;
-    field().focus();
+    disarm();
+    if (field() !== null) field().focus();
+    else (document.querySelector('.rrow .t') ?? document.querySelector('.phd .tb'))?.focus();
   }
   const msgs = document.getElementById('msgs');
   if (msgs !== null && following) msgs.scrollTop = msgs.scrollHeight;
@@ -222,6 +340,11 @@ addEventListener('scroll', (event) => {
 }, true);
 addEventListener('input', () => { grow(); ready(); });
 addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && document.getElementById('rec') !== null) {
+    if (document.querySelector('.rrow.arm') !== null) disarm();
+    else firstmate.ask('${ASK.mateBack}');
+    return;
+  }
   if (event.target !== field() || event.key !== 'Enter') return;
   if (event.shiftKey || event.isComposing) return;
   event.preventDefault();
@@ -230,12 +353,24 @@ addEventListener('keydown', (event) => {
 addEventListener('click', (event) => {
   if (!(event.target instanceof Element)) return;
   if (event.target.closest('#send') !== null) { event.preventDefault(); send(); return; }
+  // Delete asks once more: the first click shows the word, the second deletes.
+  const remove = event.target.closest('.del');
+  if (remove !== null) {
+    const row = remove.closest('.rrow');
+    if (row.classList.contains('arm')) firstmate.ask(remove.dataset.delete);
+    else { disarm(); row.classList.add('arm'); }
+    return;
+  }
+  disarm();
   const copy = event.target.closest('.copy');
   if (copy !== null) {
     copy.classList.add('done');
     setTimeout(() => copy.classList.remove('done'), 1200);
   }
 });
+addEventListener('pointerleave', (event) => {
+  if (event.target instanceof Element && event.target.matches('.rrow.arm')) disarm();
+}, true);
 addEventListener('pointerdown', (event) => {
   if (!(event.target instanceof Element) || event.target.closest('.resize') === null) return;
   event.preventDefault();
@@ -396,5 +531,39 @@ function mateStyles(): string {
     display: grid; place-items: center; background: var(--accent); color: var(--accent-ink);
   }
   .send.off { background: var(--hover); color: var(--faint); cursor: default; }
-  .send.stop { background: var(--ink); color: var(--bg); }`;
+  .send.stop { background: var(--ink); color: var(--bg); }
+  .rec { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; }
+  .rec > .err { margin: 4px 8px 8px; }
+  .wide .rec { padding-inline: max(8px, calc(50% - 348px)); }
+  .grp {
+    font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--faint); padding: 12px 8px 4px; user-select: none;
+  }
+  .rrow {
+    display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 4px 0 8px;
+    border-radius: var(--radius-control);
+  }
+  .rrow:hover { background: var(--hover); }
+  .rrow.now { background: var(--accent-soft); color: var(--ink); }
+  .rrow .t {
+    flex: 1; min-width: 0; align-self: stretch; text-align: left; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .rrow .ag { flex: none; font: 11px/1 var(--mono); color: var(--faint); padding-right: 4px; }
+  .rrow .del {
+    flex: none; height: 26px; min-width: 26px; padding: 0 5px; display: none;
+    align-items: center; gap: 4px; border-radius: var(--radius-control); color: var(--muted);
+  }
+  .rrow .del:hover { background: var(--press); color: var(--ink); }
+  .rrow:hover .del, .rrow:focus-within .del, .rrow.arm .del { display: inline-flex; }
+  .rrow:hover .ag, .rrow:focus-within .ag, .rrow.arm .ag { display: none; }
+  .rrow .sure { display: none; font-size: 12px; }
+  .rrow.arm .del { color: var(--stopped); }
+  .rrow.arm .sure { display: inline; }
+  .rrow.bad { color: var(--muted); padding-block: 6px; }
+  .rrow.bad > svg.i { color: var(--stopped); }
+  .rrow.bad .why { flex: 1; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+  .rrow.bad .del { display: inline-flex; }
+  .none { margin: 24px 16px; color: var(--faint); font-size: 12.5px; text-align: center; }
+  .none code { font: 11.5px/1 var(--mono); color: var(--muted); }`;
 }
