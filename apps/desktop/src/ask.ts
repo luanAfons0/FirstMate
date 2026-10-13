@@ -80,8 +80,6 @@ export type Asked =
   | { readonly kind: 'mate-delete'; readonly id: string }
   /** Give the Mate panel the whole width below the strip, or give it back its side. */
   | { readonly kind: 'mate-expand' }
-  /** Open the Settings View from the Mate panel. */
-  | { readonly kind: 'mate-settings' }
   /** Ask the Mate this from the box above the Plugin list, in a new Conversation in the panel. */
   | { readonly kind: 'mate-ask'; readonly text: string }
   /** Ask the Mate this, in the panel's Conversation. */
@@ -110,7 +108,6 @@ export const ASK = {
   mateRecents: 'mate-recents',
   mateBack: 'mate-back',
   mateExpand: 'mate-expand',
-  mateSettings: 'mate-settings',
   mateStop: 'mate-stop',
 } as const;
 

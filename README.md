@@ -588,8 +588,8 @@ The next message continues the same Conversation, and New Conversation starts
 another; an answer that still arrives in the last one goes on, and is kept. The
 panel stays open with its Conversation when you open another Plugin, and opens
 again on it until the App quits; it opens at the width you left after a
-restart too. Its gear opens the
-Mate section of the Settings View, and the Mate's Conversations are the ones `firstmate ask` keeps.
+restart too. The Mate's settings are in the Settings View, behind the strip's
+gear, and its Conversations are the ones `firstmate ask` keeps.
 
 While the window shows the Plugin list, a box that says "Ask the Mate" sits
 above it, and the list moves down to make room, so the box covers none of it.
@@ -649,7 +649,7 @@ Agent is not on the `PATH` of its Place. Save keeps them under `mate` in
 `settings.json`, with the same check every command makes when it reads them,
 so a value refused there is refused in the sentence a terminal would show.
 A change applies to the next Conversation; every older one keeps what it
-started with. The Mate panel's gear opens the Settings View at this section.
+started with.
 
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its

@@ -222,8 +222,6 @@ export function openWindow(
   let outcome: Outcome | undefined;
   /** Whether a change the Settings View asked for is still being made. */
   let busy = false;
-  /** How many times the Mate panel's gear asked for the Mate section, so the page goes there. */
-  let toMate = 0;
   /** What went wrong with the last thing asked for, until the next one. */
   let fault: string | undefined;
   /** Every Plugin the Host last named, in the Plugin Order. */
@@ -389,7 +387,6 @@ export function openWindow(
           plugins,
           outcome,
           busy,
-          ...(toMate === 0 ? {} : { go: { section: 'mate', count: toMate } }),
         }),
       );
     }
@@ -616,11 +613,8 @@ export function openWindow(
       // to the fragment, and the page hears a hashchange. The Settings View
       // closes. The App reads none of what it shows (ADR-0029, ADR-0005).
       if (named(asked.name)?.hasPage === true) open(pluginSettingsPath(asked.name));
-    } else if (asked.kind === 'settings' || asked.kind === 'mate-settings') {
-      // The panel's settings button opens the Settings View at its Mate
-      // section, and never closes it.
-      setting = asked.kind === 'mate-settings' || !setting;
-      if (asked.kind === 'mate-settings') toMate += 1;
+    } else if (asked.kind === 'settings') {
+      setting = !setting;
       switching = false;
       fault = undefined;
       outcome = undefined;
@@ -681,7 +675,6 @@ export function openWindow(
     'mate-open',
     'mate-delete',
     'mate-expand',
-    'mate-settings',
     'mate-send',
     'mate-stop',
     'mate-copy',

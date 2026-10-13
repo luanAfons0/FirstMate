@@ -99,7 +99,6 @@ const ICONS: readonly IconName[] = [
   'note-pencil',
   'arrows-out-simple',
   'arrows-in-simple',
-  'gear-six',
   'x',
   'arrow-up',
   'stop-fill',
@@ -146,7 +145,6 @@ ${button(
   expanded ? 'arrows-in-simple' : 'arrows-out-simple',
   expanded ? 'Give the page its width back' : 'Expand',
 )}
-${button(ASK.mateSettings, 'gear-six', 'Mate settings')}
 ${button(ASK.mateClose, 'x', 'Close (Ctrl+Shift+K)')}
 </header>
 ${conversation}
@@ -530,12 +528,12 @@ function mateStyles(): string {
     display: flex; flex-direction: column; gap: 8px;
     background: var(--raised); border: 1px solid var(--line-2);
   }
-  .field:focus-within { border-color: var(--faint); }
+  .field:focus-within { border-color: var(--accent); }
   .field textarea {
     flex: 1; resize: none; border: 0; outline: 0; padding: 0; background: none;
     color: var(--ink); font: 13px/1.5 var(--sans); min-height: 20px; max-height: 168px;
   }
-  .field textarea::placeholder { color: var(--faint); }
+  .field textarea::placeholder { color: var(--muted); }
   .crow { display: flex; align-items: center; gap: 8px; }
   .meta {
     flex: 1; min-width: 0; font: 11px/1 var(--mono); color: var(--faint);

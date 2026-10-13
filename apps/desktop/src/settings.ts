@@ -88,11 +88,6 @@ export type SettingsShown = {
   readonly outcome?: Outcome;
   /** Whether a change is still being made, such as a distribution being asked. */
   readonly busy: boolean;
-  /**
-   * The section the page goes to, and how many times it was asked, so the
-   * page goes there once each time: the Mate panel's gear asks for `mate`.
-   */
-  readonly go?: { readonly section: string; readonly count: number };
 };
 
 /** What became of one change: done, or refused, in one sentence. */
