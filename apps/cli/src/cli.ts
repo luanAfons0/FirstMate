@@ -415,13 +415,15 @@ running, the command writes the files and says nothing more.`,
   },
   {
     about: ['ask'],
-    text: `ask runs your own Agent, Claude Code, in the default Place, with its own
-defaults, its own login and no tool approved. The question is the words after
-ask, or standard input when there are none; it is sent on standard input, and
-never as an argument. The answer is printed as it arrives. The ID of the new
+    text: `ask runs your own Agent, Claude Code, with its own login and no tool
+approved, as the Mate settings say: "mate" in settings.json, with "agent",
+"model", "effort", "place" and "program". With none, it runs Claude with its
+own defaults in the default Place. The question is the words after ask, or
+standard input when there are none; it is sent on standard input, and never as
+an argument. The answer is printed as it arrives. The ID of the new
 Conversation is printed on standard error. --conversation <id>, before the
 question, continues that Conversation: it resumes the same Agent session, with
-the Agent and the Place the Conversation started with. Conversations are kept
+the Agent, Place, model and effort it started with. Conversations are kept
 in the home directory, under conversations/, where the App reads them too. ask
 needs no running Host. Ctrl+C stops the answer and keeps the part that came.`,
   },

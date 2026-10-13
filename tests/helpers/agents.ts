@@ -45,6 +45,8 @@ export type FakeAgent = {
   readonly env: Readonly<Record<string, string>>;
   /** The home directory the operator has, where the Agent is started. */
   readonly home: string;
+  /** The fake's own program, by its absolute path: `claude.cmd` on Windows. */
+  readonly program: string;
   /** Say what the fake does on its next start, and every start after it. */
   script(steps: readonly Step[]): Promise<void>;
   /** Every start the fake took, in order. */
@@ -126,6 +128,7 @@ export async function fakeClaude(t: TestContext): Promise<FakeAgent> {
       USERPROFILE: home,
     },
     home,
+    program: join(bin, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
     script,
     calls: async () => {
       const text = await readFile(join(bin, 'calls.jsonl'), 'utf8').catch(() => '');

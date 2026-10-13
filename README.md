@@ -388,8 +388,23 @@ The Mate is a chat with your own Agent, Claude Code, which runs on your own
 account with its own login and plan. FirstMate holds no model key and calls no
 model of its own
 ([ADR-0031](docs/adr/0031-the-app-holds-the-mate.md)). `ask` runs `claude` in
-the default Place, in your home directory, with Claude's own defaults and no
-tool approved, so it edits no file and runs no command.
+your home directory, with no tool approved, so it edits no file and runs no
+command.
+
+The Mate settings, under `mate` in `settings.json`, say how it runs:
+
+```json
+{ "mate": { "agent": "claude", "model": "opus", "effort": "high", "place": "local", "program": "" } }
+```
+
+`agent` is `claude`. `model` is passed as `--model`, and `effort` as
+`--effort`, one of `low`, `medium`, `high`, `xhigh` and `max`. `place` names the
+Place it runs in. `program` is the absolute path of `claude` when it is not on
+the `PATH`. Each but `agent` may be left out or empty, and then Claude's own
+default holds; with no `mate` key at all, `ask` runs Claude with its own
+defaults in the default Place. A command that writes the settings keeps them. A
+damaged one fails every command, says why in one sentence, and ends with `1`.
+A new Conversation keeps the Agent, model, effort and Place it started with.
 
 The question is the words after `ask`, or standard input when there are none.
 It is sent to Claude on standard input, never as an argument. The answer is
@@ -399,8 +414,9 @@ the home directory, where the App reads it too. `ask` needs no running Host.
 
 `--conversation <id>`, before the question, continues a Conversation, one
 started here or in the App. It resumes the same Claude session, so the memory
-of the Conversation is Claude's own, and it runs with the Agent and the Place
-the Conversation started with, whatever the settings say now. Both messages
+of the Conversation is Claude's own, and it runs with the Agent, the Place, the
+model and the effort the Conversation started with, whatever the settings say
+now. Both messages
 are added to the same Conversation, and its ID is printed on standard error
 again. An unknown ID is refused and ends with `4`. A Conversation file with a
 line that cannot be read is refused, with its path, and ends with `1`; the
@@ -409,8 +425,9 @@ other Conversations are not touched. When Claude no longer holds the session,
 
 Ctrl+C stops the answer, keeps the part that came, and ends with `130`. An
 answer Claude could not finish keeps the part that came too, says why in one
-sentence, and ends with `1`. With no `claude` on the `PATH`, `ask` says so, keeps
-nothing, and ends with `4`.
+sentence, and ends with `1`. With no `claude` on the `PATH`, or none at the
+`program` the settings name, or no Place of the name they give, `ask` says so,
+keeps nothing, and ends with `4`.
 
 ## Help and exit codes
 
@@ -863,7 +880,8 @@ process; no address on the Host changes it
 - `runtime.json` — the port the Host listened on and the token it minted. It is
   rewritten at every start and removed when the Host stops.
 - `settings.json` — the settings FirstMate remembers: the Shelf, the Places,
-  the Shortcuts, the Plugin Order, and the App's permission answers. It is
+  the Shortcuts, the Plugin Order, the App's permission answers, and the Mate
+  settings. It is
   absent until you choose one of them.
 - `conversations/` — the Mate's Conversations, one file of JSON lines each,
   written for you alone.
