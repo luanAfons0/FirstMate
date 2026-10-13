@@ -185,6 +185,8 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
       plugin.places.includes(place.kind),
     );
     const place = await askPlace(prompt, plugin.name, places);
+    // Every Official Plugin runs in a local Place today, and the default Place
+    // is always local, so none reaches this. It stays for one that does not.
     if (place === undefined) {
       console.error(
         `${refusalPrefix()} ${plugin.name} runs in a ${plugin.places.join(' or ')} Place, ` +

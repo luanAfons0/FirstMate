@@ -52,7 +52,7 @@ export const OFFICIAL_PLUGINS: readonly OfficialPlugin[] = [
     url: 'https://github.com/luanAfons0/nexus',
     description: 'manages the skills and global instructions of Claude and Codex.',
     callsOthers: false,
-    places: ['wsl'],
+    places: ['local', 'wsl'],
   },
 ];
 

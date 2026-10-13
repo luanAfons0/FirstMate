@@ -84,8 +84,7 @@ It asks, in order:
 4. **The [Official Plugins](#official-plugins)**, each with one line about it.
    It fetches the ones you choose by number: `1 3` or `1, 3`, and Enter for
    none. Each goes into a Place it runs in: the only one, or the one you pick.
-   One already in the Registry is marked installed and is not offered, one with
-   no Place to run in is not fetched and `setup` says why, and a clone that
+   One already in the Registry is marked installed and is not offered, and a clone that
    fails names the Plugin and the others are still fetched.
 5. **Grants**, for each installed Official Plugin that calls others, such as
    `scheduler`. Every other Plugin is on the list; a Grant already given is
