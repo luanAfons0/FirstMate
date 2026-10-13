@@ -418,7 +418,8 @@ running, the command writes the files and says nothing more.`,
     text: `ask runs your own Agent, Claude Code or Codex, with its own login and no
 tool approved, as the Mate settings say: "mate" in settings.json, with "agent",
 "model", "effort", "place" and "program". With none, it runs Claude with its
-own defaults in the default Place. The question is the words after ask, or
+own defaults in the default Place; in a wsl Place it runs inside the
+distribution, through wsl.exe. The question is the words after ask, or
 standard input when there are none; it is sent on standard input, and never as
 an argument. The answer is printed as it arrives. The ID of the new
 Conversation is printed on standard error. --conversation <id>, before the

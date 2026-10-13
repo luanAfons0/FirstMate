@@ -23,6 +23,7 @@ import { delimiter, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Place } from './places.ts';
 import { refuse } from './refusal.ts';
+import { findInside, WSL_EXE } from './wsl.ts';
 
 /** Every Agent the Mate can run. */
 const AGENTS = ['claude', 'codex'] as const;
@@ -102,17 +103,47 @@ export type AgentRun = {
   stop(): void;
 };
 
+/**
+ * The command that logs each Agent in, in a terminal of the Place it runs in.
+ * Neither logs in from a run with no terminal, so the Mate names it instead.
+ */
+const LOGIN: Readonly<Record<Agent, string>> = {
+  claude: 'claude auth login',
+  codex: 'codex login',
+};
+
+/** The one sentence that says an Agent is not logged in, and how to log it in. */
+function notLoggedIn(agent: Agent, place: string): string {
+  return (
+    `${AGENT_NAMES[agent]} in the ${place} Place is not logged in. ` +
+    `Run ${LOGIN[agent]} there, then ask again.`
+  );
+}
+
 /** What a text block is joined to the one before it with: a new paragraph. */
 const BETWEEN_BLOCKS = '\n\n';
 
 /**
- * Start the Agent on this question. It refuses before it starts anything when
- * the Agent's program is not there.
+ * Start the Agent on this question, in its Place. It refuses before it starts
+ * anything when the Agent's program is not there. In a `wsl` Place the
+ * Agent runs inside the distribution, in the home directory of its user, as
+ * a Plugin Server runs there (ADR-0021); `--exec` hands it its words with no
+ * shell between, as a program on this machine gets them.
  */
-export function runAgent(request: AgentRequest): AgentRun {
-  const program = programOf(request);
+export async function runAgent(request: AgentRequest): Promise<AgentRun> {
+  const { place } = request;
   const { argv, read } = request.agent === 'codex' ? codex(request) : claude(request);
-  const child = start(program, argv, homedir());
+  const child =
+    place.kind === 'wsl'
+      ? start(
+          WSL_EXE,
+          [
+            ...['-d', place.distribution, '--cd', place.home, '--exec'],
+            ...[await programInside(request, place.distribution), ...argv],
+          ],
+          homedir(),
+        )
+      : start(programOf(request), argv, homedir());
   child.stdin?.end(request.question);
   let stopped = false;
   return {
@@ -186,18 +217,43 @@ function programOf(request: AgentRequest): string {
   const { agent, place, program } = request;
   if (program !== undefined) {
     if (isProgram(program)) return program;
-    throw refuse(
-      'missing',
-      `cannot find ${agent} at ${program} in the ${place.name} Place. ` +
-        `Install ${AGENT_NAMES[agent]} there, or set the Mate's program to where it is.`,
-    );
+    throw notFound(agent, place.name, program);
   }
   const found = findProgram(agent, process.env);
   if (found !== undefined) return found;
-  throw refuse(
+  throw notFound(agent, place.name, undefined, pathOf(process.env));
+}
+
+/**
+ * The Agent's program inside a `wsl` Place's distribution: the one the Mate
+ * settings name, or the one of the Agent's own name on the PATH there.
+ */
+async function programInside(request: AgentRequest, distribution: string): Promise<string> {
+  const { agent, place, program } = request;
+  const look = await findInside(distribution, program ?? agent);
+  if ('found' in look) return look.found;
+  throw notFound(agent, place.name, program, look.path);
+}
+
+/** The PATH of this environment, as Windows or anywhere else names it. */
+function pathOf(env: NodeJS.ProcessEnv): string {
+  return env['PATH'] ?? env['Path'] ?? '';
+}
+
+/**
+ * The refusal of an Agent that is not where the Mate looked: the program, the
+ * Place, where it looked, and the PATH it searched, which in a `wsl` Place is
+ * often not the one a terminal there has, and so is worth reading.
+ */
+function notFound(agent: Agent, place: string, program?: string, path = ''): Error {
+  const where =
+    program === undefined
+      ? `on the PATH of the ${place} Place, which is ${path === '' ? 'empty' : path}`
+      : `at ${program} in the ${place} Place`;
+  return refuse(
     'missing',
-    `cannot find ${agent} on the PATH of the ${place.name} Place. ` +
-      `Install ${AGENT_NAMES[agent]}, or put ${agent} on the PATH.`,
+    `cannot find ${agent} ${where}. ` +
+      `Install ${AGENT_NAMES[agent]} there, or set "program" in the Mate settings to where it is.`,
   );
 }
 
@@ -207,7 +263,9 @@ function programOf(request: AgentRequest): string {
  */
 function findProgram(name: string, env: NodeJS.ProcessEnv): string | undefined {
   const names = ON_WINDOWS ? [`${name}.exe`, `${name}.cmd`] : [name];
-  const directories = (env['PATH'] ?? env['Path'] ?? '').split(delimiter).filter((one) => one);
+  const directories = pathOf(env)
+    .split(delimiter)
+    .filter((one) => one);
   for (const directory of directories) {
     for (const file of names) {
       const path = join(directory, file);
@@ -313,12 +371,17 @@ async function* readClaude(
   const ended = ending(child);
   let session = asked;
   let blocks = 0;
+  let loggedOut = false;
   let result: Record<string, unknown> | undefined;
   if (child.stdout !== null) {
     for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
       const event = parseLine(line);
       if (event?.['type'] === 'system' && typeof event['session_id'] === 'string') {
         session = event['session_id'];
+      } else if (event?.['type'] === 'assistant' && event['is_api_error_message'] === true) {
+        // An error of Claude's own, written as a message, is not the answer.
+        // Its `result` line says it again, for the sentence of the failure.
+        loggedOut ||= event['error'] === 'authentication_failed';
       } else if (event?.['type'] === 'assistant') {
         for (const text of textBlocks(event['message'])) {
           yield { kind: 'text', text: blocks === 0 ? text : `${BETWEEN_BLOCKS}${text}` };
@@ -334,6 +397,8 @@ async function* readClaude(
     yield { kind: 'stopped', session };
   } else if (result !== undefined && result['is_error'] !== true && code === 0) {
     yield { kind: 'done', session };
+  } else if (loggedOut) {
+    yield { kind: 'failed', sentence: notLoggedIn('claude', place), session };
   } else {
     yield { kind: 'failed', sentence: claudeFailed(result, code, said, place), session };
   }
@@ -462,8 +527,15 @@ function codexMessage(message: unknown): string | undefined {
  */
 const CODEX_NO_SESSION = /no rollout found for thread id/;
 
+/**
+ * What Codex says when its model's API refuses it for want of a login: no
+ * key and no ChatGPT account on this account, or a login that ran out.
+ */
+const CODEX_NO_LOGIN = /\b401 Unauthorized\b/;
+
 /** The one sentence that says why Codex's answer ended early. */
 function codexFailed(reason: string, place: string): string {
+  if (CODEX_NO_LOGIN.test(reason)) return notLoggedIn('codex', place);
   if (CODEX_NO_SESSION.test(reason)) {
     return (
       `Codex in the ${place} Place cannot resume the session of this Conversation, ` +

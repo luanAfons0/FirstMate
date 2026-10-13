@@ -10,7 +10,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fakeCodex } from './helpers/agents.ts';
-import { firstmate, firstmateRunning, makeHome } from './helpers/host.ts';
+import { DEFAULT_PLACE, firstmate, firstmateRunning, makeHome } from './helpers/host.ts';
 
 /** The ID a UUID has, as a Codex thread and a Conversation are named. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -169,4 +169,23 @@ test('a Codex turn that fails keeps the part that came, and says why in one sent
   const [head, , answer] = await conversation(home, idOf(asked.stderr));
   assert.match(String(head?.['session']), UUID, 'the thread is kept, to resume');
   assert.deepEqual([answer?.['text'], answer?.['ended']], ['Under the', 'failed']);
+});
+
+test('codex with no login is refused in one sentence that names the login command', async (t) => {
+  const home = await makeHome(t);
+  const codex = await fakeCodex(t);
+  await settle(home, { mate: { agent: 'codex' } });
+  await codex.script([{ loggedOut: true }]);
+
+  const asked = await firstmate(home, ['ask', 'Where is the treasure?'], codex.env);
+
+  assert.equal(asked.code, 1, asked.stderr);
+  assert.equal(asked.stdout, '');
+  const [, sentence, ...more] = asked.stderr.trimEnd().split('\n');
+  assert.deepEqual(more, [], `one sentence: ${asked.stderr}`);
+  assert.equal(
+    sentence,
+    `firstmate: Codex in the ${DEFAULT_PLACE} Place is not logged in. ` +
+      'Run codex login there, then ask again.',
+  );
 });

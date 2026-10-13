@@ -139,8 +139,9 @@ export async function addPlace(
 
 /**
  * Take a Place away. A Place that holds a Plugin is refused, because the
- * Plugin would be left in no Place at all; the default Place is refused,
- * because it is this machine and is always there. Nothing on disk is touched.
+ * Plugin would be left in no Place at all, and so is the Place the Mate runs
+ * in, because the Mate would; the default Place is refused, because it is
+ * this machine and is always there. Nothing on disk is touched.
  */
 export function removePlace(home: string, name: string): void {
   const place = findPlace(home, name);
@@ -157,6 +158,12 @@ export function removePlace(home: string, name: string): void {
     );
   }
   const settings = readSettings(home);
+  if (settings.mate?.place === name) {
+    throw refuse(
+      'taken',
+      `${name} is the Place the Mate runs in. Choose another for the Mate first.`,
+    );
+  }
   const left = (settings.places ?? []).filter((one) => one.name !== name);
   writeSettings(home, { ...settings, places: left.length === 0 ? undefined : left });
 }

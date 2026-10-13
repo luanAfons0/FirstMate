@@ -24,7 +24,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { AGENT_NAMES, EFFORTS, isAgent, isModelName, type Agent } from './agent-run.ts';
-import { parsePlaces, type Place } from './places.ts';
+import { allPlaces, parsePlaces, type Place } from './places.ts';
 import { isPluginName } from './registry.ts';
 import { isPluginPath, normalKeys, type Shortcut } from './shortcut.ts';
 
@@ -133,13 +133,14 @@ function parseSettings(text: string, path: string): Settings {
   const order = record['order'];
   const permissions = record['permissions'];
   const mate = record['mate'];
+  const parsedPlaces = places === undefined ? undefined : parsePlaces(places, path);
   return {
     ...(shelf === undefined ? {} : { shelf }),
-    ...(places === undefined ? {} : { places: parsePlaces(places, path) }),
+    ...(parsedPlaces === undefined ? {} : { places: parsedPlaces }),
     ...(shortcuts === undefined ? {} : { shortcuts: parseShortcuts(shortcuts, path) }),
     ...(order === undefined ? {} : { order: parseOrder(order, path) }),
     ...(permissions === undefined ? {} : { permissions: parsePermissions(permissions, path) }),
-    ...(mate === undefined ? {} : { mate: parseMate(mate, path) }),
+    ...(mate === undefined ? {} : { mate: parseMate(mate, path, allPlaces(parsedPlaces)) }),
   };
 }
 
@@ -155,9 +156,10 @@ const MATE_FIELDS: readonly (keyof MateSettings)[] = [
 /**
  * The Mate settings, checked. A damaged one fails every command, as a damaged
  * Shortcut does, so that a wrong Agent, or a word cmd.exe would read as its
- * own, is never run.
+ * own, is never run. A Place that is not among these is damage too: the Mate
+ * would run in no Place at all, and `place remove` keeps it from happening.
  */
-function parseMate(value: unknown, path: string): MateSettings {
+function parseMate(value: unknown, path: string, places: readonly Place[]): MateSettings {
   const where = `The Mate settings in the settings at ${path}`;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(`${where} need to be a JSON object.`);
@@ -174,7 +176,7 @@ function parseMate(value: unknown, path: string): MateSettings {
       throw new Error(`${where} need "${field}" to be a string, and not ${JSON.stringify(given)}.`);
     }
   }
-  const { agent, model, effort, program } = record;
+  const { agent, model, effort, place, program } = record;
   if (!isAgent(agent)) {
     throw new Error(
       `${where} need "agent" to be "claude" or "codex", and not ${JSON.stringify(agent)}.`,
@@ -196,6 +198,13 @@ function parseMate(value: unknown, path: string): MateSettings {
   if (typeof program === 'string' && program !== '' && !isAbsolute(program)) {
     throw new Error(
       `${where} need "program" to be an absolute path, and not ${JSON.stringify(program)}.`,
+    );
+  }
+  const names = places.map((one) => one.name);
+  if (typeof place === 'string' && place !== '' && !names.includes(place)) {
+    throw new Error(
+      `${where} need "place" to name a Place, one of ${names.join(', ')}, ` +
+        `and not ${JSON.stringify(place)}.`,
     );
   }
   return record as MateSettings;

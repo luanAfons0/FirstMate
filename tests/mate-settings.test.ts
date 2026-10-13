@@ -119,8 +119,11 @@ test('a program of the Mate settings that is not there is refused in one sentenc
 
   assert.equal(asked.code, 4, asked.stderr);
   assert.equal(asked.stdout, '');
-  assert.equal(asked.stderr.trimEnd().split('\n').length, 1, `one sentence: ${asked.stderr}`);
-  assert.ok(asked.stderr.includes(missing), asked.stderr);
+  assert.equal(
+    asked.stderr,
+    `firstmate: cannot find claude at ${missing} in the ${DEFAULT_PLACE} Place. ` +
+      'Install Claude there, or set "program" in the Mate settings to where it is.\n',
+  );
   assert.deepEqual(await claude.calls(), [], 'the claude on PATH is not started instead');
 });
 
@@ -203,15 +206,35 @@ test('the Place of the Mate settings is the Place the Agent runs in', async (t) 
   assert.equal((await headOf(home, asked.stderr))['place'], 'galley');
 });
 
-test('a Place of the Mate settings that is not there is refused, and runs nothing', async (t) => {
+test('a Place of the Mate settings that is not there is a damaged setting', async (t) => {
   const home = await makeHome(t);
   const claude = await fakeClaude(t);
   await settle(home, { mate: { agent: 'claude', place: 'galley' } });
 
-  const asked = await firstmate(home, ['ask', 'Where is the treasure?'], claude.env);
+  for (const argv of [['list'], ['place'], ['ask', 'Where is the treasure?']]) {
+    const broken = await firstmate(home, argv, claude.env);
 
-  assert.equal(asked.code, 4, asked.stderr);
-  assert.match(asked.stderr, /^firstmate: the galley Place the Mate settings name is not there\./);
-  assert.equal(asked.stderr.trimEnd().split('\n').length, 1, `one sentence: ${asked.stderr}`);
+    assert.equal(broken.code, 1, `${argv.join(' ')}: ${broken.stderr}`);
+    assert.match(
+      broken.stderr,
+      /^firstmate: The Mate settings in the settings at .* need "place" to name a Place, one of local, and not "galley"\.\n$/,
+    );
+  }
   assert.deepEqual(await claude.calls(), []);
+});
+
+test('the Place the Mate runs in is not removed, so the Mate settings stay whole', async (t) => {
+  const home = await makeHome(t);
+  const added = await firstmate(home, ['place', 'add', 'galley', 'local']);
+  assert.equal(added.code, 0, added.stderr);
+  await settle(home, { ...(await settingsOf(home)), mate: { agent: 'claude', place: 'galley' } });
+
+  const refused = await firstmate(home, ['place', 'remove', 'galley']);
+
+  assert.equal(refused.code, 5, refused.stderr);
+  assert.equal(
+    refused.stderr,
+    'firstmate: galley is the Place the Mate runs in. Choose another for the Mate first.\n',
+  );
+  assert.equal((await firstmate(home, ['list'])).code, 0, 'every command still runs');
 });

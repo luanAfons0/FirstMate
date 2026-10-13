@@ -13,7 +13,7 @@ The Agent runs with the least it needs:
 - From a list of words, with no shell. A `.cmd` form on Windows runs through cmd.exe and is handed nothing cmd.exe would read as its own, as a Plugin Server is (ADR-0019).
 - With the question on standard input, never in an argument, so no shell or cmd.exe rule can change what it means.
 - In its own non-interactive mode, with no tool approved: Claude gets no `--permission-mode`, so it edits no file and runs no command while nobody is asked. Codex runs as `codex exec` with `--sandbox read-only`, and a resume, which takes no `--sandbox`, sets `sandbox_mode=read-only` through its config, so it writes no file either.
-- In the operator's home directory of its Place.
+- In the operator's home directory of its Place. In a `wsl` Place it runs inside the distribution, as a Plugin Server does there (ADR-0021): `wsl.exe -d <distribution> --cd <home> --exec <program>`, where `--exec` hands it its words with no shell between, as on this machine.
 - As a process tree of its own, which a stop ends whole: the process group on Linux, `taskkill /T /F` on Windows.
 
 The Conversations are FirstMate's own data, one file of JSON lines each in `conversations/` in the home directory, written for this user alone. The first line says which Agent answers, in which Place, and which Agent session the next message resumes; each later line is one message. The Agent's memory of a Conversation is its own session, which it resumes, and not a copy FirstMate sends again. They are not a Plugin's data, so ADR-0005 is unchanged. The Agent keeps its own session files, and FirstMate never touches them.
@@ -40,7 +40,9 @@ A model API called by FirstMate, with a key in the settings file. It makes First
 
 ## Consequences
 
-The Mate needs the Agent installed and logged in, on the `PATH` FirstMate sees in its Place. When it is not, the Mate says so in one sentence the operator can act on.
+The Mate needs the Agent installed and logged in, on the `PATH` FirstMate sees in its Place. When it is not, the Mate says so in one sentence the operator can act on: where it looked, in which Place, and to set `program`; or that the Agent is not logged in, with the command that logs it in. In a `wsl` Place that `PATH` is the one `wsl.exe` gives a command, which reads no profile, so the Agent is looked for there before it runs, and the refusal shows that `PATH`. Looking costs one more start of `wsl.exe`, and keeps a missing Agent from leaving a Conversation behind.
+
+A `place` that names no Place is a damaged Mate setting, and `place remove` refuses the Place the Mate runs in, as it refuses a Place that holds a Plugin.
 
 What the Agent can do is what its non-interactive mode allows with no tool approved. Tool approval in the window, and the Mate reaching each Plugin's tools, are left out of this decision; the second reverses a consequence of ADR-0005 and amends ADR-0009, and needs a decision of its own.
 

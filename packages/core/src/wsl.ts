@@ -75,6 +75,29 @@ export async function homeIn(distribution: string): Promise<string> {
   return answer.stdout;
 }
 
+/** Where a program is inside a distribution, or the PATH it was looked for on there. */
+type FoundInside = { readonly found: string } | { readonly path: string };
+
+/** The exit code a shell, and `env`, give when the program they were asked to run is not there. */
+const NOT_FOUND = 127;
+
+/**
+ * Look for a program inside a distribution, as `wsl.exe` runs it: an
+ * absolute path as it is, and a name on the PATH `wsl.exe` gives a command,
+ * which reads no profile and is often not the PATH of a terminal there. The
+ * program is handed to the shell as an argument, never as its text.
+ */
+export async function findInside(distribution: string, program: string): Promise<FoundInside> {
+  const look =
+    'case "$1" in /*) [ -f "$1" ] && [ -x "$1" ] && printf %s "$1" && exit 0 ;; ' +
+    '*) command -v "$1" && exit 0 ;; esac; ' +
+    `printf %s "$PATH"; exit ${NOT_FOUND}`;
+  const answer = await ask(['-d', distribution, '--exec', 'sh', '-c', look, 'sh', program]);
+  if (answer.code === 0 && answer.stdout.startsWith('/')) return { found: answer.stdout };
+  if (answer.code === NOT_FOUND) return { path: answer.stdout };
+  throw refuse('invalid', `the distribution ${distribution} did not answer: ${why(answer)}.`);
+}
+
 /**
  * Give a fetched Plugin's `mcp` file back its executable bit, inside the
  * distribution. A file written from Windows into a distribution carries none,
@@ -87,9 +110,6 @@ export async function makeExecutable(distribution: string, directory: string): P
     throw new Error(`${directory}/mcp could not be made executable: ${why(answer)}.`);
   }
 }
-
-/** The exit code `env` gives when the program it was asked to run is not there. */
-const NOT_FOUND = 127;
 
 /**
  * The git runner of a `wsl` Place: the distribution's own git, in the
