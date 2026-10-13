@@ -27,7 +27,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { isAgent, isModelName, type Agent } from './agent-run.ts';
+import { isAgent, isModelName, type Agent, type MateRun } from './agents.ts';
+import { parseObject } from './json-object.ts';
 import { refuse } from './refusal.ts';
 
 /** The directory the Conversations are in, inside the home directory. */
@@ -39,17 +40,15 @@ const SUFFIX = '.jsonl';
 /** The longest a title is, in characters. */
 const TITLE_LENGTH = 60;
 
-/** The first line of a Conversation: what it is, and what it resumes. */
-export type Head = {
-  readonly agent: Agent;
+/**
+ * The first line of a Conversation: what it is, and what it resumes. It keeps
+ * what the Mate runs as the Conversation started, so the next message runs
+ * the same: the Agent, the Place it runs in, and the model, the effort and the
+ * program when they were chosen.
+ */
+export type Head = MateRun & {
   /** The Place the Agent runs in, by name. */
   readonly place: string;
-  /** The model it started with, absent for the Agent's own default. */
-  readonly model?: string;
-  /** The effort it started with, absent for the Agent's own default. */
-  readonly effort?: string;
-  /** The Agent's program it started with, absent for the one found on PATH. */
-  readonly program?: string;
   /** The Agent's own session, which the next message resumes, once it is known. */
   readonly session?: string;
   /** The first line of the first message, cut to a short length. */
@@ -79,6 +78,23 @@ function fileOf(home: string, id: string): string {
   return join(directoryOf(home), `${id}${SUFFIX}`);
 }
 
+/** The shape of a Conversation ID: a UUID, as the Mate makes one. Nothing else names a file. */
+const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Do this with the file of the Conversation this ID names. An ID that is not
+ * one, or that names no file, is refused in one sentence, so that no other
+ * file is ever reached through an ID.
+ */
+function withFile<T>(home: string, id: string, act: (path: string) => T): T {
+  try {
+    if (!CONVERSATION_ID.test(id)) throw new Error('not an ID');
+    return act(fileOf(home, id));
+  } catch {
+    throw refuse('missing', `there is no Conversation ${id}.`);
+  }
+}
+
 /** The title of a Conversation: the first line of its first message, cut short. */
 function titleOf(question: string): string {
   const [first = ''] = question.trim().split(/\r?\n/);
@@ -92,7 +108,7 @@ function titleOf(question: string): string {
  */
 export function startConversation(
   home: string,
-  head: Pick<Head, 'agent' | 'place' | 'model' | 'effort' | 'program'>,
+  head: Omit<Head, 'session' | 'title' | 'when'>,
   question: string,
 ): string {
   const id = randomUUID();
@@ -122,9 +138,6 @@ export function nameSession(home: string, id: string, session: string): void {
   writeWhole(path, [{ ...head, session }, ...rest]);
 }
 
-/** The shape of a Conversation ID: a UUID, as the Mate makes one. Nothing else names a file. */
-const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 /**
  * Read a Conversation's head, once every line of its file is read. An ID with
  * no Conversation is refused, and a line that cannot be read fails this
@@ -143,13 +156,7 @@ type Whole = { readonly head: Head; readonly messages: readonly Message[] };
  */
 export function readWhole(home: string, id: string): Whole {
   const path = fileOf(home, id);
-  let text: string;
-  try {
-    if (!CONVERSATION_ID.test(id)) throw new Error('not an ID');
-    text = readFileSync(path, 'utf8');
-  } catch {
-    throw refuse('missing', `there is no Conversation ${id}.`);
-  }
+  const text = withFile(home, id, (file) => readFileSync(file, 'utf8'));
   const read = text
     .trimEnd()
     .split('\n')
@@ -177,7 +184,7 @@ export type Listed =
       readonly when: string;
     }
   | {
-      readonly kind: 'unread';
+      readonly kind: 'unreadable';
       readonly id: string;
       /** Why it cannot be read, in one sentence. */
       readonly why: string;
@@ -228,7 +235,7 @@ function listedOf(home: string, id: string): Listed {
     } catch {
       // Gone since it was listed: it sorts last, and says why.
     }
-    return { kind: 'unread', id, why, when };
+    return { kind: 'unreadable', id, why, when };
   }
 }
 
@@ -238,24 +245,7 @@ function listedOf(home: string, id: string): Listed {
  * can still resume it (ADR-0031). An ID that names no Conversation is refused.
  */
 export function deleteConversation(home: string, id: string): void {
-  try {
-    if (!CONVERSATION_ID.test(id)) throw new Error('not an ID');
-    rmSync(fileOf(home, id));
-  } catch {
-    throw refuse('missing', `there is no Conversation ${id}.`);
-  }
-}
-
-/** One line of a Conversation, as a JSON object, or nothing when it is not one. */
-function parseObject(line: string): Record<string, unknown> | undefined {
-  try {
-    const value: unknown = JSON.parse(line);
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  withFile(home, id, (file) => rmSync(file));
 }
 
 function isHead(line: Record<string, unknown>): boolean {

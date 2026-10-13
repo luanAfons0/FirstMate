@@ -1,6 +1,6 @@
 /**
  * Asking the Mate: start a Conversation or continue one, run the Agent that
- * answers it, and keep the answer once it ends.
+ * answers it, hear the answer as it arrives, and keep it once it ends.
  *
  * The App's Mate panel and `firstmate ask` both ask through here, so the two
  * read the same Mate settings and keep the same Conversations, and a
@@ -13,7 +13,8 @@
  * The Agent runs on the operator's account and can read `runtime.json`, so
  * the Host's token is hidden in everything shown and kept here.
  */
-import { runAgent, type Agent, type AgentEvent, type AgentRun } from './agent-run.ts';
+import { tuningOf, type MateRun } from './agents.ts';
+import { runAgent, type AgentEnd, type AgentEvent, type AgentRun } from './agent-run.ts';
 import {
   addMessage,
   nameSession,
@@ -21,42 +22,27 @@ import {
   startConversation,
   type Head,
 } from './conversations.ts';
-import { allPlaces, DEFAULT_PLACE, type Place } from './places.ts';
-import { refuse } from './refusal.ts';
+import { allPlaces, type Place } from './places.ts';
+import { refuse, sentenceOf } from './refusal.ts';
 import { readRuntimeFile } from './runtime.ts';
-import { chosen, readSettings } from './settings.ts';
+import { mateOf, matePlace, readSettings } from './settings.ts';
 
 /** What a new Conversation would start with: the Mate settings, with every default in force. */
-type MateChoice = {
-  readonly agent: Agent;
-  readonly place: Place;
-  readonly model?: string;
-  readonly effort?: string;
-  readonly program?: string;
-};
+type MateChoice = Omit<MateRun, 'place'> & { readonly place: Place };
 
 /**
- * What the Mate settings choose now. No `mate` key is Claude with its own
- * defaults, in the default Place. A damaged setting throws, as it fails every
- * command.
+ * What the Mate settings choose now. No `mate` key is the default Agent with
+ * its own defaults, in the default Place. A damaged setting throws, as it
+ * fails every command.
  */
 export function mateChoice(home: string): MateChoice {
   const settings = readSettings(home);
-  const mate = settings.mate ?? { agent: 'claude' };
+  const mate = mateOf(settings);
   // The settings refuse a Place that is not there, so this one is.
-  const named = chosen(mate.place) ?? DEFAULT_PLACE;
+  const named = matePlace(mate);
   const place = allPlaces(settings.places).find((one) => one.name === named);
   if (place === undefined) throw new Error(`The Place ${named} of the Mate settings is not there.`);
-  const model = chosen(mate.model);
-  const effort = chosen(mate.effort);
-  const program = chosen(mate.program);
-  return {
-    agent: mate.agent,
-    place,
-    ...(model === undefined ? {} : { model }),
-    ...(effort === undefined ? {} : { effort }),
-    ...(program === undefined ? {} : { program }),
-  };
+  return { agent: mate.agent, place, ...tuningOf(mate) };
 }
 
 /** A Conversation, as it is now, and the run of the Agent that answers its newest question. */
@@ -64,7 +50,8 @@ type Asking = { readonly id: string; readonly head: Head; readonly run: AgentRun
 
 /**
  * Ask the Mate this question, in a new Conversation or in the one this ID
- * names. A refusal before the Agent starts is thrown, and keeps nothing.
+ * names. A refusal before the Agent starts is thrown, and keeps nothing. The
+ * run's events hide the Host's token.
  */
 export async function askMate(
   home: string,
@@ -106,6 +93,37 @@ async function* hidden(
 }
 
 /**
+ * Hear the answer to the newest question: hand each part to `heard` as it
+ * arrives, then keep the answer with its Conversation and say how it ended.
+ * A run that ends with no word of how, or that throws, failed, in one
+ * sentence. A Conversation that cannot be written throws once the answer is
+ * whole, so the caller says so.
+ */
+export async function hear(
+  home: string,
+  asking: Asking,
+  heard: (part: string) => void,
+): Promise<AgentEnd> {
+  let answer = '';
+  let end: AgentEnd | undefined;
+  try {
+    for await (const event of asking.run.events) {
+      if (event.kind === 'text') {
+        answer += event.text;
+        heard(event.text);
+      } else {
+        end = event;
+      }
+    }
+  } catch (fault) {
+    end = { kind: 'failed', sentence: sentenceOf(fault) };
+  }
+  end ??= { kind: 'failed', sentence: 'The Agent ended with nothing to say about how.' };
+  keepAnswer(home, asking.id, answer, end);
+  return end;
+}
+
+/**
  * Keep the answer to the newest question, once the run has ended: whole,
  * stopped with the part that arrived, or failed with its one sentence. The
  * Agent session the run named is kept with the Conversation, for the next
@@ -113,12 +131,7 @@ async function* hidden(
  * exception: the Agent may keep no session of it, so the Conversation keeps
  * none, and its next message starts a new session rather than fail to resume.
  */
-export function keepAnswer(
-  home: string,
-  id: string,
-  answer: string,
-  end: Exclude<AgentEvent, { kind: 'text' }>,
-): void {
+function keepAnswer(home: string, id: string, answer: string, end: AgentEnd): void {
   const began = end.kind === 'done' || answer !== '';
   const resumed = readConversation(home, id).session !== undefined;
   if (end.session !== undefined && (began || resumed)) nameSession(home, id, end.session);
@@ -141,22 +154,9 @@ async function begin(
   question: string,
   hide: (text: string) => string,
 ): Promise<Asking> {
-  const { agent, place, model, effort, program } = mateChoice(home);
-  const run = await runAgent({
-    agent,
-    place,
-    question,
-    ...(model === undefined ? {} : { model }),
-    ...(effort === undefined ? {} : { effort }),
-    ...(program === undefined ? {} : { program }),
-  });
-  const started = {
-    agent,
-    place: place.name,
-    ...(model === undefined ? {} : { model }),
-    ...(effort === undefined ? {} : { effort }),
-    ...(program === undefined ? {} : { program }),
-  };
+  const choice = mateChoice(home);
+  const run = await runAgent({ ...choice, question });
+  const started = { ...choice, place: choice.place.name };
   const id = startConversation(home, started, hide(question));
   return { id, head: readConversation(home, id), run };
 }
@@ -175,8 +175,7 @@ async function resume(
   hide: (text: string) => string,
 ): Promise<Asking> {
   const head = readConversation(home, id);
-  const settings = readSettings(home);
-  const place = allPlaces(settings.places).find((one) => one.name === head.place);
+  const place = allPlaces(readSettings(home).places).find((one) => one.name === head.place);
   if (place === undefined) {
     throw refuse(
       'missing',
@@ -189,9 +188,7 @@ async function resume(
     place,
     question,
     ...(head.session === undefined ? {} : { session: head.session }),
-    ...(head.model === undefined ? {} : { model: head.model }),
-    ...(head.effort === undefined ? {} : { effort: head.effort }),
-    ...(head.program === undefined ? {} : { program: head.program }),
+    ...tuningOf(head),
   });
   addMessage(home, id, { who: 'operator', text: hide(question), when: new Date().toISOString() });
   return { id, head, run };

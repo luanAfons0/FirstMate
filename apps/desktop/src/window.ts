@@ -54,13 +54,10 @@
  * cookie.
  */
 import { fileURLToPath } from 'node:url';
-import { keepMateWidth } from '@firstmate/core/commands';
-import { readSettings } from '@firstmate/core/settings';
 import { titleBarColours, windowBackground } from '@firstmate/core/theme';
 import {
   app,
   BaseWindow,
-  clipboard,
   ipcMain,
   nativeTheme,
   shell,
@@ -84,9 +81,8 @@ import {
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
 import { askForPlugins, askToRestart, stoppedCount, type Plugins } from './host-lists.ts';
 import { markPath } from './marks.ts';
-import { holdMate, type Recent } from './mate.ts';
+import { holdMatePanel, isPanelAsk } from './mate.ts';
 import { BOX_HEIGHT, boxPage } from './mate-box.ts';
-import { fitWidth, MATE_WIDTH, mateBounds, matePage } from './mate-view.ts';
 import { APP_ID } from './notices.ts';
 import {
   dataAddress,
@@ -100,7 +96,7 @@ import {
   type Here,
   type Written,
 } from './pages.ts';
-import { change, readShown, sentenceOf, type ChangeNeeds, type Outcome } from './settings.ts';
+import { change, readShown, type ChangeNeeds, type Outcome } from './settings.ts';
 import { settingsPage } from './settings-view.ts';
 
 /** The window's title. The strip names what is open inside it. */
@@ -208,9 +204,7 @@ export function openWindow(
   let quitting = false;
   app.on('before-quit', () => {
     quitting = true;
-    // Every answer that still arrives ends with the App: no Agent runs on.
-    mate.stopAll();
-    keepWidth();
+    mate.quit();
   });
   window.on('close', (event) => {
     if (quitting) return;
@@ -244,35 +238,6 @@ export function openWindow(
   /** What to show when the Host is ready. */
   let waiting = '/';
 
-  /** Whether the Mate panel is open, at the right of the window. */
-  let mateOpen = false;
-  /** Whether the open Mate panel has the whole width below the strip. */
-  let mateExpanded = false;
-  /** How wide the operator left the Mate panel, kept in the Mate settings across restarts. */
-  let mateWidth = keptWidth(settingsNeeds.home);
-  /** The wait before a new width is kept, so that one drag writes the settings once. */
-  let widthWait: NodeJS.Timeout | undefined;
-  /** Keep the Mate panel's width in the settings file now, if a new one waits. */
-  const keepWidth = (): void => {
-    if (widthWait === undefined) return;
-    clearTimeout(widthWait);
-    widthWait = undefined;
-    try {
-      keepMateWidth(settingsNeeds.home, mateWidth);
-    } catch {
-      // A settings file that cannot be read is said by the Settings View and
-      // by every command; the width waits until it is mended.
-    }
-  };
-  /** How many times the Mate panel has opened, so its page knows a new opening. */
-  let mateOpened = 0;
-  /**
-   * Recents, while the panel shows them: every Conversation as it was read
-   * when Recents opened or last changed, so an answer that arrives does not
-   * read every Conversation again for each of its parts.
-   */
-  let recents: { readonly rows: readonly Recent[]; readonly fault?: string } | undefined;
-
   // The order of the children is the order they are drawn in: the strip, the
   // content views, the Settings View, the Mate panel beside them, the Mate
   // box above the Index Page's view, and the switcher on top of them all.
@@ -296,28 +261,25 @@ export function openWindow(
   const mateShown = ownPage(matePanel);
   const boxShown = ownPage(mateBox);
 
-  /** The Mate panel's page, as it is now, sent only while the panel is open. */
-  const showMate = (): void => {
-    if (!mateOpen) return;
-    mateShown.show(
-      matePage({
-        shown: mate.shown(),
-        opened: mateOpened,
-        expanded: mateExpanded,
-        ...(recents === undefined ? {} : { recents: { ...recents, now: new Date() } }),
-      }),
-    );
-  };
-  /** Every Conversation, read now, with what went wrong with the last thing asked of Recents. */
-  const readRecents = (fault?: string): NonNullable<typeof recents> => {
-    try {
-      return { rows: mate.recents(), ...(fault === undefined ? {} : { fault }) };
-    } catch (unread: unknown) {
-      return { rows: [], fault: fault ?? sentenceOf(unread) };
-    }
-  };
-  /** The Mate, whose every change the panel shows: a question, a part of an answer, an end. */
-  const mate = holdMate(settingsNeeds.home, showMate);
+  /**
+   * The Mate panel, at the right of the window. It holds its own state and
+   * acts on its own asks; the window places it, and gives the focus to it
+   * when it opens, or back to what is shown when it closes.
+   */
+  const mate = holdMatePanel({
+    home: settingsNeeds.home,
+    show: (page) => mateShown.show(page),
+    redraw: () => redraw(),
+    layout: () => layout(),
+    turned: (open) => {
+      switching = false;
+      redraw();
+      if (open) matePanel.webContents.focus();
+      else (setting ? settings : contents.get(current))?.webContents.focus();
+    },
+    toBrowser: (address) => toBrowser(address),
+  });
+
   /** How many times the switcher has opened, so its page knows a new opening. */
   let opened = 0;
   /** Whether the switcher last opened from the keyboard, so it shows with no fade. */
@@ -330,17 +292,13 @@ export function openWindow(
     return current === INDEX ? { kind: 'list' } : { kind: 'plugin', name: current };
   };
 
-  /** Where the open Mate panel leaves the shown view, in a window this wide. */
-  const mateIn = (width: number) =>
-    mateBounds(width, { open: mateOpen, expanded: mateExpanded, width: mateWidth });
-
   /**
    * Whether the Mate box shows: only above the Index Page, once it has a view,
    * and never while the Settings View or the expanded panel hides it.
    */
   const boxShows = (): boolean => {
     const [width = 0] = window.getContentSize();
-    return mateIn(width).page > 0 && !setting && current === INDEX && contents.has(INDEX);
+    return mate.bounds(width).page > 0 && !setting && current === INDEX && contents.has(INDEX);
   };
 
   const layout = (): void => {
@@ -349,7 +307,7 @@ export function openWindow(
     // The open Mate panel narrows the shown view, as a narrower window would,
     // and covers none of it (ADR-0008). Expanded, it hides the shown view,
     // which keeps its width and stays loaded behind it.
-    const sides = mateIn(width);
+    const sides = mate.bounds(width);
     const pageShows = sides.page > 0;
     const pageWidth = pageShows ? sides.page : width;
     const below = { x: 0, y: STRIP_HEIGHT, width: pageWidth, height: tall };
@@ -375,7 +333,7 @@ export function openWindow(
       width: sides.panel,
       height: tall,
     });
-    matePanel.setVisible(mateOpen);
+    matePanel.setVisible(mate.isOpen());
     // The view is the panel and the clear room round it for its shadow.
     const room = SWITCHER_ROOM;
     const panel = {
@@ -405,10 +363,10 @@ export function openWindow(
         fault,
         starting: host === undefined,
         stopped: stoppedCount(plugins),
-        mate: mateOpen,
+        mate: mate.isOpen(),
       }),
     );
-    showMate();
+    mate.show();
     // The box loads the first time it is shown, and says who answers now.
     if (boxShows()) boxShown.show(boxPage(mate.ahead()));
     // The switcher and the Settings View load the first time they are shown.
@@ -571,7 +529,7 @@ export function openWindow(
     switching = false;
     // A page the operator asked for is shown: an expanded Mate panel gives
     // it back its side, and stays open beside it with its Conversation.
-    mateExpanded = false;
+    mate.narrow();
     fault = undefined;
     redraw();
     view.webContents.focus();
@@ -667,74 +625,13 @@ export function openWindow(
       fault = undefined;
       outcome = undefined;
       // The Settings View shows beside an open Mate panel, as a page does.
-      if (setting) mateExpanded = false;
+      if (setting) mate.narrow();
       redraw();
       if (setting) settings.webContents.focus();
     } else if (asked.kind === 'mate') {
-      toggleMate();
-    } else if (asked.kind === 'mate-close') {
-      if (mateOpen) toggleMate();
-    } else if (asked.kind === 'mate-new') {
-      recents = undefined;
-      mate.fresh();
-      mateOpened += 1;
-      showMate();
-    } else if (asked.kind === 'mate-recents') {
-      recents = readRecents();
-      showMate();
-    } else if (asked.kind === 'mate-back') {
-      recents = undefined;
-      showMate();
-    } else if (asked.kind === 'mate-open') {
-      // Opened, it shows in place of Recents; one that cannot be read stays
-      // in Recents, which says why.
-      recents = undefined;
-      try {
-        mate.open(asked.id);
-        mateOpened += 1;
-      } catch (fault: unknown) {
-        recents = readRecents(sentenceOf(fault));
-      }
-      showMate();
-    } else if (asked.kind === 'mate-delete') {
-      // FirstMate's file of the Conversation alone; the Agent keeps its own
-      // session (ADR-0031).
-      try {
-        mate.forget(asked.id);
-        recents = readRecents();
-      } catch (fault: unknown) {
-        recents = readRecents(sentenceOf(fault));
-      }
-      showMate();
-    } else if (asked.kind === 'mate-expand') {
-      mateExpanded = !mateExpanded;
-      redraw();
-    } else if (asked.kind === 'mate-width') {
-      mateWidth = fitWidth(asked.width);
-      layout();
-      clearTimeout(widthWait);
-      widthWait = setTimeout(keepWidth, WIDTH_WAIT_MS);
-    } else if (asked.kind === 'mate-ask') {
-      // The box starts a new Conversation in the panel, which opens on it.
-      recents = undefined;
-      mate.fresh();
-      mate.send(asked.text);
-      mateOpened += 1;
-      if (!mateOpen) {
-        toggleMate();
-      } else {
-        redraw();
-        matePanel.webContents.focus();
-      }
-    } else if (asked.kind === 'mate-send') {
-      mate.send(asked.text);
-    } else if (asked.kind === 'mate-stop') {
-      mate.stop();
-    } else if (asked.kind === 'mate-copy') {
-      const text = mate.textOf(asked.message);
-      if (text !== undefined) clipboard.writeText(text);
-    } else if (asked.kind === 'mate-link') {
-      toBrowser(asked.address);
+      mate.toggle();
+    } else if (isPanelAsk(asked)) {
+      mate.act(asked);
     } else if (SETTING.has(asked.kind) && !busy) {
       // A setting. One change at a time: a wsl Place can take a while to add.
       busy = true;
@@ -757,22 +654,6 @@ export function openWindow(
   };
 
   /**
-   * Open the Mate panel, or close it when it is open. Open, it takes the
-   * focus, so the operator can type at once; closed, it gives the focus back
-   * to what is shown.
-   */
-  const toggleMate = (): void => {
-    mateOpen = !mateOpen;
-    switching = false;
-    // The panel opens again on its Conversation, never on Recents.
-    recents = undefined;
-    if (mateOpen) mateOpened += 1;
-    redraw();
-    if (mateOpen) matePanel.webContents.focus();
-    else (setting ? settings : contents.get(current))?.webContents.focus();
-  };
-
-  /**
    * Hold Ctrl+Shift+K in one of the window's views: it opens and closes the
    * Mate panel whatever has the focus, a Plugin Page too. The window reads
    * the key before the page does and keeps that one key from it; it injects
@@ -784,7 +665,7 @@ export function openWindow(
     page.on('before-input-event', (event, input) => {
       if (!isMateKey(input)) return;
       event.preventDefault();
-      toggleMate();
+      mate.toggle();
     });
   };
   for (const view of [strip, settings, matePanel, mateBox, switcher]) {
@@ -886,21 +767,6 @@ export function openWindow(
       redraw();
     },
   };
-}
-
-/** How long the Mate panel's width waits after the last drag before it is kept. */
-const WIDTH_WAIT_MS = 500;
-
-/**
- * The Mate panel's width the settings file keeps, held to what the panel can
- * be; the first width when none is kept, or the settings cannot be read.
- */
-function keptWidth(home: string): number {
-  try {
-    return fitWidth(readSettings(home).mate?.width ?? MATE_WIDTH);
-  } catch {
-    return MATE_WIDTH;
-  }
 }
 
 /**

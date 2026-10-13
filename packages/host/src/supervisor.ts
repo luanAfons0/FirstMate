@@ -26,6 +26,7 @@ import { constants } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { killTree } from '@firstmate/core/programs';
 import { WSL_EXE } from '@firstmate/core/wsl';
 import { webRoot } from './static-files.ts';
 import { speak, type Answering, type PluginServer } from './mcp.ts';
@@ -324,17 +325,7 @@ async function end(run: Run): Promise<void> {
 
 /** Kill a process that would not end, and on Windows every process under it. */
 function killHard(child: ChildProcess | null): void {
-  if (child === null) return;
-  if (!ON_WINDOWS || child.pid === undefined) {
-    child.kill('SIGKILL');
-    return;
-  }
-  const taskkill = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
-  // taskkill missing, or the tree already gone: the process itself still goes.
-  taskkill.once('error', () => child.kill('SIGKILL'));
-  taskkill.once('exit', (code) => {
-    if (code !== 0) child.kill('SIGKILL');
-  });
+  if (child !== null) killTree(child, 'SIGKILL');
 }
 
 /** Whether a run's process ends within the grace the Host gives it. */

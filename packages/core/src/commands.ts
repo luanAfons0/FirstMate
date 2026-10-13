@@ -10,6 +10,7 @@
  */
 import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, posix } from 'node:path';
+import type { MateWords } from './agents.ts';
 import type { Config } from './config.ts';
 import { fetchPlugin, isGitUrl, type GitWords } from './fetch-plugin.ts';
 import { readPlugins } from './plugin-places.ts';
@@ -31,6 +32,7 @@ import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './reg
 import {
   checkMate,
   inPluginOrder,
+  mateOf,
   readSettings,
   writeSettings,
   type MateSettings,
@@ -571,15 +573,6 @@ export function withoutInOrder(settings: Settings, name: string): Settings {
   return { ...settings, order: order.length === 0 ? undefined : order };
 }
 
-/** The Mate settings as the Settings View asks for them: each a word, empty for the default. */
-type MateChange = {
-  readonly agent: string;
-  readonly model: string;
-  readonly effort: string;
-  readonly place: string;
-  readonly program: string;
-};
-
 /**
  * Keep the Mate settings the Settings View asks for, and give back what was
  * written. An empty field is left out, so the Agent's own default holds. They
@@ -588,7 +581,7 @@ type MateChange = {
  * are written back as they were. A change applies to the next Conversation:
  * an older one keeps what its head names (ADR-0012, ADR-0031).
  */
-export function setMate(home: string, change: MateChange): MateSettings {
+export function setMate(home: string, change: MateWords): MateSettings {
   const given: Record<string, string> = {};
   for (const [field, value] of Object.entries(change)) {
     const word = value.trim();
@@ -608,6 +601,6 @@ export function setMate(home: string, change: MateChange): MateSettings {
  */
 export function keepMateWidth(home: string, width: number): void {
   const settings = readSettings(home);
-  const mate = checkMate(home, { ...(settings.mate ?? { agent: 'claude' }), width });
+  const mate = checkMate(home, { ...mateOf(settings), width });
   writeSettings(home, { ...settings, mate });
 }

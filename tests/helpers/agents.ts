@@ -31,7 +31,10 @@ type Step =
   | { readonly waitFor: string }
   /** Write the `result` line of an answer that is done: `turn.completed` for Codex. */
   | { readonly result: 'success' }
-  /** Codex alone: write an `error` line and a `turn.failed` line with this message, and end with 1. */
+  /**
+   * Codex alone: write an `error` line and a `turn.failed` line with this
+   * message, and end with 1.
+   */
   | { readonly fail: string }
   /** Write this on standard error, and end with this code, with no `result` line. */
   | { readonly die: number; readonly stderr: string }

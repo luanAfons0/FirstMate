@@ -9,8 +9,8 @@
  * writes no setting, never has to make it, and its Shelf is the one setting
  * 1.x kept, `shelf`, at the top of the settings file (ADR-0012).
  */
-import { accessSync, constants, statSync } from 'node:fs';
-import { delimiter, join, posix } from 'node:path';
+import { join, posix } from 'node:path';
+import { findOnPath } from './programs.ts';
 import { isPluginName } from './registry.ts';
 import { isInsideWsl, WSL_EXE } from './wsl.ts';
 
@@ -32,22 +32,7 @@ export const PLACE_KINDS = ['local', 'wsl'] as const;
  */
 export function canHoldWslPlace(env: NodeJS.ProcessEnv = process.env): boolean {
   if (process.platform === 'win32') return true;
-  return !isInsideWsl(env) && isOnPath(WSL_EXE, env);
-}
-
-/** Whether a program of this name is on PATH, as a file that may be run. */
-function isOnPath(program: string, env: NodeJS.ProcessEnv): boolean {
-  return (env['PATH'] ?? '')
-    .split(delimiter)
-    .filter((directory) => directory !== '')
-    .some((directory) => {
-      try {
-        accessSync(join(directory, program), constants.X_OK);
-        return statSync(join(directory, program)).isFile();
-      } catch {
-        return false;
-      }
-    });
+  return !isInsideWsl(env) && findOnPath([WSL_EXE], env) !== undefined;
 }
 
 /** One kind of Place. */
