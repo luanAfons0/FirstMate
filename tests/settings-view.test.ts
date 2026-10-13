@@ -29,3 +29,22 @@ test('the Host serves no Settings View, and no address on it writes a setting', 
 
   await assert.rejects(access(join(host.home, 'settings.json')), 'nothing wrote a setting');
 });
+
+test('no address on the Host writes the Mate settings, which the Settings View changes', async (t) => {
+  const host = await bootHost(t, [{ name: 'both', directory: 'both' }]);
+  const program = '{"mate":{"agent":"codex","program":"/tmp/not-my-agent"}}';
+
+  for (const path of ['/settings/mate', '/mate/settings', '/mate.json']) {
+    for (const method of ['GET', 'POST', 'PUT']) {
+      const answer = await host.fetch(path, {
+        method,
+        ...(method === 'GET' ? {} : { body: program }),
+      });
+      assert.equal(answer.status, 404, `${method} ${path}`);
+    }
+  }
+
+  // A Plugin Page shares the Host's origin, so an address that set the
+  // program would choose what runs on the operator's account (ADR-0012).
+  await assert.rejects(access(join(host.home, 'settings.json')), 'nothing wrote a setting');
+});

@@ -1,7 +1,8 @@
 /**
  * What the writing commands change, apart from how they are typed and
  * printed: add or remove a Place, move a Shelf, add, install or update a
- * Plugin, give a Grant, bind a Shortcut, move a Plugin in the Plugin Order.
+ * Plugin, give a Grant, bind a Shortcut, move a Plugin in the Plugin Order,
+ * set the Mate.
  *
  * The terminal (`cli.ts`) and `setup` both call these, so a refusal has the
  * same words in both places. Each one either does its whole change or throws
@@ -27,7 +28,14 @@ import {
   type Place,
 } from './places.ts';
 import { isPluginName, readRegistry, writeRegistry, type PluginRow } from './registry.ts';
-import { inPluginOrder, readSettings, writeSettings, type Settings } from './settings.ts';
+import {
+  checkMate,
+  inPluginOrder,
+  readSettings,
+  writeSettings,
+  type MateSettings,
+  type Settings,
+} from './settings.ts';
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 import { gitHere, moveForward, type Moved } from './update-plugin.ts';
@@ -561,4 +569,32 @@ export function movePlugin(home: string, name: string, typed: string): string[] 
 export function withoutInOrder(settings: Settings, name: string): Settings {
   const order = (settings.order ?? []).filter((other) => other !== name);
   return { ...settings, order: order.length === 0 ? undefined : order };
+}
+
+/** The Mate settings as the Settings View asks for them: each a word, empty for the default. */
+type MateChange = {
+  readonly agent: string;
+  readonly model: string;
+  readonly effort: string;
+  readonly place: string;
+  readonly program: string;
+};
+
+/**
+ * Keep the Mate settings the Settings View asks for, and give back what was
+ * written. An empty field is left out, so the Agent's own default holds. They
+ * are checked as the settings file is read, so a refusal says what a terminal
+ * would say once the file held them, and names its field. The other settings
+ * are written back as they were. A change applies to the next Conversation:
+ * an older one keeps what its head names (ADR-0012, ADR-0031).
+ */
+export function setMate(home: string, change: MateChange): MateSettings {
+  const given: Record<string, string> = {};
+  for (const [field, value] of Object.entries(change)) {
+    const word = value.trim();
+    if (word !== '' || field === 'agent') given[field] = word;
+  }
+  const mate = checkMate(home, given);
+  writeSettings(home, { ...readSettings(home), mate });
+  return mate;
 }

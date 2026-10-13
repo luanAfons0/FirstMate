@@ -10,7 +10,9 @@
  * ADR-0018).
  *
  * It shows the Places with their Shelves, the Plugin Order, start at logon,
- * the Shortcuts and the App's version. Plugins and Grants stay in a terminal
+ * the Shortcuts, the Mate settings and the App's version. The Mate settings
+ * change through `core`'s `setMate`, checked as the settings file is read, and
+ * apply to the next Conversation alone (ADR-0012, ADR-0031). Plugins and Grants stay in a terminal
  * and the Index Page. When `core` refuses what the operator typed, the
  * outcome names the one field it is about, so the page can mark it.
  *
@@ -21,12 +23,14 @@
  * page (ADR-0016, as ADR-0026 amends it).
  */
 import { app, dialog, type BaseWindow } from 'electron';
+import { AGENT_NAMES } from '@firstmate/core/agent-run';
 import {
   addPlace,
   listPlaces,
   movePlugin,
   moveShelf,
   removePlace,
+  setMate,
   shelfOf,
 } from '@firstmate/core/commands';
 import { readConfig } from '@firstmate/core/config';
@@ -62,6 +66,16 @@ export type ShortcutShown = {
   readonly path: string;
 };
 
+/** The Mate settings, as the Settings View shows them: each a word, empty for the default. */
+export type MateSet = {
+  readonly agent: string;
+  readonly model: string;
+  readonly effort: string;
+  /** The Place the Agent runs in: the default Place when none is chosen. */
+  readonly place: string;
+  readonly program: string;
+};
+
 /** Everything the Settings View says. */
 export type SettingsShown = {
   /** The Places and the Shortcuts, or the sentence that says why they cannot be read. */
@@ -70,6 +84,7 @@ export type SettingsShown = {
         readonly kind: 'read';
         readonly places: readonly PlaceShown[];
         readonly shortcuts: readonly ShortcutShown[];
+        readonly mate: MateSet;
       }
     | { readonly kind: 'unread'; readonly why: string };
   /** Whether the App starts at logon. */
@@ -82,6 +97,11 @@ export type SettingsShown = {
   readonly outcome?: Outcome;
   /** Whether a change is still being made, such as a distribution being asked. */
   readonly busy: boolean;
+  /**
+   * The section the page goes to, and how many times it was asked, so the
+   * page goes there once each time: the Mate panel's gear asks for `mate`.
+   */
+  readonly go?: { readonly section: string; readonly count: number };
 };
 
 /** What became of one change: done, or refused, in one sentence. */
@@ -95,7 +115,14 @@ export type Outcome = {
 /** One field of the Settings View: one of Add a Place, or one Place's Shelf. */
 export type Field =
   | { readonly form: 'place-add'; readonly name: 'name' | 'kind' | 'distribution' }
-  | { readonly form: 'shelf'; readonly place: string };
+  | { readonly form: 'shelf'; readonly place: string }
+  | { readonly form: 'mate'; readonly name: MateField };
+
+/** One field of the Mate section. */
+type MateField = keyof MateSet;
+
+/** The fields of the Mate section, in the order the page sends them. */
+const MATE_FIELDS: readonly MateField[] = ['agent', 'model', 'effort', 'place', 'program'];
 
 /** Read what the Settings View shows, now. It never throws. */
 export function readShown(home: string): Pick<SettingsShown, 'saved' | 'logon' | 'version'> {
@@ -114,12 +141,25 @@ function readSaved(home: string): SettingsShown['saved'] {
       always: place.name === DEFAULT_PLACE,
       plugins: rows.filter((row) => row.place === place.name).map((row) => row.name),
     }));
-    const shortcuts = (readSettings(home).shortcuts ?? []).map((shortcut) => ({
+    const settings = readSettings(home);
+    const shortcuts = (settings.shortcuts ?? []).map((shortcut) => ({
       keys: shortcut.keys,
       plugin: shortcut.plugin,
       path: shortcut.path,
     }));
-    return { kind: 'read', places, shortcuts };
+    const mate = settings.mate ?? { agent: 'claude' };
+    return {
+      kind: 'read',
+      places,
+      shortcuts,
+      mate: {
+        agent: mate.agent,
+        model: mate.model ?? '',
+        effort: mate.effort ?? '',
+        place: mate.place === undefined || mate.place === '' ? DEFAULT_PLACE : mate.place,
+        program: mate.program ?? '',
+      },
+    };
   } catch (fault: unknown) {
     return { kind: 'unread', why: sentenceOf(fault) };
   }
@@ -168,6 +208,10 @@ function fieldOf(asked: Asked, about: string | undefined): Field | undefined {
   if (asked.kind === 'shelf' || asked.kind === 'shelf-choose') {
     return { form: 'shelf', place: asked.place };
   }
+  if (asked.kind === 'mate-set') {
+    const field = MATE_FIELDS.find((one) => one === about);
+    return field === undefined ? undefined : { form: 'mate', name: field };
+  }
   if (asked.kind !== 'place-add') return undefined;
   return about === 'name' || about === 'kind' || about === 'distribution'
     ? { form: 'place-add', name: about }
@@ -195,6 +239,15 @@ async function changed(asked: Asked, needs: ChangeNeeds): Promise<string | undef
   if (asked.kind === 'plugin-move') {
     const moved = movePlugin(home, asked.name, asked.position);
     return `${asked.name} is now number ${moved.indexOf(asked.name) + 1} in the Plugin Order.`;
+  }
+  if (asked.kind === 'mate-set') {
+    const { agent, model: typed, effort, place, program } = asked;
+    const mate = setMate(home, { agent, model: typed, effort, place, program });
+    const model = mate.model === undefined ? '' : ` with ${mate.model}`;
+    return (
+      `A new Conversation now runs ${AGENT_NAMES[mate.agent]}${model}. ` +
+      'Each older one keeps what it started with.'
+    );
   }
   if (asked.kind === 'shelf') return shelfMoved(asked.place, asked.directory, needs);
   if (asked.kind === 'shelf-choose') {

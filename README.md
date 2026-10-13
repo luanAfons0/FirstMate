@@ -582,7 +582,7 @@ The next message continues the same Conversation, and New Conversation starts
 another; an answer that still arrives in the last one goes on, and is kept. The
 panel stays open with its Conversation when you open another Plugin, and opens
 again on it, at the width you left, until the App quits. Its gear opens the
-Settings View, and the Mate's Conversations are the ones `firstmate ask` keeps.
+Mate section of the Settings View, and the Mate's Conversations are the ones `firstmate ask` keeps.
 
 While the window shows the Plugin list, a box that says "Ask the Mate" sits
 above it, and the list moves down to make room, so the box covers none of it.
@@ -607,7 +607,7 @@ The Host serves no part of the Mate, so no Plugin Page can type into it or
 read a Conversation.
 
 The Settings View has a side list of its sections, Places, Plugin Order, Start
-at logon, Shortcuts and Plugin Settings, and says the App's version under it. Places shows each Place with
+at logon, Shortcuts, Plugin Settings and Mate, and says the App's version under it. Places shows each Place with
 its kind and its Shelf. There you move a Place's Shelf: type a path, or choose
 a folder for a Place on this machine. You remove a Place that holds no Plugin;
 the Place of this machine is always there. On Windows, Add a Place opens in
@@ -632,6 +632,17 @@ settings shows them there; one that has none shows its page as usual. A Plugin
 with no Plugin Page says so, and has no button. Each Plugin keeps its own
 settings in its own directory, and the App never reads or writes them
 ([ADR-0029](docs/adr/0029-a-plugins-settings-are-at-settings-of-its-plugin-page.md)).
+
+Mate sets the [Mate settings](#ask-the-mate): the Agent, Claude or Codex; the
+model, where the Agent's known names are offered and any other name is
+taken, and empty is the Agent's own default; the effort, from the levels the
+chosen Agent knows, which change as soon as you choose another Agent, and
+empty for its default; the Place the Agent runs in; and the program, when the
+Agent is not on the `PATH` of its Place. Save keeps them under `mate` in
+`settings.json`, with the same check every command makes when it reads them,
+so a value refused there is refused in the sentence a terminal would show.
+A change applies to the next Conversation; every older one keeps what it
+started with. The Mate panel's gear opens the Settings View at this section.
 
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its

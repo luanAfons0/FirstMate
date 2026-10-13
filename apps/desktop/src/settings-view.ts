@@ -32,7 +32,15 @@
  * process opens `/p/<name>/#settings` in that Plugin's own view. The App
  * shows the button whether or not the Plugin has settings, and reads and
  * writes none of them (ADR-0029).
+ *
+ * The Mate section sets the Agent, the model, the effort, the Place and the
+ * program in one form, sent whole, every field in its place, an empty one
+ * too, because an empty model or effort is the Agent's own default. The model
+ * offers the chosen Agent's known names and takes any other; the effort lists
+ * the levels the chosen Agent knows, and follows the Agent as soon as it is
+ * chosen. The Mate panel's gear opens the Settings View at this section.
  */
+import { AGENT_NAMES, EFFORTS, isAgent, KNOWN_MODELS } from '@firstmate/core/agent-run';
 import { canHoldWslPlace } from '@firstmate/core/places';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { shortcutAddress } from '@firstmate/core/shortcut';
@@ -40,7 +48,7 @@ import { type IconName, icon } from '@firstmate/core/theme';
 import { logonAsk, placeRemoveAsk, pluginSettingsAsk, shelfChooseAsk, TYPED } from './ask.ts';
 import { escaped, written, type Written } from './pages.ts';
 import type { PluginSeen, Plugins } from './host-lists.ts';
-import type { Field, PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
+import type { Field, MateSet, PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
 
 /** One section of the Settings View, as the side list names it. */
 type Section = { readonly id: string; readonly icon: IconName; readonly words: string };
@@ -52,6 +60,7 @@ const SECTIONS: readonly Section[] = [
   { id: 'logon', icon: 'power', words: 'Start at logon' },
   { id: 'shortcuts', icon: 'keyboard', words: 'Shortcuts' },
   { id: 'plugin-settings', icon: 'puzzle-piece', words: 'Plugin Settings' },
+  { id: 'mate', icon: 'chat-circle-dots', words: 'Mate' },
 ];
 
 /** The icons any body of the Settings View may draw. */
@@ -82,11 +91,14 @@ ${orderSection(shown.plugins, shown.busy)}
 ${logonSection(shown.logon, shown.busy)}
 ${shortcutsSection(shown.saved.shortcuts)}
 ${pluginSettingsSection(shown.plugins)}
+${mateSection(shown.saved.mate, shown.saved.places, shown)}
 <p class="foot">Plugins and Grants change from a terminal: <code>firstmate --help</code>.</p>`;
   return written(
     'Settings',
     styles(),
-    `<div class="settings">
+    `<div class="settings"${
+      shown.go === undefined ? '' : ` data-go="${shown.go.count}:${escaped(shown.go.section)}"`
+    }>
 <nav class="side" aria-label="Settings">
 <h1>Settings</h1>
 ${read ? SECTIONS.map(sideLink).join('\n') : ''}
@@ -135,7 +147,8 @@ function mark(shown: SettingsShown, field: Field): { readonly on: string; readon
 
 /** One field, as one string, so two can be compared. */
 function keyOf(field: Field): string {
-  return field.form === 'shelf' ? `shelf/${field.place}` : `place-add/${field.name}`;
+  if (field.form === 'shelf') return `shelf/${field.place}`;
+  return `${field.form}/${field.name}`;
 }
 
 function placesSection(places: readonly PlaceShown[], shown: SettingsShown): string {
@@ -327,6 +340,67 @@ aria-label="Open the settings of ${name}">Open settings</button>`
 <span class="state ${plugin.state}">${state}</span>${end}</div>`;
 }
 
+/** Every Agent the Mate can run, in the order the Agent list shows them. */
+const AGENTS = Object.keys(AGENT_NAMES).filter(isAgent);
+
+/**
+ * The Mate section: one form with the Agent, the model, the effort, the Place
+ * and the program. An effort list and a list of known models are written
+ * for each Agent; the page's script shows the chosen Agent's.
+ */
+function mateSection(mate: MateSet, places: readonly PlaceShown[], shown: SettingsShown): string {
+  const busy = shown.busy;
+  const field = (name: keyof MateSet) => mark(shown, { form: 'mate', name });
+  const agent = field('agent');
+  const model = field('model');
+  const effort = field('effort');
+  const place = field('place');
+  const program = field('program');
+  const chosen = isAgent(mate.agent) ? mate.agent : 'claude';
+  const option = (value: string, words: string, on: boolean) =>
+    `<option value="${escaped(value)}"${on ? ' selected' : ''}>${escaped(words)}</option>`;
+  const efforts = AGENTS.map(
+    (one) => `<label class="field for-agent" data-agent="${one}"><span>Effort</span>\
+<select class="input" name="effort"${effort.on}${disabled(busy)}>
+${option('', `${AGENT_NAMES[one]}'s default`, one !== chosen || mate.effort === '')}
+${EFFORTS[one].map((level) => option(level, level, one === chosen && mate.effort === level)).join('\n')}
+</select>${effort.under}</label>`,
+  ).join('\n');
+  const models = AGENTS.map(
+    (one) => `<datalist id="models-${one}">\
+${KNOWN_MODELS[one].map((name) => `<option value="${escaped(name)}"></option>`).join('')}\
+</datalist>`,
+  ).join('\n');
+  return `<section id="mate">
+<h2>Mate</h2>
+<p class="hint">The Mate runs your own Agent, with its own login. A change applies to the next
+Conversation; each older one keeps the Agent, model, effort and Place it started with.</p>
+<form class="group mateform" data-key="mate-form" data-typed="${TYPED.mateSet}" data-whole>
+<div class="cols2">
+<label class="field"><span>Agent</span><select class="input" name="agent"${agent.on}\
+${disabled(busy)}>
+${AGENTS.map((one) => option(one, AGENT_NAMES[one], one === chosen)).join('\n')}
+</select>${agent.under}</label>
+<label class="field"><span>Model</span><input class="input mono" name="model" \
+value="${escaped(mate.model)}" list="models-${chosen}" placeholder="The Agent's default" \
+autocomplete="off" spellcheck="false"${model.on}${disabled(busy)}>${model.under}</label>
+${efforts}
+<label class="field"><span>Place</span><select class="input" name="place"${place.on}\
+${disabled(busy)}>
+${places.map((one) => option(one.name, one.name, one.name === mate.place)).join('\n')}
+</select>${place.under}</label>
+</div>
+<label class="field"><span>Program</span><input class="input mono" name="program" \
+value="${escaped(mate.program)}" placeholder="Found on PATH" autocomplete="off" \
+spellcheck="false"${program.on}${disabled(busy)}>${program.under}\
+<span class="sub">The absolute path of the Agent's program, when it is not on the PATH of its \
+Place. In a wsl Place, a path inside the distribution.</span></label>
+${models}
+<div class="acts"><button class="btn primary"${disabled(busy)}>Save</button></div>
+</form>
+</section>`;
+}
+
 function disabled(busy: boolean): string {
   return busy ? ' disabled' : '';
 }
@@ -358,6 +432,16 @@ const showKind = () => {
   const kind = document.querySelector('form.addform select[name=kind]');
   const wsl = document.querySelector('form.addform .for-wsl');
   if (kind && wsl) wsl.hidden = kind.value !== 'wsl';
+};
+let gone;
+const showAgent = () => {
+  const agent = document.querySelector('form.mateform select[name=agent]');
+  if (!agent) return;
+  for (const label of document.querySelectorAll('form.mateform .for-agent')) {
+    label.hidden = label.dataset.agent !== agent.value;
+  }
+  document.querySelector('form.mateform input[name=model]')
+    ?.setAttribute('list', 'models-' + agent.value);
 };
 const showCurrent = () => {
   for (const link of document.querySelectorAll('.side a[data-to]')) {
@@ -406,11 +490,21 @@ whenShown(() => {
 });
 whenShown(showAdding);
 whenShown(showKind);
+whenShown(showAgent);
+whenShown(() => {
+  const go = document.querySelector('.settings')?.dataset.go;
+  if (go === undefined || go === gone) return;
+  gone = go;
+  current = go.slice(go.indexOf(':') + 1);
+  showCurrent();
+  document.getElementById(current)?.scrollIntoView({ block: 'start' });
+});
 whenShown(() => {
   if (current === '') current = document.querySelector('.side a[data-to]')?.dataset.to ?? '';
   showCurrent();
 });
 addEventListener('change', showKind);
+addEventListener('change', showAgent);
 addEventListener('click', (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const add = target?.closest('[data-add]');
@@ -481,7 +575,8 @@ addEventListener('submit', (event) => {
   const parts = [form.dataset.typed];
   if (form.dataset.place !== undefined) parts.push(form.dataset.place);
   for (const field of form.querySelectorAll('input, select')) {
-    if (field.closest('[hidden]') || field.value.trim() === '') continue;
+    if (field.closest('[hidden]')) continue;
+    if (field.value.trim() === '' && form.dataset.whole === undefined) continue;
     parts.push(field.value.trim());
   }
   firstmate.ask(parts.map((part, at) => at === 0 ? part : encodeURIComponent(part)).join('/'));
@@ -593,6 +688,10 @@ function styles(): string {
     display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 10px; align-items: start;
   }
   .addform .acts { display: flex; gap: 8px; justify-content: flex-end; }
+  .mateform { padding: 14px; display: grid; gap: 12px; }
+  .mateform .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .mateform .acts { display: flex; justify-content: flex-end; }
+  .field .sub { font-size: 12px; color: var(--faint); }
   .toggle-row { display: flex; align-items: center; gap: 16px; padding: 12px 14px; }
   .toggle-row .t b { display: block; font-weight: 500; color: var(--ink); }
   .toggle-row .t span { font-size: 12.5px; color: var(--muted); }
@@ -697,7 +796,7 @@ function styles(): string {
     .side h1 { margin: 0 8px 0 0; }
     .side .ver { margin: 0 0 0 auto; }
     .pane { padding: 16px; }
-    .addform .cols { grid-template-columns: 1fr; }
+    .addform .cols, .mateform .cols2 { grid-template-columns: 1fr; }
     .shortcut { grid-template-columns: 1fr; gap: 4px; }
   }`;
 }

@@ -25,6 +25,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { AGENT_NAMES, EFFORTS, isAgent, isModelName, type Agent } from './agent-run.ts';
 import { allPlaces, parsePlaces, type Place } from './places.ts';
+import { refuse } from './refusal.ts';
 import { isPluginName } from './registry.ts';
 import { isPluginPath, normalKeys, type Shortcut } from './shortcut.ts';
 
@@ -53,7 +54,7 @@ export type Settings = {
  * own effort, the default Place, and its program found on PATH. No `mate` key
  * at all is Claude with every default.
  */
-type MateSettings = {
+export type MateSettings = {
   readonly agent: Agent;
   /** The model the Agent answers with. */
   readonly model?: string;
@@ -160,54 +161,89 @@ const MATE_FIELDS: readonly (keyof MateSettings)[] = [
  * would run in no Place at all, and `place remove` keeps it from happening.
  */
 function parseMate(value: unknown, path: string, places: readonly Place[]): MateSettings {
+  const fault = mateFault(value, path, places);
+  if (fault !== undefined) throw new Error(fault.sentence);
+  return value as MateSettings;
+}
+
+/**
+ * Mate settings the Settings View asks to keep, checked as the settings file
+ * is read, so a value refused here is refused in the sentence a terminal sees
+ * once the file holds it. The refusal says which field it is about.
+ */
+export function checkMate(home: string, value: unknown): MateSettings {
+  const settings = readSettings(home);
+  const fault = mateFault(value, settingsPath(home), allPlaces(settings.places));
+  if (fault !== undefined) throw refuse('invalid', fault.sentence, { about: fault.field });
+  return value as MateSettings;
+}
+
+/** What is wrong with Mate settings, and which field it is in; nothing when they are whole. */
+function mateFault(
+  value: unknown,
+  path: string,
+  places: readonly Place[],
+): { readonly field?: string; readonly sentence: string } | undefined {
   const where = `The Mate settings in the settings at ${path}`;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${where} need to be a JSON object.`);
+    return { sentence: `${where} need to be a JSON object.` };
   }
   const record = value as Record<string, unknown>;
   for (const [field, given] of Object.entries(record)) {
     if (!MATE_FIELDS.includes(field as keyof MateSettings)) {
-      throw new Error(
-        `${where} may hold only ${MATE_FIELDS.map((one) => `"${one}"`).join(', ')}, ` +
+      return {
+        sentence:
+          `${where} may hold only ${MATE_FIELDS.map((one) => `"${one}"`).join(', ')}, ` +
           `and not ${JSON.stringify(field)}.`,
-      );
+      };
     }
     if (field !== 'agent' && typeof given !== 'string') {
-      throw new Error(`${where} need "${field}" to be a string, and not ${JSON.stringify(given)}.`);
+      return {
+        field,
+        sentence: `${where} need "${field}" to be a string, and not ${JSON.stringify(given)}.`,
+      };
     }
   }
   const { agent, model, effort, place, program } = record;
   if (!isAgent(agent)) {
-    throw new Error(
-      `${where} need "agent" to be "claude" or "codex", and not ${JSON.stringify(agent)}.`,
-    );
+    return {
+      field: 'agent',
+      sentence: `${where} need "agent" to be "claude" or "codex", and not ${JSON.stringify(agent)}.`,
+    };
   }
   if (typeof model === 'string' && model !== '' && !isModelName(model)) {
-    throw new Error(
-      `${where} need "model" to be a model name of letters, digits and . _ - : / @ [ ], ` +
+    return {
+      field: 'model',
+      sentence:
+        `${where} need "model" to be a model name of letters, digits and . _ - : / @ [ ], ` +
         `and not ${JSON.stringify(model)}.`,
-    );
+    };
   }
   const efforts = EFFORTS[agent];
   if (typeof effort === 'string' && effort !== '' && !efforts.includes(effort)) {
-    throw new Error(
-      `${where} need "effort" to be one of ${efforts.join(', ')} for ${AGENT_NAMES[agent]}, ` +
+    return {
+      field: 'effort',
+      sentence:
+        `${where} need "effort" to be one of ${efforts.join(', ')} for ${AGENT_NAMES[agent]}, ` +
         `or empty, and not ${JSON.stringify(effort)}.`,
-    );
+    };
   }
   if (typeof program === 'string' && program !== '' && !isAbsolute(program)) {
-    throw new Error(
-      `${where} need "program" to be an absolute path, and not ${JSON.stringify(program)}.`,
-    );
+    return {
+      field: 'program',
+      sentence: `${where} need "program" to be an absolute path, and not ${JSON.stringify(program)}.`,
+    };
   }
   const names = places.map((one) => one.name);
   if (typeof place === 'string' && place !== '' && !names.includes(place)) {
-    throw new Error(
-      `${where} need "place" to name a Place, one of ${names.join(', ')}, ` +
+    return {
+      field: 'place',
+      sentence:
+        `${where} need "place" to name a Place, one of ${names.join(', ')}, ` +
         `and not ${JSON.stringify(place)}.`,
-    );
+    };
   }
-  return record as MateSettings;
+  return undefined;
 }
 
 /**

@@ -230,8 +230,9 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/host-lists.ts what /plugins.json says, as the App reads it.
   src/tray.ts      the Tray: the marks, the menu, and start at logon.
   src/logon.ts     start at logon: the Run entry setup writes too.
-  src/settings.ts  what the Settings View shows, and the changes it asks for,
-                   made through core in the main process.
+  src/settings.ts  what the Settings View shows, the Mate settings too, and
+                   the changes it asks for, made through core in the main
+                   process.
   src/settings-view.ts the Settings View, as a page the App writes.
   src/mate.ts      the Mate panel's Conversation, and the run of the Agent
                    that answers it, held in the main process.
