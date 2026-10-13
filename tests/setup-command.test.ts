@@ -166,7 +166,7 @@ test(
     const home = await makeHome(t);
     const wsl = await debian(t, home);
 
-    const run = await setupIn(t, home, answers('', '1, 3', ''), { ...env, ...wsl.env });
+    const run = await setupIn(t, home, answers('', '1, 3', '2', ''), { ...env, ...wsl.env });
 
     assert.equal(run.code, 0, run.stderr);
     assert.match(run.stdout, / 1\. worklog +keeps what you work on/);
@@ -195,12 +195,12 @@ test(
 test('an Official Plugin with no Place to run in is not fetched, and setup says why', async (t) => {
   const home = await makeHome(t);
 
-  const run = await setupIn(t, home, answers('', '1', ''));
+  const run = await setupIn(t, home, answers('', '3', ''));
 
   assert.equal(run.code, 1, 'a step failed, and the exit code says so');
   assert.match(
     run.stderr,
-    /worklog runs in a wsl Place, and there is none\. Add one, then run setup again\./,
+    /nexus runs in a wsl Place, and there is none\. Add one, then run setup again\./,
   );
   assert.deepEqual(await registry(home), []);
 });
@@ -241,7 +241,7 @@ test(
     const home = await makeHome(t);
     const wsl = await debian(t, home);
 
-    const run = await setupIn(t, home, answers('', '1 2 3', ''), { ...env, ...wsl.env });
+    const run = await setupIn(t, home, answers('', '1 2 3', '2', '2', ''), { ...env, ...wsl.env });
 
     assert.equal(run.code, 1, 'a step failed, and the exit code says so');
     assert.match(run.stderr, /could not install scheduler: git could not clone/);
@@ -267,7 +267,10 @@ test(
     await firstmate(home, ['add', 'mine', mine]);
 
     // Install scheduler and worklog, then let scheduler call mine.
-    const run = await setupIn(t, home, answers('', '1 2', '1', ''), { ...env, ...wsl.env });
+    const run = await setupIn(t, home, answers('', '1 2', '2', '2', '1', ''), {
+      ...env,
+      ...wsl.env,
+    });
 
     assert.equal(run.code, 0, run.stderr);
     assert.match(run.stdout, /The Plugins scheduler may call:\n {2} 1\. mine\n {2} 2\. worklog\n/);
