@@ -30,6 +30,11 @@ const AGENTS = ['claude'] as const;
 /** One Agent the Mate can run: the program on the operator's own account. */
 export type Agent = (typeof AGENTS)[number];
 
+/** Whether a value names an Agent the Mate can run. */
+export function isAgent(value: unknown): value is Agent {
+  return AGENTS.some((agent) => agent === value);
+}
+
 /** The name each Agent is known by in a sentence the operator reads. */
 const AGENT_NAMES: Readonly<Record<Agent, string>> = { claude: 'Claude' };
 
@@ -40,6 +45,8 @@ export type AgentRequest = {
   readonly place: Place;
   /** The question, sent on standard input. */
   readonly question: string;
+  /** The Agent's own session to resume, or nothing to start a new one. */
+  readonly session?: string;
 };
 
 /** What the Agent says while it runs. A run ends with exactly one of the last three. */
@@ -77,15 +84,16 @@ export function runAgent(request: AgentRequest): AgentRun {
         `Install ${AGENT_NAMES[request.agent]}, or put ${request.agent} on the PATH.`,
     );
   }
-  const session = randomUUID();
+  const session = request.session ?? randomUUID();
+  const which = request.session === undefined ? '--session-id' : '--resume';
   // Claude's own non-interactive mode, with no --permission-mode: it approves
   // no tool, so it edits no file and runs no command while nobody is asked.
-  const argv = ['-p', '--output-format', 'stream-json', '--verbose', '--session-id', session];
+  const argv = ['-p', '--output-format', 'stream-json', '--verbose', which, session];
   const child = start(program, argv, homedir());
   child.stdin?.end(request.question);
   let stopped = false;
   return {
-    events: readClaude(child, session, () => stopped),
+    events: readClaude(child, session, request.place.name, () => stopped),
     stop: () => {
       stopped = true;
       killTree(child);
@@ -195,20 +203,26 @@ function ending(child: ChildProcess): Promise<Ending> {
 /**
  * Claude's JSON lines, read as events. Each text block of an `assistant` line
  * is a part of the answer. The `result` line says whether the answer is
- * whole; a process that ends with none failed, mid-answer or before it.
+ * whole; a process that ends with none failed, mid-answer or before it. The
+ * session is the one Claude names, when it names one, so a resume that gives
+ * a new session still leaves the Conversation on the one Claude holds.
  */
 async function* readClaude(
   child: ChildProcess,
-  session: string,
+  asked: string,
+  place: string,
   wasStopped: () => boolean,
 ): AsyncGenerator<AgentEvent> {
   const ended = ending(child);
+  let session = asked;
   let blocks = 0;
   let result: Record<string, unknown> | undefined;
   if (child.stdout !== null) {
     for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
       const event = parseLine(line);
-      if (event?.['type'] === 'assistant') {
+      if (event?.['type'] === 'system' && typeof event['session_id'] === 'string') {
+        session = event['session_id'];
+      } else if (event?.['type'] === 'assistant') {
         for (const text of textBlocks(event['message'])) {
           yield { kind: 'text', text: blocks === 0 ? text : `${BETWEEN_BLOCKS}${text}` };
           blocks += 1;
@@ -224,7 +238,7 @@ async function* readClaude(
   } else if (result !== undefined && result['is_error'] !== true && code === 0) {
     yield { kind: 'done', session };
   } else {
-    yield { kind: 'failed', sentence: claudeFailed(result, code, said), session };
+    yield { kind: 'failed', sentence: claudeFailed(result, code, said, place), session };
   }
 }
 
@@ -252,11 +266,19 @@ function textBlocks(message: unknown): string[] {
   });
 }
 
+/**
+ * What Claude says, on stderr and in its `result` line, when it holds no
+ * session of the ID it was asked to resume: its files are gone, or it is
+ * another account's.
+ */
+const CLAUDE_NO_SESSION = /^No conversation found with session ID/;
+
 /** The one sentence that says why Claude's answer ended early. */
 function claudeFailed(
   result: Record<string, unknown> | undefined,
   code: number | null,
   said: string,
+  place: string,
 ): string {
   const errors = result?.['errors'];
   const reason =
@@ -265,5 +287,11 @@ function claudeFailed(
       ? result['result']
       : undefined) ??
     (said !== '' ? said : `it ended with code ${String(code)}`);
+  if (CLAUDE_NO_SESSION.test(reason)) {
+    return (
+      `Claude in the ${place} Place cannot resume the session of this Conversation, ` +
+      'so start a new Conversation.'
+    );
+  }
   return `Claude stopped before its answer was done: ${reason.replace(/[.\s]*$/, '')}.`;
 }

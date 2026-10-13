@@ -204,3 +204,115 @@ test('ask with no claude on PATH says so in one sentence, and keeps nothing', as
   assert.equal(asked.stderr.trimEnd().split('\n').length, 1, 'one sentence');
   assert.equal(await stat(join(home, 'conversations')).catch(() => null), null);
 });
+
+test('ask --conversation resumes its Claude session, and appends to the same Conversation', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  await claude.script([{ say: 'Under the palm.' }, { result: 'success' }]);
+  const first = await firstmate(home, ['ask', 'Where is the treasure?'], claude.env);
+  const id = idOf(first.stderr);
+  const session = (await claude.calls())[0]?.argv[5];
+  await claude.script([{ say: 'Three paces north.' }, { result: 'success' }]);
+
+  const next = await firstmate(home, ['ask', '--conversation', id, 'How', 'far?'], claude.env);
+
+  assert.equal(next.code, 0, next.stderr);
+  assert.equal(next.stdout, 'Three paces north.\n');
+  assert.equal(next.stderr, `${id}\n`, 'the same Conversation ID, and nothing else');
+  const [, call] = await claude.calls();
+  assert.deepEqual(call?.argv, [
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--resume',
+    session,
+  ]);
+  assert.equal(call?.stdin, 'How far?');
+  assert.deepEqual(await readdir(join(home, 'conversations')), [`${id}.jsonl`]);
+  const [head, , , question, answer, ...more] = await conversation(home, id);
+  assert.deepEqual(more, []);
+  assert.equal(head?.['session'], session);
+  assert.deepEqual(
+    [question?.['who'], question?.['text'], answer?.['who'], answer?.['text']],
+    ['operator', 'How far?', 'agent', 'Three paces north.'],
+  );
+});
+
+test('ask --conversation with an unknown ID is refused in one sentence, and writes nothing', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const unknown = '0f0e0d0c-0b0a-4908-8706-050403020100';
+
+  for (const id of [unknown, '../registry']) {
+    const asked = await firstmate(home, ['ask', '--conversation', id, 'Hello?'], claude.env);
+
+    assert.equal(asked.code, 4, asked.stderr);
+    assert.equal(asked.stdout, '');
+    assert.equal(asked.stderr, `firstmate: there is no Conversation ${id}.\n`);
+  }
+  assert.deepEqual(await claude.calls(), []);
+  assert.equal(await stat(join(home, 'conversations')).catch(() => null), null);
+});
+
+test('a Conversation with a line that cannot be read is refused, and the others go on', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const damaged = idOf((await firstmate(home, ['ask', 'First?'], claude.env)).stderr);
+  const sound = idOf((await firstmate(home, ['ask', 'Second?'], claude.env)).stderr);
+  const file = join(home, 'conversations', `${damaged}.jsonl`);
+  await writeFile(file, `${await readFile(file, 'utf8')}{"who":"agent","text":\n`);
+  const before = await readFile(file, 'utf8');
+
+  const refused = await firstmate(home, ['ask', '--conversation', damaged, 'Again?'], claude.env);
+
+  assert.equal(refused.code, 1, refused.stderr);
+  assert.equal(refused.stdout, '');
+  assert.equal(
+    refused.stderr,
+    `firstmate: Line 4 of the Conversation at ${file} cannot be read.\n`,
+  );
+  assert.equal(await readFile(file, 'utf8'), before, 'nothing written');
+  assert.equal((await claude.calls()).length, 2, 'claude did not run for it');
+  const other = await firstmate(home, ['ask', '--conversation', sound, 'Again?'], claude.env);
+  assert.equal(other.code, 0, other.stderr);
+});
+
+test('a session claude cannot resume is refused in one sentence that says to start anew', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const id = idOf((await firstmate(home, ['ask', 'Where is the treasure?'], claude.env)).stderr);
+  await claude.forget();
+
+  const asked = await firstmate(home, ['ask', '--conversation', id, 'And now?'], claude.env);
+
+  assert.equal(asked.code, 1, asked.stderr);
+  assert.equal(asked.stdout, '');
+  const [said, sentence, ...more] = asked.stderr.trimEnd().split('\n');
+  assert.equal(said, id);
+  assert.deepEqual(more, [], `one sentence: ${asked.stderr}`);
+  assert.match(sentence ?? '', /^firstmate: Claude .*cannot resume.*start a new Conversation\.$/);
+});
+
+test('ask --conversation resumes in the Place its head names, not the default one', async (t) => {
+  const home = await makeHome(t);
+  const claude = await fakeClaude(t);
+  const id = idOf((await firstmate(home, ['ask', 'Where is the treasure?'], claude.env)).stderr);
+  const file = join(home, 'conversations', `${id}.jsonl`);
+  const [head, ...rest] = (await readFile(file, 'utf8')).split('\n');
+  const aboard = { ...(JSON.parse(head ?? '') as object), place: 'galley' };
+  await writeFile(file, [JSON.stringify(aboard), ...rest].join('\n'));
+  const before = await readFile(file, 'utf8');
+
+  const gone = await firstmate(home, ['ask', '--conversation', id, 'Still there?'], claude.env);
+
+  assert.equal(gone.code, 4, gone.stderr);
+  assert.match(gone.stderr, /^firstmate: the galley Place of Conversation .* is gone\. .*\n$/);
+  assert.equal(await readFile(file, 'utf8'), before, 'nothing written');
+  assert.equal((await claude.calls()).length, 1, 'claude did not run for it');
+
+  const added = await firstmate(home, ['place', 'add', 'galley', 'local'], claude.env);
+  assert.equal(added.code, 0, added.stderr);
+  const back = await firstmate(home, ['ask', '--conversation', id, 'Still there?'], claude.env);
+  assert.equal(back.code, 0, back.stderr);
+});

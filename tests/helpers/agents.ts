@@ -8,11 +8,15 @@
  * tells it to. The shapes are copied from a real run of Claude Code on
  * 2026-10-12, so the Mate reads here what it reads on the operator's machine.
  *
+ * Like the real one, the fake remembers each session it started, and refuses
+ * to resume one it does not know: it says so on stderr, writes a `result` line
+ * with that error, and ends with 1.
+ *
  * The fake is a Node program, started by a shell script and, on Windows, by a
  * `claude.cmd` beside it, which is how an npm install of Claude Code is found
  * there (ADR-0019).
  */
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { makeHome } from './host.ts';
@@ -45,6 +49,8 @@ export type FakeAgent = {
   script(steps: readonly Step[]): Promise<void>;
   /** Every start the fake took, in order. */
   calls(): Promise<readonly Call[]>;
+  /** Forget every session, as an Agent does when its session files are gone. */
+  forget(): Promise<void>;
 };
 
 /** The fake `claude` itself. It reads its script and its log from beside itself. */
@@ -65,6 +71,15 @@ const named = (flag) => {
 };
 const session = named('--session-id') ?? named('--resume') ?? 'no-session';
 const write = (line) => process.stdout.write(JSON.stringify(line) + '\\n');
+const known = join(here, 'sessions.jsonl');
+const sessions = existsSync(known) ? readFileSync(known, 'utf8').split('\\n') : [];
+if (named('--resume') !== undefined && !sessions.includes(session)) {
+  const error = 'No conversation found with session ID: ' + session;
+  process.stderr.write(error + '\\n');
+  write({ type: 'result', subtype: 'error_during_execution', is_error: true, errors: [error], session_id: session });
+  process.exit(1);
+}
+if (named('--session-id') !== undefined) appendFileSync(known, session + '\\n');
 const steps = JSON.parse(readFileSync(join(here, 'script.json'), 'utf8'));
 
 write({ type: 'system', subtype: 'init', cwd: process.cwd(), session_id: session, tools: [], model: 'claude-fake-1' });
@@ -119,6 +134,7 @@ export async function fakeClaude(t: TestContext): Promise<FakeAgent> {
         .filter((line) => line !== '')
         .map((line) => JSON.parse(line) as Call);
     },
+    forget: () => rm(join(bin, 'sessions.jsonl'), { force: true }),
   };
 }
 
