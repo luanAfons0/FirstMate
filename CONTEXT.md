@@ -115,7 +115,7 @@ _Avoid_: inference, completion, LLM call, AI call
 ### The Mate
 
 **Mate**:
-The App's chat with the operator's own Agent, in the window and from
+The App's way to talk with the operator's own Agent, in the window and from
 `firstmate ask`. The App holds it; the Host serves no part of it (ADR-0031).
 _Avoid_: assistant, sidekick, copilot, bot, chat
 
@@ -125,8 +125,8 @@ The program on the operator's own account that the Mate runs, `claude` or
 _Avoid_: model, LLM, AI, provider
 
 **Conversation**:
-One chat with the Mate: its messages, the Agent and Place it runs with, and the
-Agent session it resumes. FirstMate keeps it in its home directory; the Agent
+One exchange of messages with the Mate: the messages, the Agent and Place it
+runs with, and the Agent session it resumes. FirstMate keeps it in its home directory; the Agent
 keeps its own session.
 _Avoid_: thread, chat, session, history
 

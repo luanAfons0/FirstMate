@@ -23,8 +23,17 @@
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { AGENT_NAMES, EFFORTS, isAgent, isModelName, type Agent } from './agent-run.ts';
-import { allPlaces, parsePlaces, type Place } from './places.ts';
+import {
+  AGENT_NAMES,
+  chosen,
+  DEFAULT_AGENT,
+  EFFORTS,
+  isAgent,
+  isModelName,
+  MATE_FIELDS,
+  type MateRun,
+} from './agents.ts';
+import { allPlaces, DEFAULT_PLACE, parsePlaces, type Place } from './places.ts';
 import { refuse } from './refusal.ts';
 import { isPluginName } from './registry.ts';
 import { isPluginPath, normalKeys, type Shortcut } from './shortcut.ts';
@@ -49,24 +58,26 @@ export type Settings = {
 };
 
 /**
- * How the Mate runs the operator's Agent. Each field but the Agent may be
- * absent or empty, and then the Agent's own default holds: its own model, its
- * own effort, the default Place, and its program found on PATH. No `mate` key
- * at all is Claude with every default.
+ * How the Mate runs the operator's Agent: what a new Conversation runs, and
+ * how wide the App's Mate panel is. Each field but the Agent may be absent or
+ * empty, and then the Agent's own default holds: its own model, its own
+ * effort, the default Place, and its program found on PATH. No `mate` key at
+ * all is Claude with every default.
  */
-export type MateSettings = {
-  readonly agent: Agent;
-  /** The model the Agent answers with. */
-  readonly model?: string;
-  /** The effort, one of the Agent's own levels. */
-  readonly effort?: string;
-  /** The Place the Agent runs in, by name. */
-  readonly place?: string;
-  /** The absolute path of the Agent's program, for an Agent that is not on PATH. */
-  readonly program?: string;
+export type MateSettings = MateRun & {
   /** How wide the operator left the Mate panel, in logical pixels: the App's alone. */
   readonly width?: number;
 };
+
+/** The Mate settings in force: the ones chosen, or the default Agent with every default. */
+export function mateOf(settings: Settings): MateSettings {
+  return settings.mate ?? { agent: DEFAULT_AGENT };
+}
+
+/** The Place the Mate runs in, by name: the one chosen, or the default Place. */
+export function matePlace(run: MateRun): string {
+  return chosen(run.place) ?? DEFAULT_PLACE;
+}
 
 /**
  * What the operator answered one Plugin: true to allow, false to refuse, and
@@ -147,15 +158,8 @@ function parseSettings(text: string, path: string): Settings {
   };
 }
 
-/** The fields the Mate settings may hold. */
-const MATE_FIELDS: readonly (keyof MateSettings)[] = [
-  'agent',
-  'model',
-  'effort',
-  'place',
-  'program',
-  'width',
-];
+/** The fields the Mate settings may hold: what the Mate runs, and the panel's width. */
+const MATE_SETTINGS_FIELDS: readonly string[] = [...MATE_FIELDS, 'width'];
 
 /**
  * The Mate settings, checked. A damaged one fails every command, as a damaged
@@ -193,10 +197,10 @@ function mateFault(
   }
   const record = value as Record<string, unknown>;
   for (const [field, given] of Object.entries(record)) {
-    if (!MATE_FIELDS.includes(field as keyof MateSettings)) {
+    if (!MATE_SETTINGS_FIELDS.includes(field)) {
       return {
         sentence:
-          `${where} may hold only ${MATE_FIELDS.map((one) => `"${one}"`).join(', ')}, ` +
+          `${where} may hold only ${MATE_SETTINGS_FIELDS.map((one) => `"${one}"`).join(', ')}, ` +
           `and not ${JSON.stringify(field)}.`,
       };
     }
@@ -253,14 +257,6 @@ function mateFault(
     };
   }
   return undefined;
-}
-
-/**
- * One Mate setting as the Mate uses it: the value given, or nothing when it is
- * absent or empty, so that the Agent's own default holds.
- */
-export function chosen(value: string | undefined): string | undefined {
-  return value === undefined || value === '' ? undefined : value;
 }
 
 /**

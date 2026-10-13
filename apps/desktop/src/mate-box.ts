@@ -12,9 +12,9 @@
  *
  * Enter opens the Mate panel with the question as the first message of a new
  * Conversation; Shift+Enter starts a new line. The page empties the field
- * itself once it has asked. The look is the board's "Hairline": one raised
- * field, as wide as the Plugin list at most, with the line that says who
- * answers a new Conversation, and where.
+ * itself once it has asked. It is one raised field, no wider than the Plugin
+ * list, so the two read as one column, with the line that says who answers a
+ * new Conversation, and where.
  */
 import { type IconName, icon } from '@firstmate/core/theme';
 import { TYPED } from './ask.ts';

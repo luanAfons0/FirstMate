@@ -10,9 +10,10 @@
  * The other way, the main process sends each of those views what it shows,
  * on its own channel, and the page puts it in place (`pages.ts`).
  *
- * This file imports nothing, because the preload carries it into a sandboxed
- * page, where Node's modules do not exist.
+ * This file imports nothing but types, because the preload carries it into a
+ * sandboxed page, where Node's modules do not exist.
  */
+import type { MateWords } from '@firstmate/core/agents';
 
 /** The IPC channel an App view asks on. */
 export const ASK_CHANNEL = 'firstmate:ask';
@@ -62,14 +63,7 @@ export type Asked =
    * Keep the Mate settings: the Agent, the model, the effort, the Place and
    * the program, each as typed, empty for the Agent's own default.
    */
-  | {
-      readonly kind: 'mate-set';
-      readonly agent: string;
-      readonly model: string;
-      readonly effort: string;
-      readonly place: string;
-      readonly program: string;
-    }
+  | ({ readonly kind: 'mate-set' } & MateWords)
   /** Open the Mate panel, or close it when it is open. */
   | { readonly kind: 'mate' }
   /** Close the Mate panel. */
@@ -215,16 +209,9 @@ export function readAsked(said: unknown): Asked {
     return { kind: 'nothing' };
   }
   if (kind === 'mate-set') {
-    const [agent, model, effort, place, program, ...more] = parts;
+    const [agent = '', model = '', effort = '', place = '', program, ...more] = parts;
     if (program === undefined || more.length > 0) return { kind: 'nothing' };
-    return {
-      kind,
-      agent: agent ?? '',
-      model: model ?? '',
-      effort: effort ?? '',
-      place: place ?? '',
-      program,
-    };
+    return { kind, agent, model, effort, place, program };
   }
   const [first, second, third, ...more] = parts;
   if (first === undefined || first === '' || more.length > 0) return { kind: 'nothing' };

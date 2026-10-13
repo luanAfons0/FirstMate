@@ -17,80 +17,24 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { accessSync, constants, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { AGENT_NAMES, cannotResume, type Agent, type MateRun } from './agents.ts';
+import { parseObject } from './json-object.ts';
 import type { Place } from './places.ts';
+import { findOnPath, isProgram, killTree, pathOf } from './programs.ts';
 import { refuse } from './refusal.ts';
 import { findInside, WSL_EXE } from './wsl.ts';
 
-/** Every Agent the Mate can run. */
-const AGENTS = ['claude', 'codex'] as const;
-
-/** One Agent the Mate can run: the program on the operator's own account. */
-export type Agent = (typeof AGENTS)[number];
-
-/** Whether a value names an Agent the Mate can run. */
-export function isAgent(value: unknown): value is Agent {
-  return AGENTS.some((agent) => agent === value);
-}
-
-/** The name each Agent is known by in a sentence the operator reads. */
-export const AGENT_NAMES: Readonly<Record<Agent, string>> = {
-  claude: 'Claude',
-  codex: 'Codex',
-};
-
 /**
- * The levels of effort each Agent knows: Claude's `--effort`, and Codex's
- * `model_reasoning_effort`. Codex's are the ones codex-cli 0.147.0 hands to
- * its models, and which a model does not take, its answer refuses in one
- * sentence of its own.
+ * What one run of the Agent is asked: what the Mate runs, in its Place, with
+ * the question, and the session to resume, if any.
  */
-export const EFFORTS: Readonly<Record<Agent, readonly string[]>> = {
-  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
-  codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
-};
-
-/**
- * The models the Settings View offers for each Agent: Claude's own aliases,
- * which follow its newest models, and the models codex-cli 0.147.0 lists on
- * 2026-10-13. They are offered, not required: any model name is accepted, so
- * a new model works on the day the Agent knows it (ADR-0031).
- */
-export const KNOWN_MODELS: Readonly<Record<Agent, readonly string[]>> = {
-  claude: ['opus', 'sonnet', 'haiku'],
-  codex: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
-};
-
-/**
- * The shape of a model name: letters, digits and `.`, `_`, `-`, `:`, `/`,
- * `@`, `[` and `]`, as in `opus`, `claude-sonnet-4-5[1m]` or a Bedrock ID. It
- * starts with a letter or a digit, so it is never read as a flag, and it holds
- * nothing cmd.exe reads as its own, because a model reaches cmd.exe as an
- * argument when the Agent is a `.cmd` (ADR-0019).
- */
-const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@[\]-]*$/;
-
-/** Whether a value can be handed to an Agent as the name of a model. */
-export function isModelName(value: string): boolean {
-  return MODEL_NAME.test(value);
-}
-
-/** What one run of the Agent is asked. */
-export type AgentRequest = {
-  readonly agent: Agent;
+export type AgentRequest = Omit<MateRun, 'place'> & {
   /** The Place the Agent runs in. */
   readonly place: Place;
   /** The question, sent on standard input. */
   readonly question: string;
-  /** The model the Agent answers with, or nothing for the Agent's own default. */
-  readonly model?: string;
-  /** The effort, one of the Agent's own levels, or nothing for its own default. */
-  readonly effort?: string;
-  /** The Agent's program, when it is not found on PATH under its own name. */
-  readonly program?: string;
   /** The Agent's own session to resume, or nothing to start a new one. */
   readonly session?: string;
 };
@@ -105,6 +49,9 @@ export type AgentEvent =
   | { readonly kind: 'failed'; readonly sentence: string; readonly session?: string }
   /** The answer ended because it was stopped. */
   | { readonly kind: 'stopped'; readonly session?: string };
+
+/** How a run ended: the last of its events. */
+export type AgentEnd = Exclude<AgentEvent, { readonly kind: 'text' }>;
 
 /** One run of the Agent, under way. */
 export type AgentRun = {
@@ -129,23 +76,6 @@ function notLoggedIn(agent: Agent, place: string): string {
     `${AGENT_NAMES[agent]} in the ${place} Place is not logged in. ` +
     `Run ${LOGIN[agent]} there, then ask again.`
   );
-}
-
-/** The words that say a Conversation's session cannot be resumed, which end its one sentence. */
-const CANNOT_RESUME =
-  'cannot resume the session of this Conversation, so start a new Conversation.';
-
-/** The one sentence that says an Agent holds no session of a Conversation any more. */
-function cannotResume(agent: Agent, place: string): string {
-  return `${AGENT_NAMES[agent]} in the ${place} Place ${CANNOT_RESUME}`;
-}
-
-/**
- * Whether a failure says the Conversation's session cannot be resumed, so
- * the panel offers a new Conversation beside it.
- */
-export function saysCannotResume(sentence: string): boolean {
-  return sentence.endsWith(CANNOT_RESUME);
 }
 
 /** What a text block is joined to the one before it with: a new paragraph. */
@@ -178,7 +108,7 @@ export async function runAgent(request: AgentRequest): Promise<AgentRun> {
     events: read(child, request.place.name, () => stopped),
     stop: () => {
       stopped = true;
-      killTree(child);
+      killTree(child, 'SIGTERM');
     },
   };
 }
@@ -232,12 +162,13 @@ function codex(request: AgentRequest): Invocation {
   return { argv, read: (child, ...rest) => readCodex(child, request.session, ...rest) };
 }
 
-/** Whether this process runs on Windows, where a program is found and ended its own way. */
+/** Whether this process runs on Windows, where an Agent is found and started its own way. */
 const ON_WINDOWS = process.platform === 'win32';
 
 /**
  * The Agent's program: the one the Mate settings name, when they name one,
- * and otherwise the one of the Agent's own name on PATH. A program the
+ * and otherwise the one of the Agent's own name on PATH: on Windows its
+ * `.exe`, or the `.cmd` an npm install leaves (ADR-0019). A program the
  * settings name that is not there is refused, and PATH is not searched in its
  * place, so the Agent the operator chose is the one that runs or none.
  */
@@ -247,7 +178,7 @@ function programOf(request: AgentRequest): string {
     if (isProgram(program)) return program;
     throw notFound(agent, place.name, program);
   }
-  const found = findProgram(agent, process.env);
+  const found = findOnPath(ON_WINDOWS ? [`${agent}.exe`, `${agent}.cmd`] : [agent]);
   if (found !== undefined) return found;
   throw notFound(agent, place.name, undefined, pathOf(process.env));
 }
@@ -261,11 +192,6 @@ async function programInside(request: AgentRequest, distribution: string): Promi
   const look = await findInside(distribution, program ?? agent);
   if ('found' in look) return look.found;
   throw notFound(agent, place.name, program, look.path);
-}
-
-/** The PATH of this environment, as Windows or anywhere else names it. */
-function pathOf(env: NodeJS.ProcessEnv): string {
-  return env['PATH'] ?? env['Path'] ?? '';
 }
 
 /**
@@ -283,34 +209,6 @@ function notFound(agent: Agent, place: string, program?: string, path = ''): Err
     `cannot find ${agent} ${where}. ` +
       `Install ${AGENT_NAMES[agent]} there, or set "program" in the Mate settings to where it is.`,
   );
-}
-
-/**
- * The Agent's program on PATH: on Windows its `.exe`, or the `.cmd` an npm
- * install leaves (ADR-0019), and anywhere else the file of its own name.
- */
-function findProgram(name: string, env: NodeJS.ProcessEnv): string | undefined {
-  const names = ON_WINDOWS ? [`${name}.exe`, `${name}.cmd`] : [name];
-  const directories = pathOf(env)
-    .split(delimiter)
-    .filter((one) => one);
-  for (const directory of directories) {
-    for (const file of names) {
-      const path = join(directory, file);
-      if (isProgram(path)) return path;
-    }
-  }
-  return undefined;
-}
-
-function isProgram(path: string): boolean {
-  try {
-    if (!statSync(path).isFile()) return false;
-    if (!ON_WINDOWS) accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -343,25 +241,6 @@ function start(program: string, argv: readonly string[], cwd: string): ChildProc
     windowsHide: true,
     windowsVerbatimArguments: true,
   });
-}
-
-/** End a run's whole process tree: its process group, or on Windows every process under it. */
-function killTree(child: ChildProcess): void {
-  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
-  if (ON_WINDOWS) {
-    const taskkill = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    // taskkill missing, or the tree already gone: the process itself still goes.
-    taskkill.once('error', () => child.kill());
-    return;
-  }
-  try {
-    process.kill(-child.pid, 'SIGTERM');
-  } catch {
-    child.kill('SIGTERM');
-  }
 }
 
 /** How a process ended, and the last thing it said on stderr. */
@@ -403,7 +282,7 @@ async function* readClaude(
   let result: Record<string, unknown> | undefined;
   if (child.stdout !== null) {
     for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
-      const event = parseLine(line);
+      const event = parseObject(line);
       if (event?.['type'] === 'system' && typeof event['session_id'] === 'string') {
         session = event['session_id'];
       } else if (event?.['type'] === 'assistant' && event['is_api_error_message'] === true) {
@@ -429,19 +308,6 @@ async function* readClaude(
     yield { kind: 'failed', sentence: notLoggedIn('claude', place), session };
   } else {
     yield { kind: 'failed', sentence: claudeFailed(result, code, said, place), session };
-  }
-}
-
-/** One line the Agent wrote, as a JSON object, or nothing when it is not one. */
-function parseLine(line: string): Record<string, unknown> | undefined {
-  if (!line.startsWith('{')) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(line);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
   }
 }
 
@@ -501,7 +367,7 @@ async function* readCodex(
   let error: string | undefined;
   if (child.stdout !== null) {
     for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
-      const event = parseLine(line);
+      const event = parseObject(line);
       const type = event?.['type'];
       if (type === 'thread.started' && typeof event?.['thread_id'] === 'string') {
         session ??= event['thread_id'];
@@ -539,7 +405,7 @@ async function* readCodex(
  */
 function codexMessage(message: unknown): string | undefined {
   if (typeof message !== 'string' || message === '') return undefined;
-  const inner = (parseLine(message)?.['error'] ?? {}) as Record<string, unknown>;
+  const inner = (parseObject(message)?.['error'] ?? {}) as Record<string, unknown>;
   const said = inner['message'];
   return typeof said === 'string' && said !== '' ? said : message;
 }

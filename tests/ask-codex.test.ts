@@ -56,7 +56,7 @@ test('ask runs codex exec read-only, and sends the question on stdin alone', asy
   assert.equal(call.cwd, codex.home, "in the operator's home directory");
 });
 
-test("ask prints Codex's answer as it arrives, and keeps the thread Codex names", async (t) => {
+test("ask prints Codex's answer as it arrives, and keeps the session Codex names", async (t) => {
   const home = await makeHome(t);
   const codex = await fakeCodex(t);
   await settle(home, { mate: { agent: 'codex' } });
@@ -85,7 +85,7 @@ test("ask prints Codex's answer as it arrives, and keeps the thread Codex names"
   assert.equal(answer?.['text'], 'First, the map.\n\nThen the shovel.');
 });
 
-test('ask --conversation resumes its Codex thread, even after the settings name Claude', async (t) => {
+test('ask --conversation resumes its Codex session, even after the settings name Claude', async (t) => {
   const home = await makeHome(t);
   const codex = await fakeCodex(t);
   await settle(home, { mate: { agent: 'codex' } });
@@ -135,7 +135,7 @@ test('the model and the effort of the Mate settings reach codex, and its resume'
   assert.deepEqual(resumed?.argv.slice(6, -2), tuning);
 });
 
-test('a thread codex cannot resume is refused in one sentence that says to start anew', async (t) => {
+test('a session codex cannot resume is refused in one sentence that says to start anew', async (t) => {
   const home = await makeHome(t);
   const codex = await fakeCodex(t);
   await settle(home, { mate: { agent: 'codex' } });

@@ -746,8 +746,8 @@ async function ask(home: string, argv: readonly string[]): Promise<number> {
   if (question === '') {
     return typedWrong('ask', 'ask needs a question, as words or on standard input.');
   }
-  const { ask } = await import('./ask.ts');
-  const answered = await ask(home, question, conversation);
+  const { askAndPrint } = await import('./ask.ts');
+  const answered = await askAndPrint(home, question, conversation);
   return answered === 'stopped' ? INTERRUPTED : exit(answered);
 }
 

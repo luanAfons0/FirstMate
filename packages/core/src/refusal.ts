@@ -46,3 +46,13 @@ export function refusalOf(fault: unknown): Refusal | undefined {
   if (!(fault instanceof Error) || !('refusal' in fault)) return undefined;
   return REFUSALS.find((kind) => kind === fault.refusal);
 }
+
+/**
+ * A fault as one sentence said on its own, where no `firstmate:` leads it:
+ * a refusal's sentence with its first letter raised, and anything else as it
+ * came.
+ */
+export function sentenceOf(fault: unknown): string {
+  const said = fault instanceof Error ? fault.message : String(fault);
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
+}

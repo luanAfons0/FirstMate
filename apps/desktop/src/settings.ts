@@ -23,7 +23,7 @@
  * page (ADR-0016, as ADR-0026 amends it).
  */
 import { app, dialog, type BaseWindow } from 'electron';
-import { AGENT_NAMES } from '@firstmate/core/agent-run';
+import { AGENT_NAMES, MATE_FIELDS, type MateWords } from '@firstmate/core/agents';
 import {
   addPlace,
   listPlaces,
@@ -35,9 +35,9 @@ import {
 } from '@firstmate/core/commands';
 import { readConfig } from '@firstmate/core/config';
 import { DEFAULT_PLACE } from '@firstmate/core/places';
-import { aboutOf, refusalOf } from '@firstmate/core/refusal';
+import { aboutOf, refusalOf, sentenceOf } from '@firstmate/core/refusal';
 import { readRegistry } from '@firstmate/core/registry';
-import { readSettings } from '@firstmate/core/settings';
+import { mateOf, matePlace, readSettings } from '@firstmate/core/settings';
 import { SHELF_VARIABLE } from '@firstmate/core/shelf';
 import type { Asked } from './ask.ts';
 import type { Plugins } from './host-lists.ts';
@@ -66,16 +66,6 @@ export type ShortcutShown = {
   readonly path: string;
 };
 
-/** The Mate settings, as the Settings View shows them: each a word, empty for the default. */
-export type MateSet = {
-  readonly agent: string;
-  readonly model: string;
-  readonly effort: string;
-  /** The Place the Agent runs in: the default Place when none is chosen. */
-  readonly place: string;
-  readonly program: string;
-};
-
 /** Everything the Settings View says. */
 export type SettingsShown = {
   /** The Places and the Shortcuts, or the sentence that says why they cannot be read. */
@@ -84,7 +74,8 @@ export type SettingsShown = {
         readonly kind: 'read';
         readonly places: readonly PlaceShown[];
         readonly shortcuts: readonly ShortcutShown[];
-        readonly mate: MateSet;
+        /** The Mate settings, each a word; the Place is the default Place when none is chosen. */
+        readonly mate: MateWords;
       }
     | { readonly kind: 'unread'; readonly why: string };
   /** Whether the App starts at logon. */
@@ -116,13 +107,7 @@ export type Outcome = {
 export type Field =
   | { readonly form: 'place-add'; readonly name: 'name' | 'kind' | 'distribution' }
   | { readonly form: 'shelf'; readonly place: string }
-  | { readonly form: 'mate'; readonly name: MateField };
-
-/** One field of the Mate section. */
-type MateField = keyof MateSet;
-
-/** The fields of the Mate section, in the order the page sends them. */
-const MATE_FIELDS: readonly MateField[] = ['agent', 'model', 'effort', 'place', 'program'];
+  | { readonly form: 'mate'; readonly name: keyof MateWords };
 
 /** Read what the Settings View shows, now. It never throws. */
 export function readShown(home: string): Pick<SettingsShown, 'saved' | 'logon' | 'version'> {
@@ -147,7 +132,7 @@ function readSaved(home: string): SettingsShown['saved'] {
       plugin: shortcut.plugin,
       path: shortcut.path,
     }));
-    const mate = settings.mate ?? { agent: 'claude' };
+    const mate = mateOf(settings);
     return {
       kind: 'read',
       places,
@@ -156,7 +141,7 @@ function readSaved(home: string): SettingsShown['saved'] {
         agent: mate.agent,
         model: mate.model ?? '',
         effort: mate.effort ?? '',
-        place: mate.place === undefined || mate.place === '' ? DEFAULT_PLACE : mate.place,
+        place: matePlace(mate),
         program: mate.program ?? '',
       },
     };
@@ -241,8 +226,7 @@ async function changed(asked: Asked, needs: ChangeNeeds): Promise<string | undef
     return `${asked.name} is now number ${moved.indexOf(asked.name) + 1} in the Plugin Order.`;
   }
   if (asked.kind === 'mate-set') {
-    const { agent, model: typed, effort, place, program } = asked;
-    const mate = setMate(home, { agent, model: typed, effort, place, program });
+    const mate = setMate(home, asked);
     const model = mate.model === undefined ? '' : ` with ${mate.model}`;
     return (
       `A new Conversation now runs ${AGENT_NAMES[mate.agent]}${model}. ` +
@@ -282,10 +266,4 @@ async function chooseFolder(
       ? await dialog.showOpenDialog(options)
       : await dialog.showOpenDialog(window, options);
   return chosen.canceled ? undefined : chosen.filePaths[0];
-}
-
-/** A refusal is already a sentence; anything else is said as it came. */
-export function sentenceOf(fault: unknown): string {
-  const said = fault instanceof Error ? fault.message : String(fault);
-  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }

@@ -162,12 +162,16 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    a git URL, and run none of what lands.
   update-plugin.ts move a Plugin that is a git clone forward, with no merge,
                    through a runner of one git command (ADR-0030).
+  agents.ts        the Agents, as data: names, efforts, models, and what the
+                   Mate runs one with (ADR-0031).
   agent-run.ts     run the operator's own Agent: the question on stdin, the
                    answer as events, and a stop that ends its tree (ADR-0031).
+  programs.ts      find a program on PATH, and end a process with its tree.
+  json-object.ts   read one line of JSON as an object, or as nothing.
   conversations.ts keep the Mate's Conversations, one JSON-lines file each:
                    start, append, list, read and delete one.
-  ask-mate.ts      ask the Mate: start or continue a Conversation, and keep
-                   the answer. The App and firstmate ask both ask here.
+  ask-mate.ts      ask the Mate: start or continue a Conversation, hear the
+                   answer, and keep it. The App and firstmate ask both ask here.
 packages/host/src/  the Host. Every file is one job.
   start.ts         start the Host: read the Registry, mint the token,
                    supervise, listen; and stop it. The App calls it too.
@@ -234,8 +238,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
                    the changes it asks for, made through core in the main
                    process.
   src/settings-view.ts the Settings View, as a page the App writes.
-  src/mate.ts      the Mate panel's Conversation, and the run of the Agent
-                   that answers it, held in the main process.
+  src/mate.ts      the Mate panel: its state, its asks, its Conversation, and
+                   the run of the Agent that answers it, in the main process.
   src/mate-view.ts the Mate panel and its Recents, as a page the App writes,
                    and where it sits in the window.
   src/mate-box.ts  the Mate box above the Plugin list, as a page the App

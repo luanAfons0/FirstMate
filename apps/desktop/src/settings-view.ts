@@ -40,7 +40,15 @@
  * the levels the chosen Agent knows, and follows the Agent as soon as it is
  * chosen. The Mate panel's gear opens the Settings View at this section.
  */
-import { AGENT_NAMES, EFFORTS, isAgent, KNOWN_MODELS } from '@firstmate/core/agent-run';
+import {
+  AGENT_NAMES,
+  AGENTS,
+  DEFAULT_AGENT,
+  EFFORTS,
+  isAgent,
+  KNOWN_MODELS,
+  type MateWords,
+} from '@firstmate/core/agents';
 import { canHoldWslPlace } from '@firstmate/core/places';
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { shortcutAddress } from '@firstmate/core/shortcut';
@@ -48,7 +56,7 @@ import { type IconName, icon } from '@firstmate/core/theme';
 import { logonAsk, placeRemoveAsk, pluginSettingsAsk, shelfChooseAsk, TYPED } from './ask.ts';
 import { escaped, written, type Written } from './pages.ts';
 import type { PluginSeen, Plugins } from './host-lists.ts';
-import type { Field, MateSet, PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
+import type { Field, PlaceShown, SettingsShown, ShortcutShown } from './settings.ts';
 
 /** One section of the Settings View, as the side list names it. */
 type Section = { readonly id: string; readonly icon: IconName; readonly words: string };
@@ -340,23 +348,20 @@ aria-label="Open the settings of ${name}">Open settings</button>`
 <span class="state ${plugin.state}">${state}</span>${end}</div>`;
 }
 
-/** Every Agent the Mate can run, in the order the Agent list shows them. */
-const AGENTS = Object.keys(AGENT_NAMES).filter(isAgent);
-
 /**
  * The Mate section: one form with the Agent, the model, the effort, the Place
  * and the program. An effort list and a list of known models are written
  * for each Agent; the page's script shows the chosen Agent's.
  */
-function mateSection(mate: MateSet, places: readonly PlaceShown[], shown: SettingsShown): string {
+function mateSection(mate: MateWords, places: readonly PlaceShown[], shown: SettingsShown): string {
   const busy = shown.busy;
-  const field = (name: keyof MateSet) => mark(shown, { form: 'mate', name });
+  const field = (name: keyof MateWords) => mark(shown, { form: 'mate', name });
   const agent = field('agent');
   const model = field('model');
   const effort = field('effort');
   const place = field('place');
   const program = field('program');
-  const chosen = isAgent(mate.agent) ? mate.agent : 'claude';
+  const chosen = isAgent(mate.agent) ? mate.agent : DEFAULT_AGENT;
   const option = (value: string, words: string, on: boolean) =>
     `<option value="${escaped(value)}"${on ? ' selected' : ''}>${escaped(words)}</option>`;
   const efforts = AGENTS.map(

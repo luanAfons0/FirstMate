@@ -7,11 +7,11 @@
  * Plugin Page can type into it or read it (ADR-0031). It carries the App's
  * preload, and the main process takes a Mate ask from this view alone.
  *
- * The look is the one chosen on the board of #218, "Hairline": the page's own
- * ground with one line at its edge, the operator's messages in quiet raised
- * bubbles, and answers as plain text at full width. An answer is shown in a
- * small part of Markdown (`markdown.ts`), which escapes everything it does
- * not draw.
+ * The panel stays quiet, so that the answer is what the eye reads: the page's
+ * own ground with one line at its edge, where it meets the shown page, the
+ * operator's messages in quiet raised bubbles, and answers as plain text at
+ * full width, as long text reads best. An answer is shown in a small part of
+ * Markdown (`markdown.ts`), which escapes everything it does not draw.
  *
  * Enter sends and Shift+Enter starts a new line. While an answer arrives the
  * send button is Stop, and the field takes no question. What is typed lives in
@@ -29,7 +29,7 @@
  * for a width from where the drag started, in screen pixels, so it does not
  * matter that the view moves under the pointer as it narrows the page.
  */
-import { saysCannotResume } from '@firstmate/core/agent-run';
+import { saysCannotResume } from '@firstmate/core/agents';
 import { type IconName, icon } from '@firstmate/core/theme';
 import { ASK, mateCopyAsk, mateDeleteAsk, mateOpenAsk, TYPED } from './ask.ts';
 import { markdown } from './markdown.ts';
@@ -74,7 +74,7 @@ export function fitWidth(width: number): number {
 }
 
 /** The panel, as the window holds it. */
-export type MatePanel = {
+export type PanelPage = {
   readonly shown: MateShown;
   /** How many times the panel has opened, so its page knows a new opening. */
   readonly opened: number;
@@ -113,7 +113,7 @@ const ICONS: readonly IconName[] = [
 ];
 
 /** The Mate panel. */
-export function matePage(panel: MatePanel): Written {
+export function matePage(panel: PanelPage): Written {
   const { shown, opened, expanded, recents } = panel;
   if (recents !== undefined) return recentsPage(recents, opened, expanded);
   const title = shown.title === undefined ? 'New Conversation' : escaped(shown.title);
@@ -239,7 +239,7 @@ function recentRow(row: Recent): string {
     : `<button class="del" type="button" data-delete="${escaped(mateDeleteAsk(row.id))}" \
 title="Delete this Conversation" aria-label="Delete this Conversation">${icon('trash')}\
 <span class="sure">Delete</span></button>`;
-  if (row.kind === 'unread') {
+  if (row.kind === 'unreadable') {
     return `<div class="rrow bad" data-key="r${row.id}">${icon('warning-circle')}\
 <span class="why">${escaped(row.why)}</span>${remove}</div>`;
   }
