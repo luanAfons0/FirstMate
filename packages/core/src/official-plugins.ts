@@ -6,8 +6,8 @@
  * kinds of Place each one runs in, because `setup` offers a Place to install
  * it in and must not offer one where it would only go Stopped; that is a fact
  * FirstMate knows about its own Plugins, written here, and no manifest a
- * Plugin carries (ADR-0002, ADR-0024). Each Plugin moves to the `windows`
- * Place in a release of its own, and a 2.x minor then changes its line here.
+ * Plugin carries (ADR-0002, ADR-0024). Each one starts from `mcp.ts` on the
+ * Host's own Node, and keeps `mcp` for a `wsl` Place (ADR-0028).
  *
  * Adding one is one line here and a release.
  */
@@ -38,21 +38,21 @@ export const OFFICIAL_PLUGINS: readonly OfficialPlugin[] = [
     url: 'https://github.com/luanAfons0/worklog',
     description: 'keeps what you work on from one Meeting to the next, and free Notes.',
     callsOthers: false,
-    places: ['wsl'],
+    places: ['local', 'wsl'],
   },
   {
     name: 'scheduler',
     url: 'https://github.com/luanAfons0/scheduler',
     description: 'calls one tool of another Plugin at a time you choose.',
     callsOthers: true,
-    places: ['wsl'],
+    places: ['local', 'wsl'],
   },
   {
     name: 'nexus',
     url: 'https://github.com/luanAfons0/nexus',
     description: 'manages the skills and global instructions of Claude and Codex.',
     callsOthers: false,
-    places: ['wsl'],
+    places: ['local', 'wsl'],
   },
 ];
 
