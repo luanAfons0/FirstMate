@@ -187,7 +187,8 @@ test(
     assert.equal(again.code, 0, again.stderr);
     assert.match(again.stdout, /worklog +keeps what you work on.* \(installed\)/);
     assert.match(again.stdout, / 1\. scheduler/);
-    assert.doesNotMatch(again.stdout, / 2\./);
+    assert.match(again.stdout, / 3\. scribe/);
+    assert.doesNotMatch(again.stdout, / 4\./);
     assert.doesNotMatch(again.stdout, /setup changed/);
   },
 );
@@ -202,7 +203,8 @@ test('a Plugin registered from elsewhere under an official name shows as install
   assert.equal(run.code, 0, run.stderr);
   assert.match(run.stdout, /nexus +manages .* \(installed\)/);
   assert.match(run.stdout, / 2\. scheduler/);
-  assert.doesNotMatch(run.stdout, / 3\./);
+  assert.match(run.stdout, / 4\. scribe/);
+  assert.doesNotMatch(run.stdout, / 5\./);
 });
 
 test('Enter installs nothing, and a number off the list is asked again', async (t) => {
@@ -211,7 +213,7 @@ test('Enter installs nothing, and a number off the list is asked again', async (
   const run = await setupIn(t, home, answers('', '7', 'two', ''));
 
   assert.equal(run.code, 0, run.stderr);
-  assert.match(run.stderr, /7 is not on the list\. Type a number from 1 to 3\./);
+  assert.match(run.stderr, /7 is not on the list\. Type a number from 1 to 5\./);
   assert.match(run.stderr, /two is not on the list\./);
   assert.deepEqual(await registry(home), []);
 });

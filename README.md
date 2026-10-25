@@ -266,11 +266,14 @@ where they are, so `install` takes their Plugin Name in place of a source
 | `worklog`       | Keeps what you work on from one Meeting to the next.          |
 | `scheduler`     | Calls one tool of another Plugin at a time you choose.        |
 | `nexus`         | Manages the skills and global instructions of Claude and Codex. |
+| `research`      | Reads the pages you list for a subject, and makes a Digest of them. |
+| `scribe`        | Records a call in the FirstMate window, and makes its Minutes. |
 
 `install` reads a source as a git URL, then as an absolute directory, then as
 the name of an Official Plugin. An Official Plugin is cloned from
 `https://github.com/luanAfons0/<name>` and is then a Plugin like any other.
-`scheduler` calls other Plugins, so it needs a Grant for each one it calls.
+`scheduler` and `scribe` call other Plugins, so each needs a Grant for each one
+it calls. `scribe` calls `worklog`, to send it a Call's Topics.
 
 A Tool Bus call may carry a `timeoutMs` saying how long it is allowed to take.
 Without one it gets thirty seconds, and `FIRSTMATE_MAX_CALL_MS` is the ceiling:
