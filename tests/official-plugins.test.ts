@@ -85,7 +85,7 @@ test('a bare name that is no Official Plugin says which names are', async (t) =>
   assert.equal(refused.code, 3);
   assert.match(
     refused.stderr,
-    /no-such-plugin is not a directory, not a URL and not an Official Plugin\. The Official Plugins are worklog, scheduler, nexus\./,
+    /no-such-plugin is not a directory, not a URL and not an Official Plugin\. The Official Plugins are worklog, scheduler, nexus, research, scribe\./,
   );
   await assert.rejects(readFile(join(home, 'registry.json')), 'no row was written');
 });
@@ -106,5 +106,5 @@ test('the help says install takes an Official Plugin name', async (t) => {
 
   assert.equal(help.code, 0);
   assert.match(help.stdout, /the name of an Official Plugin/);
-  assert.match(help.stdout, /worklog, scheduler, nexus/);
+  assert.match(help.stdout, /worklog, scheduler, nexus, research, scribe/);
 });

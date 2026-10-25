@@ -54,6 +54,20 @@ export const OFFICIAL_PLUGINS: readonly OfficialPlugin[] = [
     callsOthers: false,
     places: ['local', 'wsl'],
   },
+  {
+    name: 'research',
+    url: 'https://github.com/luanAfons0/research',
+    description: 'reads the pages you list for a subject, and makes a Digest of them.',
+    callsOthers: false,
+    places: ['local', 'wsl'],
+  },
+  {
+    name: 'scribe',
+    url: 'https://github.com/luanAfons0/scribe',
+    description: 'records a call in the FirstMate window, and makes its Minutes.',
+    callsOthers: true,
+    places: ['local', 'wsl'],
+  },
 ];
 
 /** The Official Plugin of this name, if there is one. */

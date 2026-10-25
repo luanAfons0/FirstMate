@@ -18,7 +18,7 @@ import { fixture, makeHome } from './host.ts';
 const OFFICIAL_PREFIX = 'https://github.com/luanAfons0/';
 
 /** Every Official Plugin name, as `firstmate --help` lists them. */
-const OFFICIAL_NAMES = ['worklog', 'scheduler', 'nexus'];
+const OFFICIAL_NAMES = ['worklog', 'scheduler', 'nexus', 'research', 'scribe'];
 
 /** The machine's own git configuration, kept out of every run. */
 export const NO_GIT_CONFIGURATION = {
