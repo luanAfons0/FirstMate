@@ -200,12 +200,17 @@ async function checkOwnRow(host: Booted): Promise<void> {
   );
 }
 
+/** The types of process Electron starts and does not name among the App's. */
+const UNNAMED: ReadonlySet<string> = new Set(['zygote', 'broker']);
+
 /**
  * The main process at this PID, and every process under it that Electron
  * started as one of its own, which names its type on its command line. A
  * Plugin Server is the App's executable run as Node, and names no type. A
- * zygote, the template each renderer starts from on Linux, is left out:
- * Electron does not name it among the App's processes, so the row cannot.
+ * zygote, the template each renderer starts from on Linux, and a broker, which
+ * opens files for the sandboxed GPU process when it draws in software, are
+ * left out: Electron does not name them among the App's processes, so the row
+ * cannot.
  */
 async function electronProcesses(
   main: number,
@@ -230,7 +235,7 @@ async function electronProcesses(
     // Chromium writes its command line again as one line, words split by
     // spaces, so a word ends at either.
     const type = /(?:^|[\0 ])--type=([^\0 ]+)/.exec(line)?.[1];
-    if (type !== undefined && type !== 'zygote') found.push({ pid, type });
+    if (type !== undefined && !UNNAMED.has(type)) found.push({ pid, type });
   }
   return found;
 }
