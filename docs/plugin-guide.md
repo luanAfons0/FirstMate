@@ -137,6 +137,9 @@ the connection for the life of the Host.
   read their Usage
   ([ADR-0032](adr/0032-the-host-reads-usage-when-asked.md)). Pass it on to
   your children, and do not change it. `firstmate usage` shows what they use.
+  Windows lets no process read another's environment, so there the Host
+  counts the processes under your Plugin Server instead: a child whose parent
+  ended is not counted on Windows.
 - **It is started in your Plugin's directory.** Your working directory is
   the Plugin directory, not `web/` and not the Host's. You can open your
   own files by a relative path.

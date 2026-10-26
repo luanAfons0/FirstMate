@@ -4,8 +4,20 @@
  * read it, so a request that carries an Origin or a Sec-Fetch-Site is refused.
  */
 import assert from 'node:assert/strict';
+import { cp, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
-import { bootHost, DEFAULT_PLACE, firstmate, type Booted } from './helpers/host.ts';
+import {
+  bootHost,
+  bootHostIn,
+  DEFAULT_PLACE,
+  firstmate,
+  fixture,
+  makeHome,
+  type Booted,
+} from './helpers/host.ts';
+import { fakeWsl, type Wsl } from './helpers/wsl.ts';
+import { pathWith } from './helpers/path.ts';
 
 /** One row of `/processes.json`, as the App and a terminal read it. */
 type Row = {
@@ -23,9 +35,59 @@ type Row = {
 
 type Processes = { firstmate: Row; plugins: Row[] };
 
-/** Why the figures of a local Plugin are read on Linux alone, so far. */
+/** Why the figures of a local Plugin are read on Linux and Windows alone. */
 const NO_READER =
-  process.platform !== 'linux' && 'the Host reads the Usage of a local Plugin on Linux alone';
+  !['linux', 'win32'].includes(process.platform) &&
+  'the Host reads the Usage of a local Plugin on Linux and Windows alone';
+
+/** Why a test of PowerShell, which reads Usage on Windows, runs there alone. */
+const NOT_WINDOWS =
+  process.platform !== 'win32' && 'the Host reads Usage through PowerShell on Windows alone';
+
+/**
+ * Why the Usage of a `wsl` Place is read here on Linux alone: the fake
+ * distribution is this machine, and its `/proc` is the one it prints.
+ */
+const NO_FAKE_PROC =
+  process.platform !== 'linux' &&
+  "the fake wsl.exe prints this machine's /proc, and Linux alone has one";
+
+/**
+ * A home that holds these Plugins. One with a distribution is put inside the
+ * fake one, under the user's home, and added in a `wsl` Place of that
+ * distribution, named after it in lower case; one with none stays here.
+ */
+async function wslHome(
+  t: test.TestContext,
+  wsl: Wsl,
+  plugins: readonly { name: string; directory: string; distribution?: string }[],
+): Promise<string> {
+  const home = await makeHome(t);
+  const places = new Set<string>();
+  for (const plugin of plugins) {
+    if (plugin.distribution === undefined) {
+      const added = await firstmate(home, ['add', plugin.name, fixture(plugin.directory)]);
+      assert.equal(added.code, 0, added.stderr);
+      continue;
+    }
+    const place = plugin.distribution.toLowerCase();
+    if (!places.has(place)) {
+      places.add(place);
+      const added = await firstmate(
+        home,
+        ['place', 'add', place, 'wsl', plugin.distribution, wsl.root],
+        wsl.env,
+      );
+      assert.equal(added.code, 0, added.stderr);
+    }
+    const inside = `${wsl.home}/plugins/${plugin.name}`;
+    await mkdir(join(wsl.root, inside), { recursive: true });
+    await cp(fixture(plugin.directory), join(wsl.root, inside), { recursive: true });
+    const added = await firstmate(home, ['add', plugin.name, inside, '--place', place]);
+    assert.equal(added.code, 0, added.stderr);
+  }
+  return home;
+}
 
 async function processesOf(host: Booted): Promise<Processes> {
   const answer = await host.fetch('/processes.json');
@@ -100,6 +162,47 @@ test(
 
     assertMeasured(spawner);
     assert.ok((spawner.processes ?? 0) >= 2, `the child is counted: ${spawner.processes}`);
+  },
+);
+
+test(
+  'a Plugin started from mcp.cmd counts the program under cmd.exe',
+  { skip: NOT_WINDOWS },
+  async (t) => {
+    const host = await bootHost(t, [{ name: 'spawner', directory: 'spawner' }]);
+
+    const spawner = rowOf(await processesOf(host), 'spawner');
+
+    assertMeasured(spawner);
+    // cmd.exe, the Node it runs mcp with, and the child that Node starts.
+    assert.ok((spawner.processes ?? 0) >= 3, `the tree under cmd.exe: ${spawner.processes}`);
+  },
+);
+
+test(
+  'with no PowerShell to run, each row says it was not measured, and why',
+  { skip: NOT_WINDOWS },
+  async (t) => {
+    const host = await bootHost(
+      t,
+      // spawner's mcp.cmd names its Node by FIRSTMATE_NODE, and needs no PATH.
+      [
+        { name: 'spawner', directory: 'spawner' },
+        { name: 'quitter', directory: 'quitter' },
+      ],
+      { PATH: await pathWith(t, []) },
+    );
+
+    const processes = await processesOf(host);
+
+    for (const row of [processes.firstmate, rowOf(processes, 'spawner')]) {
+      assert.match(row.unmeasured ?? '', /^PowerShell .+\.$/, `${row.name} says why`);
+      assert.equal(row.processes, null);
+      assert.equal(row.cpuPercent, null);
+      assert.equal(row.memoryBytes, null);
+    }
+    assert.equal(rowOf(processes, 'spawner').state, 'running');
+    assert.equal(rowOf(processes, 'quitter').why, 'exit 3.', 'a Stopped row still says why');
   },
 );
 
@@ -209,3 +312,106 @@ test('only the App and a terminal may read Usage, never a page', async (t) => {
   const head = await host.raw({ method: 'HEAD', path: '/processes.json' });
   assert.equal(head.status, 200);
 });
+
+test(
+  'a Plugin in a wsl Place is measured inside its distribution, with the PID it has there',
+  { skip: NO_FAKE_PROC },
+  async (t) => {
+    const wsl = await fakeWsl(t, ['Debian']);
+    const home = await wslHome(t, wsl, [
+      { name: 'spawner', directory: 'spawner', distribution: 'Debian' },
+    ]);
+    const host = await bootHostIn(t, home, wsl.env);
+
+    const processes = await processesOf(host);
+
+    const spawner = rowOf(processes, 'spawner');
+    assert.equal(spawner.state, 'running');
+    assert.equal(spawner.place, 'debian');
+    assertMeasured(spawner);
+    assert.ok((spawner.processes ?? 0) >= 2, `the child is counted: ${spawner.processes}`);
+    const server = (await wsl.ran()).find((one) => one.command.startsWith('env FIRSTMATE_PLUGIN='));
+    assert.equal(spawner.pid, server?.pid, "the Plugin Server's PID inside, not wsl.exe's");
+    assert.equal(processes.firstmate.place, DEFAULT_PLACE);
+  },
+);
+
+test(
+  'every row names its Place, and a distribution with no running Plugin is not asked',
+  { skip: NO_FAKE_PROC },
+  async (t) => {
+    const wsl = await fakeWsl(t, ['Debian', 'Ubuntu']);
+    const home = await wslHome(t, wsl, [
+      { name: 'both', directory: 'both' },
+      { name: 'spawner', directory: 'spawner', distribution: 'Debian' },
+      { name: 'quitter', directory: 'quitter', distribution: 'Ubuntu' },
+    ]);
+    const host = await bootHostIn(t, home, wsl.env);
+    const before = (await wsl.calls()).length;
+
+    const processes = await processesOf(host);
+
+    assert.equal(processes.firstmate.place, DEFAULT_PLACE);
+    assert.deepEqual(
+      processes.plugins.map((row) => [row.name, row.place, row.state]),
+      [
+        ['both', DEFAULT_PLACE, 'running'],
+        ['spawner', 'debian', 'running'],
+        ['quitter', 'ubuntu', 'stopped'],
+      ],
+    );
+    assertMeasured(rowOf(processes, 'both'));
+    assertMeasured(rowOf(processes, 'spawner'));
+    const asked = (await wsl.calls()).slice(before);
+    assert.ok(
+      asked.some((call) => call.startsWith('wsl.exe -d Debian ')),
+      'the distribution that holds a running Plugin is asked',
+    );
+    assert.deepEqual(
+      asked.filter((call) => call.includes('-d Ubuntu')),
+      [],
+      'a distribution whose only Plugin is Stopped is never asked',
+    );
+  },
+);
+
+/** A Running Plugin's row that was not measured: no figures, and a sentence. */
+function assertUnmeasured(row: Row, why: RegExp): void {
+  assert.equal(row.state, 'running');
+  assert.match(row.unmeasured ?? '', why);
+  assert.deepEqual(
+    [row.pid, row.processes, row.cpuPercent, row.memoryBytes],
+    [null, null, null, null],
+  );
+  assert.ok(!Number.isNaN(Date.parse(row.startedAt ?? '')), 'the run still has its start time');
+}
+
+for (const [how, why] of [
+  [
+    'fails',
+    /^the distribution Debian did not answer: The distribution Debian stopped answering\.$/,
+  ],
+  ['hangs', /^the distribution Debian did not answer within \d+ s\.$/],
+] as const) {
+  test(
+    `a distribution that ${how} leaves its own rows unmeasured, and the others measured`,
+    { skip: NO_FAKE_PROC },
+    async (t) => {
+      const wsl = await fakeWsl(t, ['Debian', 'Ubuntu']);
+      const home = await wslHome(t, wsl, [
+        { name: 'both', directory: 'both' },
+        { name: 'spawner', directory: 'spawner', distribution: 'Debian' },
+        { name: 'echoer', directory: 'both', distribution: 'Ubuntu' },
+      ]);
+      const host = await bootHostIn(t, home, wsl.env);
+      await wsl.silence('Debian', how);
+
+      const processes = await processesOf(host);
+
+      assertUnmeasured(rowOf(processes, 'spawner'), why);
+      assertMeasured(rowOf(processes, 'echoer'));
+      assertMeasured(rowOf(processes, 'both'));
+      assertMeasured(processes.firstmate);
+    },
+  );
+}

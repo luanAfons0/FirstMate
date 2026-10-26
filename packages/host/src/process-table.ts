@@ -39,23 +39,30 @@ export type ProcessReader = {
   read(roots: readonly number[]): Promise<readonly ProcessFacts[]>;
 };
 
-/** The PIDs of these roots and of every process under them, as the table holds them. */
+/**
+ * The PIDs of these roots and of every process under them, as the table holds
+ * them. A process that started before the one its parent PID names is not
+ * that one's child: Windows keeps the parent PID of a process whose parent
+ * ended, and may give that PID to a new process, which a reused PID must not
+ * make a Plugin's.
+ */
 export function treeOf(table: readonly ProcessFacts[], roots: readonly number[]): Set<number> {
-  const children = new Map<number, number[]>();
+  const children = new Map<number, ProcessFacts[]>();
   for (const one of table) {
     const siblings = children.get(one.parent);
-    if (siblings === undefined) children.set(one.parent, [one.pid]);
-    else siblings.push(one.pid);
+    if (siblings === undefined) children.set(one.parent, [one]);
+    else siblings.push(one);
   }
-  const held = new Set(table.map((one) => one.pid));
+  const held = new Map(table.map((one) => [one.pid, one]));
   const tree = new Set<number>();
-  const next = roots.filter((pid) => held.has(pid));
-  for (let pid = next.pop(); pid !== undefined; pid = next.pop()) {
+  const next = roots.flatMap((pid) => held.get(pid) ?? []);
+  for (let one = next.pop(); one !== undefined; one = next.pop()) {
     // A parent the system names again is no loop, but a table read while
     // processes come and go can hold one, and a walk must still end.
-    if (tree.has(pid)) continue;
-    tree.add(pid);
-    next.push(...(children.get(pid) ?? []));
+    if (tree.has(one.pid)) continue;
+    tree.add(one.pid);
+    const start = one.start;
+    next.push(...(children.get(one.pid) ?? []).filter((child) => child.start >= start));
   }
   return tree;
 }
