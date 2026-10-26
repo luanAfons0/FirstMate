@@ -663,8 +663,12 @@ The Process View shows what FirstMate and each Plugin use now, as
 Plugin Order, each with its state, CPU (against one core), memory (each
 process's fair share), uptime, PID and process count. A thin bar beside each
 CPU and memory figure, on one scale for the whole column, shows which Plugin
-uses the most. A Place column shows when your Plugins are in more than one
-Place. A Stopped row says why and has a Restart button; a Plugin with no
+uses the most. Click CPU or Memory to sort the Plugins by it, largest first,
+with FirstMate's row still first; the rows then hold their places between
+readings, and a second click, **Plugin Order** or closing the view puts them
+back. Each figure and its bar move to a new reading in a fifth of a second, or
+at once when your system asks for reduced motion. A Place column shows when
+your Plugins are in more than one Place. A Stopped row says why and has a Restart button; a Plugin with no
 Plugin Server, or one whose reading failed, says so in its row. The App reads
 `/processes.json` every 2 seconds while the view shows, and stops when you
 close it or hide or minimize the window. A narrow window drops the PID and

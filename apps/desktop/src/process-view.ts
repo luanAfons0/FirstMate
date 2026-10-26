@@ -7,7 +7,8 @@
  * a data address and then sent each new body, never served by the Host, so no
  * Plugin Page can read what it shows (ADR-0008). The main process reads
  * `/processes.json` every 2 seconds while the view is shown (`processes.ts`)
- * and writes each reading in here whole; the page runs no script of its own.
+ * and writes each reading in here whole. The page's one script moves each
+ * figure to its new value.
  *
  * The columns have fixed widths, so nothing moves when a row changes state or
  * a reading arrives. Each CPU and memory figure has a 2px bar to its left, on
@@ -19,9 +20,13 @@
  * rows are in more than one Place. A narrow window drops the PID and the
  * process count first, then the uptime and the Place, then "the App".
  *
- * Every row carries `data-key`, every meter its column and every figure its
- * value, so a sort and a glide to each new reading can be added over this
- * markup (#234).
+ * A click on the CPU or Memory header sorts the Plugins by it, largest first,
+ * with FirstMate's row still first. The order is taken at the click and held
+ * between readings, so no row jumps; a second click, the Plugin Order button,
+ * or the view's closing puts the rows back in the Plugin Order. On each new
+ * reading every figure and its bar move to the new value in 0.22 s, on the
+ * theme's ease; with reduced motion they change at once. A row that moves is
+ * drawn where it lands, and its bars do not grow again from nothing.
  */
 import { STATE_WORDS } from '@firstmate/core/plugin-state';
 import { type IconName, icon } from '@firstmate/core/theme';
@@ -32,7 +37,7 @@ import {
   uptimeText,
   type UsageRow,
 } from '@firstmate/core/usage';
-import { restartAsk } from './ask.ts';
+import { processesSortAsk, restartAsk } from './ask.ts';
 import type { Plugins, Usage } from './host-lists.ts';
 import { escaped, written, type Written } from './pages.ts';
 
@@ -47,16 +52,35 @@ export type ProcessesShown = {
   readonly plugins: Plugins;
   /** The Plugins whose restart was asked for and has not answered yet. */
   readonly restarting: readonly string[];
+  /** How the rows are sorted, or `undefined` for the Plugin Order. */
+  readonly sort: Sort | undefined;
   /** The time of the drawing, which each uptime is counted to. */
   readonly now: number;
 };
 
 /** The icons any body of the Process View may draw. */
-const ICONS: readonly IconName[] = ['anchor', 'warning-circle', 'arrow-clockwise', 'circle-notch'];
+const ICONS: readonly IconName[] = [
+  'anchor',
+  'warning-circle',
+  'arrow-clockwise',
+  'circle-notch',
+  'caret-down',
+  'list-numbers',
+];
+
+/** A figure column the rows can be sorted by. */
+export type SortKey = 'cpu' | 'memory';
+
+/**
+ * A sort of the Plugins' rows, largest first, by one figure column. The order
+ * of Plugin Names is taken from one reading and held for the next ones, so a
+ * row never jumps; it is `undefined` until a reading has a figure to sort by.
+ */
+export type Sort = { readonly by: SortKey; readonly order: readonly string[] | undefined };
 
 /** A figure column: its key on a meter, the header's words, and how a figure is said. */
 type Column = {
-  readonly key: 'cpu' | 'memory';
+  readonly key: SortKey;
   readonly words: string;
   readonly figure: (row: UsageRow) => number | null;
   readonly text: (value: number) => string;
@@ -70,6 +94,43 @@ const MEMORY: Column = {
   text: memoryText,
 };
 
+const COLUMNS: Readonly<Record<SortKey, Column>> = { cpu: CPU, memory: MEMORY };
+
+/**
+ * Sort the Plugins by a column, largest first, as this reading has them. A
+ * row with no figure goes last; rows with the same figure keep the Plugin
+ * Order.
+ */
+export function sorted(by: SortKey, usage: ProcessesShown['usage']): Sort {
+  if (usage.kind !== 'told' || !usage.processes.plugins.some(measured)) {
+    return { by, order: undefined };
+  }
+  const figure = (row: UsageRow): number => (measured(row) ? (COLUMNS[by].figure(row) ?? 0) : -1);
+  const order = [...usage.processes.plugins]
+    .sort((a, b) => figure(b) - figure(a))
+    .map((row) => row.name);
+  return { by, order };
+}
+
+/**
+ * The sort a new reading is shown in: the same order, so no row moves. A sort
+ * asked for before any figure arrived takes its order from this reading.
+ */
+export function heldSort(sort: Sort | undefined, usage: ProcessesShown['usage']): Sort | undefined {
+  return sort === undefined || sort.order !== undefined ? sort : sorted(sort.by, usage);
+}
+
+/** The rows in a sort's order. A Plugin the order does not name goes last, in the Plugin Order. */
+function inOrder(rows: readonly UsageRow[], sort: Sort | undefined): readonly UsageRow[] {
+  const order = sort?.order;
+  if (order === undefined) return rows;
+  const at = (row: UsageRow): number => {
+    const found = order.indexOf(row.name);
+    return found < 0 ? order.length : found;
+  };
+  return [...rows].sort((a, b) => at(a) - at(b));
+}
+
 /** The shortest bar, so a figure of almost nothing still shows one. */
 const LEAST_BAR = 0.015;
 
@@ -77,9 +138,15 @@ const LEAST_BAR = 0.015;
 export function processesPage(shown: ProcessesShown): Written {
   const every = `<span class="every" title="The view reads Usage again while it is shown">\
 every ${EVERY_MS / 1000} s</span>`;
+  const back =
+    shown.sort === undefined
+      ? ''
+      : `<button class="back" type="button" data-ask="${processesSortAsk('plugin-order')}" \
+data-from="${shown.sort.by}" title="Put the rows back in the Plugin Order">\
+${icon('list-numbers')}Plugin Order</button>`;
   const head = (counted: string): string =>
     `<div class="pv-head"><h1>Processes</h1><span class="count">${counted}</span>\
-<span class="grow"></span>${every}</div>`;
+<span class="grow"></span>${back}${every}</div>`;
   let body: string;
   if (shown.usage.kind === 'untold') {
     body = `${head('')}<div class="pv-scroll"><div class="unsaid" role="status">\
@@ -96,9 +163,9 @@ and it shows here with what it uses.</p></div>`
         : '';
     body = `${head(counted(rows.count))}<div class="pv-scroll">\
 <table class="pt" aria-label="Usage of FirstMate and each Plugin">\
-<thead>${headRow(rows.withPlace)}</thead><tbody>${rows.html}</tbody></table>${empty}</div>`;
+<thead>${headRow(rows.withPlace, shown.sort)}</thead><tbody>${rows.html}</tbody></table>${empty}</div>`;
   }
-  return written('Processes', styles(), `<div class="view">${body}</div>`, '', ICONS);
+  return written('Processes', styles(), `<div class="view">${body}</div>`, SCRIPT, ICONS);
 }
 
 /** The rows of a table, how many Plugins they hold, and whether they show a Place. */
@@ -109,10 +176,21 @@ function counted(count: number): string {
   return `${count} Plugin${count === 1 ? '' : 's'}`;
 }
 
-function headRow(withPlace: boolean): string {
+/**
+ * The header row. CPU and Memory are buttons: a click sorts by that column,
+ * and a click on the sorted one puts the Plugin Order back. Only the sorted
+ * column shows its arrow, and says it is sorted.
+ */
+function headRow(withPlace: boolean, sort: Sort | undefined): string {
   const place = withPlace ? '<th class="c-place w-place" scope="col">Place</th>' : '';
-  const figure = (column: Column): string =>
-    `<th class="num u w-u" scope="col" data-key="${column.key}">${column.words}</th>`;
+  const figure = (column: Column): string => {
+    const on = sort?.by === column.key;
+    const ask = processesSortAsk(on ? 'plugin-order' : column.key);
+    const title = on ? 'Back to the Plugin Order' : `Sort by ${column.words}, largest first`;
+    return `<th class="num u w-u" scope="col" data-key="${column.key}"\
+${on ? ' aria-sort="descending"' : ''}><button class="sort" type="button" data-ask="${ask}" \
+title="${title}">${on ? icon('caret-down') : ''}${column.words}</button></th>`;
+  };
   return `<tr><th scope="col">Plugin</th>${place}${figure(CPU)}${figure(MEMORY)}\
 <th class="num c-up w-up" scope="col">Uptime</th><th class="num c-pid w-pid" scope="col">PID</th>\
 <th class="num c-procs w-procs" scope="col">Procs</th></tr>`;
@@ -140,7 +218,7 @@ function scaleOf(rows: readonly UsageRow[], column: Column): Scale {
 function toldRows(shown: ProcessesShown): Rows {
   if (shown.usage.kind !== 'told') return { html: '', count: 0, withPlace: false };
   const { firstmate, plugins } = shown.usage.processes;
-  const all = [firstmate, ...plugins];
+  const all = [firstmate, ...inOrder(plugins, shown.sort)];
   const withPlace = new Set(all.map((row) => row.place)).size > 1;
   const scales = { cpu: scaleOf(all, CPU), memory: scaleOf(all, MEMORY) };
   const html = all
@@ -255,6 +333,81 @@ function gapCells(content: string): string {
 <td class="c-pid"></td><td class="c-procs"></td>`;
 }
 
+/** How long a figure and its bar take to move to a new reading, in milliseconds. */
+const GLIDE_MS = 220;
+
+/**
+ * The page's own script, which runs after each body is put in place. Each
+ * figure moves from what it shows to its new value in 0.22 s on the theme's
+ * ease, as its bar does in the style; a figure that just appeared, or one
+ * under reduced motion, shows its value at once. It says each value as
+ * `cpuText` and `memoryText` in `@firstmate/core/usage` do. When rows move,
+ * from a sort, the table stands still for two frames, so no bar grows again.
+ * After the Plugin Order button, which goes away, the focus lands on the
+ * header that was sorted.
+ */
+const SCRIPT = `
+const calm = matchMedia('(prefers-reduced-motion: reduce)');
+const MEBIBYTE = 1024 * 1024;
+const said = {
+  cpu: (value) => value.toFixed(1) + '%',
+  memory: (value) => {
+    const megabytes = value / MEBIBYTE;
+    return megabytes >= 1024
+      ? (megabytes / 1024).toFixed(2) + ' GB'
+      : Math.round(megabytes) + ' MB';
+  },
+};
+const out = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+// Each figure: the value it shows now, and the one it moves to.
+const moving = new WeakMap();
+const glide = (figure) => {
+  const say = said[figure.parentElement.dataset.key];
+  const to = Number(figure.dataset.v);
+  const was = moving.get(figure);
+  if (was !== undefined && was.to === to) return;
+  const from = was === undefined ? to : was.at;
+  const move = { at: from, to };
+  moving.set(figure, move);
+  if (from === to || calm.matches) {
+    move.at = to;
+    figure.textContent = say(to);
+    return;
+  }
+  const start = performance.now();
+  figure.textContent = say(from);
+  const step = (now) => {
+    if (moving.get(figure) !== move) return;
+    const t = Math.min(Math.max((now - start) / ${GLIDE_MS}, 0), 1);
+    move.at = t === 1 ? to : from + (to - from) * out(t);
+    figure.textContent = say(move.at);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+};
+let order = [];
+let refocus;
+addEventListener('click', (event) => {
+  const back = event.target instanceof Element ? event.target.closest('.back') : null;
+  if (back !== null) refocus = back.dataset.from;
+});
+whenShown(() => {
+  const table = document.querySelector('table.pt');
+  const rows = table === null ? [] : Array.from(table.tBodies[0].rows, (row) => row.dataset.key);
+  const kept = rows.filter((key) => order.includes(key)).join('/');
+  if (table !== null && kept !== order.filter((key) => rows.includes(key)).join('/')) {
+    table.setAttribute('data-still', '');
+    requestAnimationFrame(() => requestAnimationFrame(() => table.removeAttribute('data-still')));
+  }
+  order = rows;
+  for (const figure of document.querySelectorAll('.meter[data-key] .v')) glide(figure);
+  if (refocus !== undefined && document.querySelector('.back') === null) {
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (lost) document.querySelector('th[data-key="' + refocus + '"] .sort')?.focus();
+    refocus = undefined;
+  }
+});`;
+
 function styles(): string {
   return `* { box-sizing: border-box; }
   html, body { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); }
@@ -280,6 +433,15 @@ function styles(): string {
   .pv-head .count { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
   .pv-head .grow { flex: 1; }
   .pv-head .every { color: var(--faint); font: 11.5px var(--mono); white-space: nowrap; }
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px;
+    border: 1px solid var(--line-2); border-radius: var(--radius-control); background: none;
+    cursor: pointer; font-size: 12px; color: var(--text); white-space: nowrap;
+    transition: transform .12s ease-out;
+  }
+  .back:hover { border-color: var(--faint); color: var(--ink); }
+  .back:active { transform: scale(.97); }
+  .back svg.i { width: 12px; height: 12px; }
 
   .pv-scroll { flex: 1; min-height: 0; overflow: auto; container-type: inline-size; }
   /* Fixed column widths, so a column never moves when a row changes state or a
@@ -302,6 +464,17 @@ function styles(): string {
   .pt .w-procs { width: 80px; }
   .pt th:first-child, .pt td:first-child { padding-left: 20px; }
   .pt th:last-child, .pt td:last-child { padding-right: 16px; }
+  /* CPU and Memory sort the rows. Only the sorted column shows its arrow. */
+  .sort {
+    display: inline-flex; align-items: center; gap: 4px; margin: 0 -6px; padding: 4px 6px;
+    border: 0; border-radius: 6px; background: none; cursor: pointer;
+    font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+    transition: transform .12s ease-out;
+  }
+  .sort:hover { background: var(--hover); color: var(--ink); }
+  .sort:active { transform: scale(.97); }
+  .sort svg.i { width: 11px; height: 11px; }
+  th[aria-sort='descending'] .sort { color: var(--ink); }
 
   .pt td {
     height: 31px; padding: 0 12px; border-bottom: 1px solid var(--line); white-space: nowrap;
@@ -344,7 +517,10 @@ function styles(): string {
   .bar {
     height: 2px; border-radius: 1px; background: var(--accent);
     transform-origin: left center; transform: scaleX(var(--f, 0));
+    transition: transform ${GLIDE_MS}ms var(--ease);
   }
+  /* Rows that moved are drawn where they land; only a new reading moves a bar. */
+  .pt[data-still] .bar { transition: none; }
   /* With one row there is nothing to compare, so no bar. */
   .meter[data-solo] .bar { visibility: hidden; }
   .v { font: 12px/1 var(--mono); color: var(--text); text-align: right; }
@@ -416,7 +592,7 @@ function styles(): string {
   }
   @media (max-width: 560px) { .pv-head .count { display: none; } }
   @media (prefers-reduced-motion: reduce) {
-    .again, .pt td { transition: none; }
+    .again, .pt td, .bar, .sort, .back { transition: none; }
     .again[aria-busy='true'] svg.i { animation: none; }
   }`;
 }

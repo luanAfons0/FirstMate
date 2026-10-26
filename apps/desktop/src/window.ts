@@ -43,7 +43,9 @@
  * does. While it shows in a visible window, the main process reads
  * `/processes.json` every 2 seconds and sends the view each reading; when the
  * view closes or the window hides or is minimized, the reading stops
- * (`processes.ts`). Each opening starts again from the first reading.
+ * (`processes.ts`). Each opening starts again from the first reading, in the
+ * Plugin Order; a sort the operator asks for holds until a click or the view's
+ * closing puts the rows back.
  *
  * The window shows the Host and nothing else. A link to anywhere else, in a new
  * window or the same one, opens in the operator's own browser.
@@ -110,7 +112,7 @@ import {
   type Here,
   type Written,
 } from './pages.ts';
-import { processesPage } from './process-view.ts';
+import { heldSort, processesPage, type Sort, sorted } from './process-view.ts';
 import { keepReading } from './processes.ts';
 import { change, readShown, type ChangeNeeds, type Outcome } from './settings.ts';
 import { settingsPage } from './settings-view.ts';
@@ -238,6 +240,8 @@ export function openWindow(
   let aside: 'settings' | 'processes' | undefined;
   /** The last reading of Usage the Process View shows, since it last opened. */
   let usage: Usage | { readonly kind: 'first' } = { kind: 'first' };
+  /** How the Process View sorts its rows, until a click or its closing puts them back. */
+  let sort: Sort | undefined;
   /** What became of the last change the Settings View asked for. */
   let outcome: Outcome | undefined;
   /** Whether a change the Settings View asked for is still being made. */
@@ -336,6 +340,7 @@ export function openWindow(
     () => (host === undefined ? Promise.resolve({ kind: 'untold' }) : askForProcesses(host)),
     (now) => {
       usage = now;
+      sort = heldSort(sort, now);
       redraw();
     },
   );
@@ -449,7 +454,7 @@ export function openWindow(
     }
     if (aside === 'processes') {
       processesShown.show(
-        processesPage({ usage, plugins, restarting: [...restarting], now: Date.now() }),
+        processesPage({ usage, plugins, restarting: [...restarting], sort, now: Date.now() }),
       );
     }
     layout();
@@ -684,12 +689,17 @@ export function openWindow(
       switching = false;
       fault = undefined;
       outcome = undefined;
-      // Each opening of the Process View starts from the first reading.
+      // Each opening of the Process View starts from the first reading, in the Plugin Order.
       usage = { kind: 'first' };
+      sort = undefined;
       // The view shows beside an open Mate panel, as a page does.
       if (aside !== undefined) mate.narrow();
       redraw();
       shownView()?.webContents.focus();
+    } else if (asked.kind === 'processes-sort') {
+      // The order is taken now, and held between readings, so no row jumps.
+      sort = asked.by === 'plugin-order' ? undefined : sorted(asked.by, usage);
+      redraw();
     } else if (asked.kind === 'mate') {
       mate.toggle();
     } else if (isPanelAsk(asked)) {
@@ -767,6 +777,8 @@ export function openWindow(
     ) {
       return;
     }
+    // Only the Process View sorts itself.
+    if (asked.kind === 'processes-sort' && event.sender !== processes.webContents) return;
     // Only the strip's gauge opens the Process View; the Tray asks through `showProcesses`.
     if (asked.kind === 'processes' && event.sender !== strip.webContents) return;
     // The Mate runs the operator's Agent: it takes an ask from its own panel

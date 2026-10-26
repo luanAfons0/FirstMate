@@ -45,6 +45,8 @@ export type Asked =
   | { readonly kind: 'settings' }
   /** Open the Process View, or close it when it is open. */
   | { readonly kind: 'processes' }
+  /** Sort the Process View by CPU or Memory, largest first, or put it back in the Plugin Order. */
+  | { readonly kind: 'processes-sort'; readonly by: 'cpu' | 'memory' | 'plugin-order' }
   /** Turn start at logon on or off. */
   | { readonly kind: 'logon'; readonly on: boolean }
   /** Add a Place: a local one, or a `wsl` one in this distribution. */
@@ -154,6 +156,11 @@ export function restartAsk(name: string): string {
   return said('restart', name);
 }
 
+/** The words that ask to sort the Process View by a column, or to put it back in the Plugin Order. */
+export function processesSortAsk(by: 'cpu' | 'memory' | 'plugin-order'): string {
+  return said('processes-sort', by);
+}
+
 /** The words that ask to turn start at logon on or off. */
 export function logonAsk(on: boolean): string {
   return said('logon', on ? 'on' : 'off');
@@ -223,6 +230,12 @@ export function readAsked(said: unknown): Asked {
     if (kind === 'logon' && (first === 'on' || first === 'off'))
       return { kind, on: first === 'on' };
     if (kind === 'place-remove') return { kind, name: first };
+    if (
+      kind === 'processes-sort' &&
+      (first === 'cpu' || first === 'memory' || first === 'plugin-order')
+    ) {
+      return { kind, by: first };
+    }
     if (kind === 'shelf-choose') return { kind, place: first };
     if (kind === 'mate-send' || kind === 'mate-ask') return { kind, text: first };
     if (kind === 'mate-link') return { kind, address: first };
