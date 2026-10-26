@@ -1,7 +1,7 @@
 <!--
 One commit is one whole, working change: code, tests and documentation
-together. A commit subject is one imperative sentence in the project's own
-words, with no prefix, no scope and no ticket number.
+together. A commit message follows Conventional Commits:
+`<type>[(<scope>)][!]: <description>`. See CONTRIBUTING.md.
 -->
 
 ## What this changes

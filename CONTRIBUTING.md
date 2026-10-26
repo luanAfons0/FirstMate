@@ -66,13 +66,26 @@ change that makes it work is welcome — say which platform you tested on.
 
 ## Commit messages
 
-One imperative sentence, in the project's own words. No prefix, no scope, no
-ticket number.
+Every commit follows
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
 ```
-Refuse every request that is not mine
-Start Plugin Servers and show their state
-Give the Tray an anchor
+<type>[(<scope>)][!]: <description>
+```
+
+- **Type**: one of `feat`, `fix`, `docs`, `test`, `refactor`, `perf`,
+  `build`, `ci`, `chore`, `style` or `revert`.
+- **Scope**: optional. It names the package: `core`, `host`, `cli` or
+  `desktop`.
+- **Breaking change**: put `!` before the colon, and say what breaks in a
+  `BREAKING CHANGE:` footer.
+- **Description**: one imperative sentence, in the project's own words,
+  starting in lower case. No ticket number.
+
+```
+fix(host): refuse every request that is not mine
+feat: start Plugin Servers and show their state
+feat(desktop): give the Tray an anchor
 ```
 
 One commit is one whole, working change: code, tests and documentation
