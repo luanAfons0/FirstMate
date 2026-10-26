@@ -1,9 +1,11 @@
 /**
- * A Plugin Server that will not end is killed, and every process it started
- * goes with it: a restart and a Host stop leave no child of it running.
+ * When a Plugin Server ends, every process it started ends with it: a
+ * restart, a Host stop and a Plugin Server that ends on its own leave no
+ * child of it running.
  *
- * The fixture's Plugin Server starts a child, and both ignore SIGTERM, so
- * only a kill of the whole tree ends the child. Linux alone: on Windows the
+ * Each fixture's Plugin Server starts a child that ignores SIGTERM.
+ * `stubborn-parent` ignores SIGTERM too, so it is killed; `parting-parent`
+ * ends on SIGTERM and leaves its child behind. Linux alone: on Windows the
  * Host already ends the whole tree with `taskkill /t` (ADR-0019), and this
  * test reads `/proc`.
  */
@@ -46,12 +48,12 @@ async function ends(pid: number): Promise<boolean> {
 }
 
 /**
- * The pid of the child the Plugin Server started, said after `from` in the
+ * The pid of the child a Plugin Server started, said after `from` in the
  * Host's output. A child left running is killed when the test ends, so that
  * a failed test leaves nothing behind.
  */
-async function childOf(t: TestContext, host: Booted, from = 0): Promise<number> {
-  const said = /stubborn-parent: started a child with pid (\d+)/g;
+async function childOf(t: TestContext, host: Booted, name: string, from = 0): Promise<number> {
+  const said = new RegExp(`${name}: started a child with pid (\\d+)`, 'g');
   said.lastIndex = from;
   await until(host, { exec: (output: string) => said.exec(output) } as RegExp);
   said.lastIndex = from;
@@ -63,34 +65,46 @@ async function childOf(t: TestContext, host: Booted, from = 0): Promise<number> 
   return pid;
 }
 
-test(
-  'a restart leaves no child of a Plugin Server that would not end',
-  { skip: SKIP },
-  async (t) => {
-    const host = await bootHost(t, [{ name: 'stubborn-parent', directory: 'stubborn-parent' }]);
-    const child = await childOf(t, host);
+/** Each fixture, and what its Plugin Server says when it gets SIGTERM. */
+const PARENTS = [
+  { name: 'stubborn-parent', onSigterm: /stubborn-parent: SIGTERM, and staying/ },
+  { name: 'parting-parent', onSigterm: /parting-parent: SIGTERM, and leaving/ },
+] as const;
+
+for (const { name, onSigterm } of PARENTS) {
+  test(`a restart leaves no child of ${name}`, { skip: SKIP }, async (t) => {
+    const host = await bootHost(t, [{ name, directory: name }]);
+    const child = await childOf(t, host, name);
     const before = host.output().length;
 
-    const restarted = await firstmate(host.home, ['restart', 'stubborn-parent']);
+    const restarted = await firstmate(host.home, ['restart', name]);
 
     assert.equal(restarted.code, 0, restarted.stderr);
-    assert.match(host.output(), /stubborn-parent: SIGTERM, and staying/);
+    assert.match(host.output(), onSigterm);
     // The restarted Plugin Server's child runs, and is killed should the test fail.
-    await childOf(t, host, before);
+    await childOf(t, host, name, before);
     assert.equal(await ends(child), true, `the child ${child} outlived the restart`);
-  },
-);
+  });
 
-test(
-  'a Host stop leaves no child of a Plugin Server that would not end',
-  { skip: SKIP },
-  async (t) => {
-    const host = await bootHost(t, [{ name: 'stubborn-parent', directory: 'stubborn-parent' }]);
-    const child = await childOf(t, host);
+  test(`a Host stop leaves no child of ${name}`, { skip: SKIP }, async (t) => {
+    const host = await bootHost(t, [{ name, directory: name }]);
+    const child = await childOf(t, host, name);
 
     await host.stop();
 
-    assert.match(host.output(), /stubborn-parent: SIGTERM, and staying/);
+    assert.match(host.output(), onSigterm);
     assert.equal(await ends(child), true, `the child ${child} outlived the Host`);
-  },
-);
+  });
+}
+
+test('a Plugin Server that ends on its own leaves no child', { skip: SKIP }, async (t) => {
+  const host = await bootHost(t, [{ name: 'parting-parent', directory: 'parting-parent' }]);
+  const child = await childOf(t, host, 'parting-parent');
+  const server = Number((await until(host, /parting-parent: the Plugin Server has pid (\d+)/))[1]);
+
+  // Not the Host's doing: something else ends the Plugin Server.
+  process.kill(server, 'SIGTERM');
+
+  await until(host, /the Plugin named parting-parent is Stopped/);
+  assert.equal(await ends(child), true, `the child ${child} outlived its Plugin Server`);
+});
