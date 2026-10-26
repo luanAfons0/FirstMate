@@ -323,7 +323,7 @@ async function end(run: Run): Promise<void> {
   }
 }
 
-/** Kill a process that would not end, and on Windows every process under it. */
+/** Kill a process that would not end, and every process under it. */
 function killHard(child: ChildProcess | null): void {
   if (child !== null) killTree(child, 'SIGKILL');
 }
@@ -506,6 +506,10 @@ async function isFile(path: string): Promise<boolean> {
  * stderr is the Plugin Server's own output, and the Host writes it as its
  * own, so it reaches the terminal and the log alike (log.ts). It is piped
  * rather than inherited because the App has no console to inherit.
+ *
+ * Away from Windows it leads a process group of its own, so that a Plugin
+ * Server that will not end is killed with every process it started: killTree
+ * ends a group, and ends a process that leads none alone.
  */
 function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
   const options = {
@@ -517,6 +521,7 @@ function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
       ...(process.versions.electron === undefined ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
+    detached: !ON_WINDOWS,
   } satisfies SpawnOptions;
   if (plugin.runner.kind === 'wsl') {
     // The distribution starts it in its own directory, by its own path, so
