@@ -202,7 +202,7 @@ async function checkOwnRow(host: Booted): Promise<void> {
         `the row counts ${row.processes} processes, and the App has ${electron.length}:`,
         ...(await Promise.all(electron.map(seenOf))),
         "the App's output, last lines:",
-        ...host.output().trimEnd().split('\n').slice(-30),
+        ...host.output().trimEnd().split('\n').slice(-80),
       ].join('\n'),
     );
   }
