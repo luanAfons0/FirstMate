@@ -22,8 +22,20 @@ const TICK_MS = 10;
 /** The variable that names a process's Plugin, which the Supervisor sets (ADR-0032). */
 const PLUGIN_MARK = 'FIRSTMATE_PLUGIN=';
 
+/** The variable that names a process's Host by its home. */
+const HOME_MARK = `${HOME_VARIABLE}=`;
+
 /** One process before its memory is read. */
 type Seen = Omit<ProcessFacts, 'memoryBytes'>;
+
+/** What a process's `stat` says of it. */
+type Stat = Omit<Seen, 'plugin'>;
+
+/**
+ * Whether a process that names a Plugin is this Host's, by the
+ * `FIRSTMATE_HOME` its environment holds, or undefined when it holds none.
+ */
+export type OwnHome = (home: string | undefined) => boolean;
 
 /**
  * The reader of this machine's `/proc`. A process is this Host's only when it
@@ -31,11 +43,11 @@ type Seen = Omit<ProcessFacts, 'memoryBytes'>;
  * or a developer's, never adds its Plugins to this one's.
  */
 export function linuxReader(home: string | undefined): ProcessReader {
-  const homeMark = home === undefined ? undefined : `${HOME_VARIABLE}=${home}`;
+  const ownHome: OwnHome = (named) => named === home;
   return {
     async read(roots) {
       const pids = (await readdir(PROC)).filter((name) => /^\d+$/.test(name)).map(Number);
-      const seen = (await Promise.all(pids.map((pid) => readProcess(pid, homeMark)))).filter(
+      const seen = (await Promise.all(pids.map((pid) => readProcess(pid, ownHome)))).filter(
         (one): one is Seen => one !== null,
       );
       const wanted = treeOf(
@@ -54,38 +66,52 @@ export function linuxReader(home: string | undefined): ProcessReader {
 }
 
 /** One process, or null when it ended while the table was read. */
-async function readProcess(pid: number, homeMark: string | undefined): Promise<Seen | null> {
-  const stat = await readFile(`${PROC}/${pid}/stat`, 'utf8').catch(() => null);
+async function readProcess(pid: number, ownHome: OwnHome): Promise<Seen | null> {
+  const text = await readFile(`${PROC}/${pid}/stat`, 'utf8').catch(() => null);
+  const stat = text === null ? null : statOf(text);
   if (stat === null) return null;
+  // Another user's environment cannot be read, and no Plugin of this Host is
+  // another user's.
+  const environment = await readFile(`${PROC}/${pid}/environ`, 'latin1').catch(() => '');
+  return { ...stat, plugin: pluginOf(environment, ownHome) };
+}
+
+/** A process's `stat`, as proc(5) writes it, or null when it is not whole. */
+export function statOf(text: string): Stat | null {
   // The name in brackets may hold spaces and brackets of its own, so the
   // fields are counted from the last one.
-  const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+  const close = text.lastIndexOf(')');
+  if (close === -1) return null;
+  const pid = Number.parseInt(text, 10);
+  const fields = text.slice(close + 2).split(' ');
   // Fields 4, 14, 15 and 22 of proc(5), counted from field 3 here.
   const parent = Number(fields[1]);
   const ticks = Number(fields[11]) + Number(fields[12]);
   const start = Number(fields[19]);
-  if (![parent, ticks, start].every(Number.isFinite)) return null;
-  // Another user's environment cannot be read, and no Plugin of this Host is
-  // another user's.
-  const environment = await readFile(`${PROC}/${pid}/environ`, 'latin1').catch(() => '');
-  return { pid, parent, start, cpuMs: ticks * TICK_MS, plugin: pluginOf(environment, homeMark) };
+  if (![pid, parent, ticks, start].every(Number.isFinite)) return null;
+  return { pid, parent, start, cpuMs: ticks * TICK_MS };
 }
 
-/** The Plugin a process's environment names, when the process is this Host's. */
-function pluginOf(environment: string, homeMark: string | undefined): string | null {
+/**
+ * The Plugin a process's environment names, when the process is this
+ * Host's. The variables are split by NUL, as `environ` holds them.
+ */
+export function pluginOf(environment: string, ownHome: OwnHome): string | null {
   const variables = environment.split('\0');
   const named = variables.find((variable) => variable.startsWith(PLUGIN_MARK));
   if (named === undefined) return null;
-  const ownHome =
-    homeMark === undefined
-      ? !variables.some((variable) => variable.startsWith(`${HOME_VARIABLE}=`))
-      : variables.includes(homeMark);
-  return ownHome ? named.slice(PLUGIN_MARK.length) : null;
+  const home = variables.find((variable) => variable.startsWith(HOME_MARK));
+  return ownHome(home?.slice(HOME_MARK.length)) ? named.slice(PLUGIN_MARK.length) : null;
 }
 
 /** A process's proportional set size in bytes, or null when it cannot be read. */
 async function readPss(pid: number): Promise<number | null> {
   const rollup = await readFile(`${PROC}/${pid}/smaps_rollup`, 'utf8').catch(() => null);
-  const kilobytes = rollup === null ? undefined : /^Pss:\s+(\d+) kB$/m.exec(rollup)?.[1];
+  return rollup === null ? null : pssOf(rollup);
+}
+
+/** The proportional set size `smaps_rollup` says, in bytes, or null when it says none. */
+export function pssOf(rollup: string): number | null {
+  const kilobytes = /^Pss:\s+(\d+) kB$/m.exec(rollup)?.[1];
   return kilobytes === undefined ? null : Number(kilobytes) * 1024;
 }

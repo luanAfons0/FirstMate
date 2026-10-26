@@ -7,6 +7,10 @@
  * root points at that same folder, so the files the Host reads through the
  * root are the files the fake runs: the Place's own data is the seam.
  *
+ * As the real one does, the fake runs the command as a process of its own, so
+ * the PID inside the distribution is not wsl.exe's, and it writes down that
+ * PID. A test can make one distribution stop answering, to see a call fail.
+ *
  * The fake is a shell script, so these tests run where a shell does. On
  * Windows the real `wsl.exe` is in System32 and a script cannot stand in for
  * it, so the tests skip there and say so.
@@ -40,6 +44,21 @@ export type Wsl = {
   readonly env: Readonly<Record<string, string>>;
   /** Every call the fake took, one line each, in order. */
   calls(): Promise<readonly string[]>;
+  /** Every command the fake ran inside a distribution, with the PID it had there, in order. */
+  ran(): Promise<readonly Ran[]>;
+  /**
+   * From now on, every call for this distribution fails as a distribution
+   * that is gone, or never answers. A program it already runs runs on.
+   */
+  silence(distribution: string, how: 'fails' | 'hangs'): Promise<void>;
+};
+
+/** One command the fake ran inside a distribution. */
+type Ran = {
+  /** Its PID inside the distribution, which is not wsl.exe's. */
+  readonly pid: number;
+  /** The command and its arguments, joined by spaces. */
+  readonly command: string;
 };
 
 /** What the fake distribution holds besides its files. */
@@ -62,8 +81,11 @@ export async function fakeWsl(
   const bin = join(scratch, 'bin');
   const root = join(scratch, 'root');
   const log = join(scratch, 'wsl.log');
+  const ranLog = join(scratch, 'ran.log');
+  const silent = join(scratch, 'silent');
   const home = '/home/mate';
   await mkdir(bin);
+  await mkdir(silent);
   await mkdir(join(root, home), { recursive: true });
   const script = `#!/bin/sh
 echo "wsl.exe $*" >> '${log}'
@@ -81,9 +103,14 @@ case ' ${distributions.join(' ')} ' in
   *" $distribution "*) ;;
   *) echo "There is no distribution with the supplied name." >&2; exit 1 ;;
 esac
+if [ -f '${silent}/'"$distribution.fails" ]; then
+  echo "The distribution $distribution stopped answering." >&2; exit 1
+fi
+if [ -f '${silent}/'"$distribution.hangs" ]; then exec sleep 60; fi
 export HOME='${home}'
 if [ -n "$directory" ]; then cd '${root}'"$directory" || exit 1; fi
-exec "$@"
+# A process of its own, as inside a real distribution, which notes its PID.
+sh -c 'printf "%s %s\\n" "$$" "$*" >> "$0"; exec "$@"' '${ranLog}' "$@"
 `;
   await writeFile(join(bin, 'wsl.exe'), script);
   await chmod(join(bin, 'wsl.exe'), 0o755);
@@ -104,6 +131,16 @@ exit 0
     calls: async () => {
       const text = await readFile(log, 'utf8').catch(() => '');
       return text.split('\n').filter((line) => line !== '');
+    },
+    ran: async () => {
+      const text = await readFile(ranLog, 'utf8').catch(() => '');
+      return text.split('\n').flatMap((line) => {
+        const [, pid, command] = /^(\d+) (.*)$/.exec(line) ?? [];
+        return pid === undefined || command === undefined ? [] : [{ pid: Number(pid), command }];
+      });
+    },
+    silence: async (distribution, how) => {
+      await writeFile(join(silent, `${distribution}.${how}`), '');
     },
   };
 }
