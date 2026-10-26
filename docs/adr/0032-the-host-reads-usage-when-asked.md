@@ -26,3 +26,5 @@ Finding a `wsl` Plugin by its directory and its `./mcp` command. It needs no var
 A Plugin Server can read `FIRSTMATE_PLUGIN` to learn its own Plugin's name. It is part of what a Plugin can see, so the Plugin guide says so.
 
 A `wsl` Plugin's CPU is counted inside its distribution's virtual machine, and its memory leaves out the machine itself. The Process View names the Place when more than one Place holds Plugins, so that the difference is visible.
+
+On Linux, a process that is not dumpable, such as one that runs a file its user may run but not read, keeps its `smaps_rollup` from its own user. It still counts, with its CPU, and its memory is its resident size from `status`, which any user may read. That counts the pages it shares in full: an over-count, chosen over a process whose memory is left out without a word.

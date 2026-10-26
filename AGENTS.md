@@ -199,7 +199,8 @@ packages/host/src/  the Host. Every file is one job.
   process-table.ts a Place's process table, as each reader gives it, and
                    the one tree walk from a Plugin Server.
   usage-linux.ts   the reader of /proc: CPU from stat, PSS from
-                   smaps_rollup, a Plugin's processes by FIRSTMATE_PLUGIN.
+                   smaps_rollup (resident size from status where that is
+                   sealed), a Plugin's processes by FIRSTMATE_PLUGIN.
   usage-wsl.ts     the reader of one distribution: its /proc printed by
                    one wsl.exe call, read by usage-linux.ts's functions.
   usage-windows.ts the reader of Win32_Process, through one PowerShell that
@@ -372,7 +373,7 @@ and drives it over HTTP, exactly as a browser does.
   on Windows and on Linux, and takes about a minute. The App's window has no test.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller`, `notifier`,
-  `namesake`, `spawner`, and `node-form`, `node-js` and `node-first` for the Node form.
+  `namesake`, `spawner`, `sealed-child`, and `node-form`, `node-js` and `node-first` for the Node form.
   Add a fixture rather than a mock. A fixture with an `mcp` carries its
   Windows form, `mcp.cmd`, beside it (ADR-0019). A fixture with only an
   `mcp.ts` or `mcp.js` needs neither, because the Host runs it with its own

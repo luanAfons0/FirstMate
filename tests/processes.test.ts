@@ -171,6 +171,34 @@ test(
 );
 
 test(
+  'a child whose memory Linux keeps from this user still counts, with its resident memory',
+  {
+    skip:
+      process.platform !== 'linux' && 'Linux alone seals a process that runs a file it cannot read',
+  },
+  async (t) => {
+    const host = await bootHost(t, [{ name: 'sealed-child', directory: 'sealed-child' }]);
+    // The child holds its memory once it has started and filled it.
+    let row = rowOf(await processesOf(host), 'sealed-child');
+    const held = async (): Promise<boolean> => {
+      row = rowOf(await processesOf(host), 'sealed-child');
+      return (row.memoryBytes ?? 0) >= HELD_BYTES;
+    };
+    await untilTrue(held, 10_000).catch(() => undefined);
+
+    assert.ok(
+      (row.memoryBytes ?? 0) >= HELD_BYTES,
+      `the row leaves out the memory of the sealed child: ${JSON.stringify(row)}`,
+    );
+    assertMeasured(row);
+    assert.ok((row.processes ?? 0) >= 2, `the sealed child is counted: ${row.processes}`);
+  },
+);
+
+/** What the sealed child of `sealed-child` holds in memory. */
+const HELD_BYTES = 256 * 1024 * 1024;
+
+test(
   'a Plugin started from mcp.cmd counts the program under cmd.exe',
   { skip: NOT_WINDOWS },
   async (t) => {

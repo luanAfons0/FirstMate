@@ -365,7 +365,9 @@ memory, uptime, PID and process count, and its Place when the Plugins are in
 more than one. CPU is counted against one core, as `top` counts it, so a busy
 Plugin can pass 100%. Memory is each process's fair share (PSS on Linux, the private working set on
 Windows), so
-Plugins that share one Node do not each look as big as all of it. A Plugin
+Plugins that share one Node do not each look as big as all of it. On Linux a
+process whose PSS its own user may not read, because it is not dumpable, still
+counts, with its resident size, which counts shared memory in full. A Plugin
 counts its Plugin Server and every process under it, found by
 `FIRSTMATE_PLUGIN`, and on Windows by its parent, since Windows lets no process
 read another's environment. FirstMate's row counts the Host's own process; in
