@@ -23,6 +23,7 @@ import { treeOf, type ProcessFacts, type ProcessReader } from './process-table.t
 import type { RunFacts } from './supervisor.ts';
 import { linuxReader } from './usage-linux.ts';
 import { wslReader } from './usage-wsl.ts';
+import { windowsReader } from './usage-windows.ts';
 
 /** How old the last reading may be and still count CPU against: older, the Host reads twice. */
 const FRESH_MS = 5_000;
@@ -39,6 +40,7 @@ const LOCAL = 'local';
  */
 const LOCAL_READERS: Partial<Record<NodeJS.Platform, () => ProcessReader>> = {
   linux: () => linuxReader(process.env[HOME_VARIABLE]),
+  win32: () => windowsReader(),
 };
 
 /** What the Host reads Usage from. */
