@@ -94,7 +94,9 @@ test(
 
     assert.equal(await stateOf(host, 'both'), 'running', host.output());
     assert.ok(
-      (await wsl.calls()).includes('wsl.exe -d Debian --cd /home/mate/plugins/both -- ./mcp'),
+      (await wsl.calls()).includes(
+        'wsl.exe -d Debian --cd /home/mate/plugins/both -- env FIRSTMATE_PLUGIN=both ./mcp',
+      ),
       (await wsl.calls()).join('\n'),
     );
     const page = await host.fetch('/p/both/');

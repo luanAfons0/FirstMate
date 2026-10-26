@@ -107,8 +107,8 @@ the connection for the life of the Host.
   no executable bit, no `mcp.cmd`, and no Node on the operator's machine.
   Start it the same way in your own tests: `process.execPath` with
   `mcp.ts`, in the Plugin directory, with no shell.
-- **A `wsl` Place starts `mcp` only.** There the Host runs `./mcp` inside the
-  distribution, and its Node, a Windows program, does not cross over. A
+- **A `wsl` Place starts `mcp` only.** There the Host runs
+  `env FIRSTMATE_PLUGIN=<name> ./mcp` inside the distribution, and its Node, a Windows program, does not cross over. A
   Plugin with `mcp.ts` and no `mcp` is **Stopped** there, with one sentence
   that says so. Keep `mcp` beside `mcp.ts` if your Plugin may live in a
   `wsl` Place; the Host takes `mcp.ts` everywhere else.
@@ -130,6 +130,13 @@ the connection for the life of the Host.
 - **`FIRSTMATE_NODE` names a Node you may use.** Every Plugin Server
   receives it, on every platform: the Node that runs the Host. A Node
   Plugin needs no Node of its own.
+- **`FIRSTMATE_PLUGIN` holds your Plugin's name.** Every Plugin Server
+  receives it, in every Place: the Plugin Name it is registered under, which
+  is also its address, `/p/<name>/`. It is not the directory's name. Every
+  process you start inherits it, which is how the Host finds all of them to
+  read their Usage
+  ([ADR-0032](adr/0032-the-host-reads-usage-when-asked.md)). Pass it on to
+  your children, and do not change it.
 - **It is started in your Plugin's directory.** Your working directory is
   the Plugin directory, not `web/` and not the Host's. You can open your
   own files by a relative path.
