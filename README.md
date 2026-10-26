@@ -366,7 +366,10 @@ more than one. CPU is counted against one core, as `top` counts it, so a busy
 Plugin can pass 100%. Memory is each process's fair share (PSS on Linux), so
 Plugins that share one Node do not each look as big as all of it. A Plugin
 counts its Plugin Server and every process under it, found by
-`FIRSTMATE_PLUGIN`. A Stopped Plugin says why, and a Plugin with no Plugin
+`FIRSTMATE_PLUGIN`. FirstMate's row counts the Host's own process; in the App
+it counts the whole App: the main process, the GPU process, Electron's helpers
+and the renderers of the App's own views and the Index Page, and never a Plugin
+Page, which is the Plugin's cost. A Stopped Plugin says why, and a Plugin with no Plugin
 Server has nothing to measure. The Host reads it when asked and keeps none of
 it ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)), so `usage`
 takes half a second and `status` stays as fast as it was. With no Host it says
@@ -1034,7 +1037,8 @@ too ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)).
 
 `/processes.json` answers `{ "firstmate": <row>, "plugins": [<row>, …] }`, the
 Plugins in the Plugin Order. A row has `name` (`FirstMate` for FirstMate's own),
-`state`, `place`, `pid` (the Plugin Server's own), `processes`, `cpuPercent`
+`state`, `place`, `pid` (the Plugin Server's own, or the Host's for
+FirstMate's row), `processes`, `cpuPercent`
 (against one core), `memoryBytes` (the fair share), and `startedAt` (an ISO
 time); `why` when it is Stopped; and `unmeasured`, a sentence, when the reading
 failed, with the figures `null`. A row with no Plugin Server running has no

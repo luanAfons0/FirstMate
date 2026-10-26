@@ -266,6 +266,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/update.ts    the App's own updates, with electron-updater: downloaded in
                    the background, said in one Notice, installed on Quit.
   src/marks.ts     where the running and stopped marks are.
+  src/own-processes.ts the App's own processes, which FirstMate's row of
+                   Usage counts: never a Plugin Page's (ADR-0032).
   resources/icons/ the marks, packed with the App.
   electron.vite.config.ts the build: the main process, with core and host
                    in, and the preload.
