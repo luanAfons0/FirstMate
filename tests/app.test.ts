@@ -193,6 +193,18 @@ async function checkOwnRow(host: Booted): Promise<void> {
     electron.some((one) => one.type === 'gpu-process'),
     'the App has a GPU process to count',
   );
+  // DIAGNOSTIC, to be removed.
+  console.log(
+    [
+      `DIAGTEST row=${row.processes} electron=${electron.length}`,
+      ...electron.map((one) => `DIAGTEST  ${one.pid} ${one.type}`),
+      ...host
+        .output()
+        .split('\n')
+        .filter((line) => line.includes('DIAG'))
+        .slice(-2),
+    ].join('\n'),
+  );
   if (row.processes !== electron.length) {
     // `/processes.json` says how many processes the row counts, not which, so
     // the message says what this test can see of each one it found, and what

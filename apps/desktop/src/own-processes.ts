@@ -40,13 +40,14 @@ export function ownProcesses(host: HostAt | undefined): number[] {
     'DIAG',
     JSON.stringify({
       host: host?.port ?? null,
-      pages: webContents
-        .getAllWebContents()
-        .map((page) =>
-          page.isDestroyed()
-            ? 'destroyed'
-            : `${page.getType()} ${page.getOSProcessId()} ${page.getProcessId()} ${page.getURL().replace(/token=[^&#]*/, 'token=X')} plugin=${isPluginPage(page, host)}`,
-        ),
+      pages: webContents.getAllWebContents().map((page) =>
+        page.isDestroyed()
+          ? 'destroyed'
+          : `${page.getType()} ${page.getOSProcessId()} ${page.getProcessId()} ${page
+              .getURL()
+              .replace(/token=[^&#]*/, 'token=X')
+              .slice(0, 100)} plugin=${isPluginPage(page, host)}`,
+      ),
       metrics: app
         .getAppMetrics()
         .map(
