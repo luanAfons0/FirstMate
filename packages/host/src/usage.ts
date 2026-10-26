@@ -3,9 +3,12 @@
  * the App or a terminal asks for `/processes.json`, and kept nowhere
  * (ADR-0032).
  *
- * Each Place is one source of processes, read by the reader of its kind. A
- * row counts the processes of its Plugin: the Plugin Server, every process
- * under it, and every process that names the Plugin in `FIRSTMATE_PLUGIN`.
+ * Each Place is one source of processes, read by the reader of its kind: this
+ * machine, or one WSL distribution, which is asked only while it holds a
+ * running Plugin, so a reading never starts one. A row counts the processes
+ * of its Plugin: the Plugin Server, every process under it, and every process
+ * that names the Plugin in `FIRSTMATE_PLUGIN`. A source that fails says why in
+ * the rows it holds, and the other rows still show.
  * CPU is the time a process used between two readings, so the Host holds the
  * last reading of each process in memory, and nothing else. With no reading
  * young enough, it reads twice, half a second apart, so one ask still gets a
@@ -19,12 +22,16 @@ import { FIRSTMATE_ROW, type Processes, type UsageRow } from '@firstmate/core/us
 import { treeOf, type ProcessFacts, type ProcessReader } from './process-table.ts';
 import type { RunFacts } from './supervisor.ts';
 import { linuxReader } from './usage-linux.ts';
+import { wslReader } from './usage-wsl.ts';
 
 /** How old the last reading may be and still count CPU against: older, the Host reads twice. */
 const FRESH_MS = 5_000;
 
 /** The least time between two readings the Host counts CPU over. */
 const SECOND_READING_MS = 500;
+
+/** The source of this machine's processes. A distribution's is `wsl:<distribution>`. */
+const LOCAL = 'local';
 
 /**
  * The reader of this machine's processes, for each system FirstMate reads
@@ -107,15 +114,40 @@ export function openUsage(sources: UsageSources): Usage {
 
   const readAll = async (plugins: readonly HeldPlugin[]): Promise<Processes> => {
     const runs = plugins.map((plugin) => ({ plugin, run: sources.runOf(plugin.name) }));
+    const running = runs.flatMap(({ run }) => (isRunning(run) ? [run] : []));
     const ownPids = sources.ownPids();
     const roots = [
       ...ownPids,
-      ...runs.flatMap(({ run }) => (isLocal(run) && run.pid !== null ? [run.pid] : [])),
+      ...running.flatMap((run) => (isLocal(run) && run.pid !== null ? [run.pid] : [])),
     ];
-    const here: Measured =
-      local === undefined
-        ? { kind: 'unmeasured', why: `FirstMate reads no Usage on ${process.platform} yet.` }
-        : await measure('local', local, roots);
+    const distributions = new Map<string, string>();
+    for (const { plugin } of running) {
+      if (plugin.runner.kind === 'wsl') {
+        distributions.set(sourceOf(plugin), plugin.runner.distribution);
+      }
+    }
+    // A source no longer read keeps no reading: a distribution that holds
+    // no running Plugin is not asked, and its processes are forgotten.
+    for (const key of last.keys()) {
+      if (key !== LOCAL && !distributions.has(key)) last.delete(key);
+    }
+    const readings = new Map<string, Measured>(
+      await Promise.all([
+        (async (): Promise<[string, Measured]> => [
+          LOCAL,
+          local === undefined
+            ? { kind: 'unmeasured', why: `FirstMate reads no Usage on ${process.platform} yet.` }
+            : await measure(LOCAL, local, roots),
+        ])(),
+        ...[...distributions].map(async ([key, distribution]): Promise<[string, Measured]> => [
+          key,
+          // Inside a distribution the Plugin Servers are found by
+          // FIRSTMATE_PLUGIN, so no PID of this machine is a root there.
+          await measure(key, wslReader(distribution, process.env[HOME_VARIABLE]), []),
+        ]),
+      ]),
+    );
+    const here = readings.get(LOCAL) ?? NOT_READ;
 
     const firstmate: UsageRow = {
       name: FIRSTMATE_ROW,
@@ -127,7 +159,9 @@ export function openUsage(sources: UsageSources): Usage {
     };
     return {
       firstmate,
-      plugins: runs.map(({ plugin, run }) => pluginRow(plugin, run, here)),
+      plugins: runs.map(({ plugin, run }) =>
+        pluginRow(plugin, run, readings.get(sourceOf(plugin)) ?? NOT_READ),
+      ),
     };
   };
 
@@ -144,6 +178,9 @@ export function openUsage(sources: UsageSources): Usage {
   };
 }
 
+/** A Place that was not read, because it holds no running Plugin, whose row has no figures anyway. */
+const NOT_READ: Measured = { kind: 'unmeasured', why: 'its Place was not read.' };
+
 /** One Plugin's row, from its run and the reading of its Place. */
 function pluginRow(plugin: HeldPlugin, run: RunFacts | undefined, here: Measured): UsageRow {
   const state = run?.state ?? 'stopped';
@@ -157,25 +194,41 @@ function pluginRow(plugin: HeldPlugin, run: RunFacts | undefined, here: Measured
     memoryBytes: null,
     startedAt: null,
   };
-  if (run === undefined || state !== 'running' || run.pid === null) {
+  if (!isRunning(run) || run.pid === null) {
     return state === 'stopped' && run !== undefined && run.why !== null
       ? { ...idle, why: run.why }
       : idle;
   }
   const startedAt = run.startedAt === null ? null : new Date(run.startedAt).toISOString();
-  if (!isLocal(run)) {
-    // A wsl Plugin Server's own PID is inside its distribution, which no
-    // reader asks yet; wsl.exe's PID here would name the wrong process.
-    return { ...idle, startedAt, unmeasured: 'FirstMate reads no Usage in a wsl Place yet.' };
+  // In a wsl Place run.pid is wsl.exe's, on this machine, and would name the
+  // wrong process: the Plugin Server's own PID is inside its distribution.
+  const local = isLocal(run);
+  if (here.kind === 'unmeasured') {
+    return { ...idle, pid: local ? run.pid : null, startedAt, ...counted(here, [], null) };
   }
-  const row = { ...idle, pid: run.pid, startedAt };
-  if (here.kind === 'read' && !here.table.some((one) => one.pid === run.pid)) {
-    return {
-      ...row,
-      unmeasured: `its Plugin Server, PID ${run.pid}, is not in the process table.`,
-    };
+  const pid = local ? run.pid : serverIn(here.table, plugin.name);
+  const row = { ...idle, pid, startedAt };
+  if (pid === null) {
+    return { ...row, unmeasured: 'its Plugin Server is not in the process table of its Place.' };
   }
-  return { ...row, ...counted(here, [run.pid], plugin.name) };
+  if (!here.table.some((one) => one.pid === pid)) {
+    return { ...row, unmeasured: `its Plugin Server, PID ${pid}, is not in the process table.` };
+  }
+  return { ...row, ...counted(here, [pid], plugin.name) };
+}
+
+/**
+ * The Plugin Server among the processes that name this Plugin: of those whose
+ * parent does not name it, the first started, as a child that left its
+ * parent started after it. Null when no process names it.
+ */
+function serverIn(table: readonly ProcessFacts[], plugin: string): number | null {
+  const named = table.filter((one) => one.plugin === plugin);
+  const pids = new Set(named.map((one) => one.pid));
+  const [first] = named
+    .filter((one) => !pids.has(one.parent))
+    .sort((one, other) => one.start - other.start || one.pid - other.pid);
+  return first?.pid ?? null;
 }
 
 /** The figures of a row: the processes it counts, their CPU and their memory. */
@@ -219,6 +272,16 @@ function keyOf(one: ProcessFacts): string {
 /** Whether a run's Plugin Server is a process of this machine. */
 function isLocal(run: RunFacts | undefined): run is RunFacts {
   return run?.plugin.runner.kind === 'local';
+}
+
+/** Whether a run's Plugin Server is up, so that its Place is read. */
+function isRunning(run: RunFacts | undefined): run is RunFacts {
+  return run?.state === 'running';
+}
+
+/** The source a Plugin's processes are read from: this machine, or its distribution. */
+function sourceOf(plugin: HeldPlugin): string {
+  return plugin.runner.kind === 'wsl' ? `wsl:${plugin.runner.distribution}` : LOCAL;
 }
 
 function sentence(fault: unknown): string {

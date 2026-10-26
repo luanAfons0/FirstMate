@@ -374,8 +374,11 @@ Server has nothing to measure. The Host reads it when asked and keeps none of
 it ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)), so `usage`
 takes half a second and `status` stays as fast as it was. With no Host it says
 `no Host runs.` and ends with exit code `6`. FirstMate reads Usage on Linux
-now; Windows and a `wsl` Place come next, and their rows say `not measured`
-until then.
+and in a `wsl` Place now; Windows comes next, and its rows say `not measured`
+until then. A `wsl` Plugin is measured inside its distribution, with one
+`wsl.exe` call per reading, and its PID is the one it has there. A distribution
+that holds no running Plugin is never asked, so a reading never starts one, and
+one that does not answer within 3 seconds leaves its own rows `not measured`.
 
 `restart` stops one Plugin's Plugin Server, Stopped or not, and starts it
 again, after you fix it. The Host never does this by itself: a broken Plugin
