@@ -10,6 +10,7 @@
 import { refuse } from '@firstmate/core/refusal';
 import type { PluginView, Restarted } from '@firstmate/core/plugin-state';
 import { readRuntimeFile, TOKEN_PARAMETER } from '@firstmate/core/runtime';
+import type { Processes } from '@firstmate/core/usage';
 
 /**
  * How long the command line waits for the Host. A reload waits for every
@@ -42,6 +43,24 @@ export async function readHostStatus(home: string): Promise<HostStatus | undefin
   if (answer.status !== 200) throw notAnswered(answer);
   const { plugins } = JSON.parse(answer.text) as { plugins: PluginView[] };
   return { address: answer.address, plugins };
+}
+
+/** What the running Host says each Plugin uses, and FirstMate itself. */
+export type HostUsage = Processes & {
+  readonly address: string;
+};
+
+/**
+ * Ask the running Host for the Usage of FirstMate and every Plugin, or nothing
+ * when no Host runs. The Host reads it as it answers, so this takes half a
+ * second where `/plugins.json` takes none (ADR-0032).
+ */
+export async function readHostUsage(home: string): Promise<HostUsage | undefined> {
+  const answer = await askHost(home, 'GET', '/processes.json');
+  if (answer === undefined) return undefined;
+  if (answer.status !== 200) throw notAnswered(answer);
+  const { firstmate, plugins } = JSON.parse(answer.text) as Processes;
+  return { address: answer.address, firstmate, plugins };
 }
 
 /**

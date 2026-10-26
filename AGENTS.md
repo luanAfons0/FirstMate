@@ -44,6 +44,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts help [<topic>]`     | The help topics: exit-codes, environment, places. |
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
+| `node apps/cli/src/cli.ts usage [--json]`     | What FirstMate and each Plugin use: CPU, memory, processes. |
 | `node apps/cli/src/cli.ts restart <name>`     | Start one Plugin's Plugin Server again.         |
 | `node apps/cli/src/cli.ts logs [-f]`          | What the Host and its Plugin Servers said.      |
 | `node apps/cli/src/cli.ts place [add <name> <kind> \| remove <name>]` | Say every Place, or add or remove one. |
@@ -154,6 +155,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    terminal and the App alike.
   plugin-state.ts  what the Host says about a Plugin Server, in one set of
                    words for the Index Page, the App and the terminal.
+  usage.ts         Usage as /processes.json says it, and the words each
+                   figure is printed in: CPU, memory and uptime (ADR-0032).
   theme.ts         the one look of every page: the colours, dark and light,
                    the radii, the state shapes, and the icons as one sprite.
   logon.ts         the App's logon entry, which the App and setup both write.
@@ -179,8 +182,8 @@ packages/host/src/  the Host. Every file is one job.
                    supervise, listen; and stop it. The App calls it too.
   main.ts          the Host as a process: start it, and stop it on a signal.
   host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
-                   /notices.json, POST /reload, POST /restart/<name>,
-                   /p/<name>/…, POST /p/<name>/rpc.
+                   /notices.json, /processes.json, POST /reload,
+                   POST /restart/<name>, /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
   index-page.ts    the Index Page, one file with no assets of its own.
@@ -191,6 +194,12 @@ packages/host/src/  the Host. Every file is one job.
                    starts mcp.ts or mcp.js first, with its own Node
                    (ADR-0028).
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
+  usage.ts         read Usage when asked: one reader per Place, the CPU
+                   between two readings, one row per Plugin (ADR-0032).
+  process-table.ts a Place's process table, as each reader gives it, and
+                   the one tree walk from a Plugin Server.
+  usage-linux.ts   the reader of /proc: CPU from stat, PSS from
+                   smaps_rollup, a Plugin's processes by FIRSTMATE_PLUGIN.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
   notices.ts       hold the Notices for the App, and refuse a bad one.
@@ -199,7 +208,7 @@ packages/host/src/  the Host. Every file is one job.
 apps/cli/           the npm package, @luan-afonso/firstmate: the command line
                     alone, with no Host and no window (ADR-0024).
   src/cli.ts       the terminal: desktop, setup, place, import, shelf, install,
-                   update, bind, unbind, order, logs, status, restart, and the
+                   update, bind, unbind, order, logs, status, usage, restart, and the
                    Registry: add, remove, list, grant, revoke.
   src/version.ts   the version of the command line, read from its own package.json:
                    `--version` says it, and `desktop` installs the App of it.
@@ -345,7 +354,7 @@ and drives it over HTTP, exactly as a browser does.
   on Windows and on Linux, and takes about a minute. The App's window has no test.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller`, `notifier`,
-  `namesake`, and `node-form`, `node-js` and `node-first` for the Node form.
+  `namesake`, `spawner`, and `node-form`, `node-js` and `node-first` for the Node form.
   Add a fixture rather than a mock. A fixture with an `mcp` carries its
   Windows form, `mcp.cmd`, beside it (ADR-0019). A fixture with only an
   `mcp.ts` or `mcp.js` needs neither, because the Host runs it with its own

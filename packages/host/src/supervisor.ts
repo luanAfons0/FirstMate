@@ -155,7 +155,7 @@ export type Waits = {
  * A restart is a new run, with a new process and a new start time. The Host
  * keeps none of it past the run (ADR-0005).
  */
-type RunFacts = {
+export type RunFacts = {
   /** The Plugin as the Host holds it: its name, its Place, and how it starts. */
   readonly plugin: HeldPlugin;
   readonly state: PluginState;

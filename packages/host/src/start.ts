@@ -21,6 +21,7 @@ import { registryPath } from '@firstmate/core/registry';
 import { removeRuntimeFile, runtimePath, writeRuntimeFile } from '@firstmate/core/runtime';
 import { readSettings } from '@firstmate/core/settings';
 import { superviseAll } from './supervisor.ts';
+import { openUsage } from './usage.ts';
 
 /** A Host that runs, and the way to stop it. */
 export type RunningHost = {
@@ -101,6 +102,12 @@ export async function start(
     console.log(`FirstMate: reloaded ${now.length} Plugin(s) from ${registryPath(config.home)}`);
   };
 
+  // Read when the App or a terminal asks, and kept nowhere (ADR-0032).
+  const usage = openUsage({
+    runOf: (name) => supervisor.runOf(name),
+    ownPids: () => [process.pid],
+  });
+
   const host = await startHost({
     port: config.port,
     plugins: () => supervisor.plugins(),
@@ -118,6 +125,7 @@ export async function start(
       tell(hooks.onChange);
       return restarted;
     },
+    usage: (plugins) => usage.read(plugins),
   }).catch(async (fault: unknown) => {
     await supervisor.stopAll();
     throw portTaken(fault, config.port) ?? fault;
