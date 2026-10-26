@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bootHost, DEFAULT_PLACE, firstmate, type Booted } from './helpers/host.ts';
+import { pathWith } from './helpers/path.ts';
 
 /** One row of `/processes.json`, as the App and a terminal read it. */
 type Row = {
@@ -23,9 +24,14 @@ type Row = {
 
 type Processes = { firstmate: Row; plugins: Row[] };
 
-/** Why the figures of a local Plugin are read on Linux alone, so far. */
+/** Why the figures of a local Plugin are read on Linux and Windows alone. */
 const NO_READER =
-  process.platform !== 'linux' && 'the Host reads the Usage of a local Plugin on Linux alone';
+  !['linux', 'win32'].includes(process.platform) &&
+  'the Host reads the Usage of a local Plugin on Linux and Windows alone';
+
+/** Why a test of PowerShell, which reads Usage on Windows, runs there alone. */
+const NOT_WINDOWS =
+  process.platform !== 'win32' && 'the Host reads Usage through PowerShell on Windows alone';
 
 async function processesOf(host: Booted): Promise<Processes> {
   const answer = await host.fetch('/processes.json');
@@ -100,6 +106,47 @@ test(
 
     assertMeasured(spawner);
     assert.ok((spawner.processes ?? 0) >= 2, `the child is counted: ${spawner.processes}`);
+  },
+);
+
+test(
+  'a Plugin started from mcp.cmd counts the program under cmd.exe',
+  { skip: NOT_WINDOWS },
+  async (t) => {
+    const host = await bootHost(t, [{ name: 'spawner', directory: 'spawner' }]);
+
+    const spawner = rowOf(await processesOf(host), 'spawner');
+
+    assertMeasured(spawner);
+    // cmd.exe, the Node it runs mcp with, and the child that Node starts.
+    assert.ok((spawner.processes ?? 0) >= 3, `the tree under cmd.exe: ${spawner.processes}`);
+  },
+);
+
+test(
+  'with no PowerShell to run, each row says it was not measured, and why',
+  { skip: NOT_WINDOWS },
+  async (t) => {
+    const host = await bootHost(
+      t,
+      // spawner's mcp.cmd names its Node by FIRSTMATE_NODE, and needs no PATH.
+      [
+        { name: 'spawner', directory: 'spawner' },
+        { name: 'quitter', directory: 'quitter' },
+      ],
+      { PATH: await pathWith(t, []) },
+    );
+
+    const processes = await processesOf(host);
+
+    for (const row of [processes.firstmate, rowOf(processes, 'spawner')]) {
+      assert.match(row.unmeasured ?? '', /^PowerShell .+\.$/, `${row.name} says why`);
+      assert.equal(row.processes, null);
+      assert.equal(row.cpuPercent, null);
+      assert.equal(row.memoryBytes, null);
+    }
+    assert.equal(rowOf(processes, 'spawner').state, 'running');
+    assert.equal(rowOf(processes, 'quitter').why, 'exit 3.', 'a Stopped row still says why');
   },
 );
 

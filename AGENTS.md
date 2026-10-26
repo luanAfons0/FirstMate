@@ -200,6 +200,8 @@ packages/host/src/  the Host. Every file is one job.
                    the one tree walk from a Plugin Server.
   usage-linux.ts   the reader of /proc: CPU from stat, PSS from
                    smaps_rollup, a Plugin's processes by FIRSTMATE_PLUGIN.
+  usage-windows.ts the reader of Win32_Process, through PowerShell: CPU,
+                   the private working set, and each process's parent.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
   notices.ts       hold the Notices for the App, and refuse a bad one.

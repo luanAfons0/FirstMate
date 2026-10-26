@@ -6,9 +6,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bootHost, firstmate, makeHome, DEFAULT_PLACE, NO_HOST } from './helpers/host.ts';
 
-/** Why the figures of a local Plugin are read on Linux alone, so far. */
+/** Why the figures of a local Plugin are read on Linux and Windows alone. */
 const NO_READER =
-  process.platform !== 'linux' && 'the Host reads the Usage of a local Plugin on Linux alone';
+  !['linux', 'win32'].includes(process.platform) &&
+  'the Host reads the Usage of a local Plugin on Linux and Windows alone';
 
 /** A measured row, piped: name, state, CPU, memory, uptime, PID and process count. */
 function measured(name: string, processes = '\\d+'): RegExp {

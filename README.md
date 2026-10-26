@@ -363,16 +363,20 @@ and that reads as no Host too.
 own row first, then every Plugin in the Plugin Order, with its state, CPU,
 memory, uptime, PID and process count, and its Place when the Plugins are in
 more than one. CPU is counted against one core, as `top` counts it, so a busy
-Plugin can pass 100%. Memory is each process's fair share (PSS on Linux), so
+Plugin can pass 100%. Memory is each process's fair share (PSS on Linux, the private working set on
+Windows), so
 Plugins that share one Node do not each look as big as all of it. A Plugin
 counts its Plugin Server and every process under it, found by
-`FIRSTMATE_PLUGIN`. A Stopped Plugin says why, and a Plugin with no Plugin
+`FIRSTMATE_PLUGIN`, and on Windows by its parent, since Windows lets no process
+read another's environment. A Stopped Plugin says why, and a Plugin with no Plugin
 Server has nothing to measure. The Host reads it when asked and keeps none of
 it ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)), so `usage`
-takes half a second and `status` stays as fast as it was. With no Host it says
-`no Host runs.` and ends with exit code `6`. FirstMate reads Usage on Linux
-now; Windows and a `wsl` Place come next, and their rows say `not measured`
-until then.
+takes half a second (on Windows a second or two, through PowerShell) and
+`status` stays as fast as it was. With no Host it says `no Host runs.` and
+ends with exit code `6`. FirstMate reads Usage on Linux and Windows now; a
+`wsl` Place comes next, and its rows say `not measured` until then. On
+Windows, with no `powershell.exe` on the PATH, every row says `not measured`
+and why.
 
 `restart` stops one Plugin's Plugin Server, Stopped or not, and starts it
 again, after you fix it. The Host never does this by itself: a broken Plugin

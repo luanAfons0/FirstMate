@@ -19,6 +19,7 @@ import { FIRSTMATE_ROW, type Processes, type UsageRow } from '@firstmate/core/us
 import { treeOf, type ProcessFacts, type ProcessReader } from './process-table.ts';
 import type { RunFacts } from './supervisor.ts';
 import { linuxReader } from './usage-linux.ts';
+import { windowsReader } from './usage-windows.ts';
 
 /** How old the last reading may be and still count CPU against: older, the Host reads twice. */
 const FRESH_MS = 5_000;
@@ -32,6 +33,7 @@ const SECOND_READING_MS = 500;
  */
 const LOCAL_READERS: Partial<Record<NodeJS.Platform, () => ProcessReader>> = {
   linux: () => linuxReader(process.env[HOME_VARIABLE]),
+  win32: () => windowsReader(),
 };
 
 /** What the Host reads Usage from. */
