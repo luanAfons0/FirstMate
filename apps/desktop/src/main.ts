@@ -106,6 +106,7 @@ function main(): void {
       reveal: () => window.reveal(),
       changed: () => refresh(),
       settings: () => window.showSettings(),
+      processes: () => window.showProcesses(),
       // The window may be put away, so a failure is a Notice.
       restart: (name) => window.restart(name, (failed) => notices.say(failed)),
     });

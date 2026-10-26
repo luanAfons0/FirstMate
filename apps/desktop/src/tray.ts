@@ -4,8 +4,8 @@
  * The icon wears the running mark, or the stopped mark while any Plugin is
  * Stopped, so a broken Plugin shows without opening anything. A click on it
  * brings the window up. Its menu opens the Index Page, opens each Plugin,
- * restarts a Stopped one, opens the Settings View, turns start at logon on and
- * off, and quits. Quit is the one way the App
+ * restarts a Stopped one, opens the Process View and the Settings View, turns
+ * start at logon on and off, and quits. Quit is the one way the App
  * ends: closing the window only hides it, and every Plugin keeps running.
  *
  * Start at logon is the system's own entry for the App (`logon.ts`): the Run
@@ -33,6 +33,8 @@ export type TrayNeeds = {
   readonly changed: () => void;
   /** Bring the window up on the Settings View. */
   readonly settings: () => void;
+  /** Bring the window up on the Process View. */
+  readonly processes: () => void;
   /** Start one Plugin's Plugin Server again, as `firstmate restart` does. */
   readonly restart: (name: string) => void;
 };
@@ -100,6 +102,7 @@ function menu(
     { label: 'Open FirstMate', click: () => needs.open('/') },
     { label: 'Plugins', submenu: pluginItems(plugins, needs) },
     { type: 'separator' },
+    { label: 'Processes…', click: () => needs.processes() },
     { label: 'Settings…', click: () => needs.settings() },
     {
       label: 'Start at logon',

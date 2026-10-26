@@ -8,8 +8,9 @@
  * The window shows one view at a time and never reaches inside one: nothing is
  * injected into a Plugin Page, wrapped around it or read out of it (ADR-0008).
  *
- * The strip, the switcher, the Settings View, the Mate panel and the Mate box
- * are the App's own views, with pages the App writes (`pages.ts`). They are the only views
+ * The strip, the switcher, the Settings View, the Process View, the Mate panel
+ * and the Mate box are the App's own views, with pages the App writes
+ * (`pages.ts`). They are the only views
  * that carry the preload, so they are the only pages that can ask the main
  * process for anything, and the main process checks which view asked. Each
  * loads its page once; after that the main process sends it what it shows,
@@ -37,6 +38,12 @@
  * Index Page is the Host's, byte for byte (ADR-0008). Enter there opens the
  * panel with a new Conversation, and the main process takes that ask from
  * the box alone.
+ *
+ * The Process View shows in place of the shown view, as the Settings View
+ * does. While it shows in a visible window, the main process reads
+ * `/processes.json` every 2 seconds and sends the view each reading; when the
+ * view closes or the window hides or is minimized, the reading stops
+ * (`processes.ts`). Each opening starts again from the first reading.
  *
  * The window shows the Host and nothing else. A link to anywhere else, in a new
  * window or the same one, opens in the operator's own browser.
@@ -79,7 +86,14 @@ import {
   type HostAt,
 } from './addresses.ts';
 import { ASK_CHANNEL, readAsked, SHOW_CHANNEL, type Asked } from './ask.ts';
-import { askForPlugins, askToRestart, stoppedCount, type Plugins } from './host-lists.ts';
+import {
+  askForPlugins,
+  askForProcesses,
+  askToRestart,
+  stoppedCount,
+  type Plugins,
+  type Usage,
+} from './host-lists.ts';
 import { markPath } from './marks.ts';
 import { holdMatePanel, isPanelAsk } from './mate.ts';
 import { BOX_HEIGHT, boxPage } from './mate-box.ts';
@@ -96,6 +110,8 @@ import {
   type Here,
   type Written,
 } from './pages.ts';
+import { processesPage } from './process-view.ts';
+import { keepReading } from './processes.ts';
 import { change, readShown, type ChangeNeeds, type Outcome } from './settings.ts';
 import { settingsPage } from './settings-view.ts';
 
@@ -135,6 +151,8 @@ export type Shown = {
   reveal(): void;
   /** Bring the window up on the Settings View, whatever it showed. */
   showSettings(): void;
+  /** Bring the window up on the Process View, whatever it showed. */
+  showProcesses(): void;
   /**
    * Start one Stopped Plugin's Plugin Server again, and say a failure with
    * `say`. Nothing happens before the Host is ready.
@@ -216,8 +234,10 @@ export function openWindow(
   let current = INDEX;
   /** Whether the switcher is open, below the breadcrumb and over the page. */
   let switching = false;
-  /** Whether the Settings View is shown in place of the content views. */
-  let setting = false;
+  /** The App's own view shown in place of the content views, if one is. */
+  let aside: 'settings' | 'processes' | undefined;
+  /** The last reading of Usage the Process View shows, since it last opened. */
+  let usage: Usage | { readonly kind: 'first' } = { kind: 'first' };
   /** What became of the last change the Settings View asked for. */
   let outcome: Outcome | undefined;
   /** Whether a change the Settings View asked for is still being made. */
@@ -241,6 +261,7 @@ export function openWindow(
   // box above the Index Page's view, and the switcher on top of them all.
   const strip = appView();
   const settings = appView();
+  const processes = appView();
   const matePanel = appView();
   const mateBox = appView();
   const switcher = appView();
@@ -248,6 +269,7 @@ export function openWindow(
   switcher.setBackgroundColor('#00000000');
   window.contentView.addChildView(strip);
   window.contentView.addChildView(settings);
+  window.contentView.addChildView(processes);
   window.contentView.addChildView(matePanel);
   window.contentView.addChildView(mateBox);
   window.contentView.addChildView(switcher);
@@ -256,6 +278,7 @@ export function openWindow(
   const stripShown = ownPage(strip);
   const switcherShown = ownPage(switcher);
   const settingsShown = ownPage(settings);
+  const processesShown = ownPage(processes);
   const mateShown = ownPage(matePanel);
   const boxShown = ownPage(mateBox);
 
@@ -273,7 +296,7 @@ export function openWindow(
       switching = false;
       redraw();
       if (open) matePanel.webContents.focus();
-      else (setting ? settings : contents.get(current))?.webContents.focus();
+      else shownView()?.webContents.focus();
     },
     toBrowser: (address) => toBrowser(address),
   });
@@ -282,11 +305,18 @@ export function openWindow(
   let opened = 0;
   /** Whether the switcher last opened from the keyboard, so it shows with no fade. */
   let instant = false;
-  /** The Plugins whose restart the switcher asked for and the Host has not answered. */
+  /**
+   * The Plugins whose restart the switcher or the Process View asked for and
+   * the Host has not answered.
+   */
   const restarting = new Set<string>();
 
+  /** The view shown below the strip: the Settings View, the Process View, or a page. */
+  const shownView = (): WebContentsView | undefined =>
+    aside === 'settings' ? settings : aside === 'processes' ? processes : contents.get(current);
+
   const here = (): Here => {
-    if (setting) return { kind: 'settings' };
+    if (aside !== undefined) return { kind: aside };
     return current === INDEX ? { kind: 'list' } : { kind: 'plugin', name: current };
   };
 
@@ -296,7 +326,32 @@ export function openWindow(
    */
   const boxShows = (): boolean => {
     const [width = 0] = window.getContentSize();
-    return mate.bounds(width).page > 0 && !setting && current === INDEX && contents.has(INDEX);
+    return (
+      mate.bounds(width).page > 0 && aside === undefined && current === INDEX && contents.has(INDEX)
+    );
+  };
+
+  /** Read Usage every 2 seconds while the Process View shows, and draw each reading. */
+  const reading = keepReading(
+    () => (host === undefined ? Promise.resolve({ kind: 'untold' }) : askForProcesses(host)),
+    (now) => {
+      usage = now;
+      redraw();
+    },
+  );
+
+  /**
+   * Read only while the Process View is in sight: shown, in a window that is
+   * neither hidden nor minimized.
+   */
+  const watch = (): void => {
+    reading.shown(
+      woken &&
+        host !== undefined &&
+        aside === 'processes' &&
+        window.isVisible() &&
+        !window.isMinimized(),
+    );
   };
 
   const layout = (): void => {
@@ -319,12 +374,14 @@ export function openWindow(
     strip.setBounds({ x: 0, y: 0, width: Math.max(width - buttons, 0), height: STRIP_HEIGHT });
     for (const [owner, view] of contents) {
       view.setBounds(owner === INDEX ? belowBox : below);
-      view.setVisible(pageShows && !setting && owner === current);
+      view.setVisible(pageShows && aside === undefined && owner === current);
     }
     mateBox.setBounds({ x: 0, y: STRIP_HEIGHT, width: pageWidth, height: BOX_HEIGHT });
     mateBox.setVisible(boxShows());
     settings.setBounds(below);
-    settings.setVisible(pageShows && setting);
+    settings.setVisible(pageShows && aside === 'settings');
+    processes.setBounds(below);
+    processes.setVisible(pageShows && aside === 'processes');
     matePanel.setBounds({
       x: width - sides.panel,
       y: STRIP_HEIGHT,
@@ -379,7 +436,7 @@ export function openWindow(
         }),
       );
     }
-    if (setting) {
+    if (aside === 'settings') {
       // Read again each time, so a change from a terminal or the Tray shows.
       settingsShown.show(
         settingsPage({
@@ -390,20 +447,26 @@ export function openWindow(
         }),
       );
     }
+    if (aside === 'processes') {
+      processesShown.show(
+        processesPage({ usage, plugins, restarting: [...restarting], now: Date.now() }),
+      );
+    }
     layout();
+    watch();
   };
 
   /**
-   * Show `path` behind whatever shows: an operator on the Settings View stays
-   * there, and the page loads under it.
+   * Show `path` behind whatever shows: an operator on the Settings View or the
+   * Process View stays there, and the page loads under it.
    */
   const behind = (path: string): void => {
-    const stay = setting;
+    const stay = aside;
     open(path);
-    if (stay) {
-      setting = true;
+    if (stay !== undefined) {
+      aside = stay;
       redraw();
-      settings.webContents.focus();
+      shownView()?.webContents.focus();
     }
   };
 
@@ -508,7 +571,7 @@ export function openWindow(
       // Asked for before the Host is ready: shown when it is.
       woken = true;
       waiting = path;
-      setting = false;
+      aside = undefined;
       switching = false;
       fault = undefined;
       redraw();
@@ -522,7 +585,7 @@ export function openWindow(
     const again = how === 'load' && !isOwnStart(owner, path);
     if (known === undefined || owner === INDEX || again) loadContent(view, path, host);
     current = owner;
-    setting = false;
+    aside = undefined;
     switching = false;
     // A page the operator asked for is shown: an expanded Mate panel gives
     // it back its side, and stays open beside it with its Conversation.
@@ -554,6 +617,8 @@ export function openWindow(
       restarting.delete(name);
       if (failed !== undefined && say !== undefined) say(failed);
       else fault = failed;
+      // The Process View shows the new run at once, not at its next reading.
+      reading.again();
       // The Tray shows the new state too.
       refresh();
       redraw();
@@ -613,15 +678,18 @@ export function openWindow(
       // to the fragment, and the page hears a hashchange. The Settings View
       // closes. The App reads none of what it shows (ADR-0029, ADR-0005).
       if (named(asked.name)?.hasPage === true) open(pluginSettingsPath(asked.name));
-    } else if (asked.kind === 'settings') {
-      setting = !setting;
+    } else if (asked.kind === 'settings' || asked.kind === 'processes') {
+      // The gear and the gauge each open their view, or close it when it shows.
+      aside = aside === asked.kind ? undefined : asked.kind;
       switching = false;
       fault = undefined;
       outcome = undefined;
-      // The Settings View shows beside an open Mate panel, as a page does.
-      if (setting) mate.narrow();
+      // Each opening of the Process View starts from the first reading.
+      usage = { kind: 'first' };
+      // The view shows beside an open Mate panel, as a page does.
+      if (aside !== undefined) mate.narrow();
       redraw();
-      if (setting) settings.webContents.focus();
+      shownView()?.webContents.focus();
     } else if (asked.kind === 'mate') {
       mate.toggle();
     } else if (isPanelAsk(asked)) {
@@ -662,7 +730,7 @@ export function openWindow(
       mate.toggle();
     });
   };
-  for (const view of [strip, settings, matePanel, mateBox, switcher]) {
+  for (const view of [strip, settings, processes, matePanel, mateBox, switcher]) {
     holdMateKey(view.webContents);
   }
 
@@ -685,14 +753,22 @@ export function openWindow(
   const ask = (event: IpcMainEvent, said: unknown): void => {
     // Only the App's own views carry the preload. The check is here as well,
     // so that the rule does not rest on the preload alone.
-    const own = [strip, switcher, settings, matePanel, mateBox].some(
+    const own = [strip, switcher, settings, processes, matePanel, mateBox].some(
       (view) => view.webContents === event.sender,
     );
     if (!own) return;
     const asked = readAsked(said);
     if (SETTINGS_VIEW_ONLY.has(asked.kind) && event.sender !== settings.webContents) return;
-    // Only the switcher carries a Restart button.
-    if (asked.kind === 'restart' && event.sender !== switcher.webContents) return;
+    // Only the switcher and the Process View carry a Restart button.
+    if (
+      asked.kind === 'restart' &&
+      event.sender !== switcher.webContents &&
+      event.sender !== processes.webContents
+    ) {
+      return;
+    }
+    // Only the strip's gauge opens the Process View; the Tray asks through `showProcesses`.
+    if (asked.kind === 'processes' && event.sender !== strip.webContents) return;
     // The Mate runs the operator's Agent: it takes an ask from its own panel
     // alone, and the strip only opens and closes it (ADR-0031).
     if (MATE_PANEL_ONLY.has(asked.kind) && event.sender !== matePanel.webContents) return;
@@ -709,10 +785,17 @@ export function openWindow(
   window.on('maximize', layout);
   window.on('unmaximize', layout);
   window.on('restore', layout);
+  // The Process View reads only while the window is in sight.
+  window.on('show', watch);
+  window.on('hide', watch);
+  window.on('minimize', watch);
+  window.on('restore', watch);
   window.on('closed', () => {
+    reading.shown(false);
     ipcMain.off(ASK_CHANNEL, ask);
     nativeTheme.off('updated', followTheme);
-    for (const view of [strip, switcher, settings, matePanel, mateBox, ...contents.values()]) {
+    const own = [strip, switcher, settings, processes, matePanel, mateBox];
+    for (const view of [...own, ...contents.values()]) {
       view.webContents.close();
     }
   });
@@ -729,7 +812,11 @@ export function openWindow(
     reveal,
     restart,
     showSettings: () => {
-      if (!setting) act({ kind: 'settings' });
+      if (aside !== 'settings') act({ kind: 'settings' });
+      reveal();
+    },
+    showProcesses: () => {
+      if (aside !== 'processes') act({ kind: 'processes' });
       reveal();
     },
     ready: (at) => {

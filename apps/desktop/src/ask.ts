@@ -1,6 +1,7 @@
 /**
  * What one of the App's own views asks the main process for: the strip, the
- * switcher, the Settings View, the Mate panel and the Mate box.
+ * switcher, the Settings View, the Process View, the Mate panel and the Mate
+ * box.
  *
  * Those views are pages the App writes, never pages the Host serves
  * (ADR-0008), and the one way they reach the main process is the preload that
@@ -42,6 +43,8 @@ export type Asked =
   | { readonly kind: 'restart'; readonly name: string }
   /** Open the Settings View, or close it when it is open. */
   | { readonly kind: 'settings' }
+  /** Open the Process View, or close it when it is open. */
+  | { readonly kind: 'processes' }
   /** Turn start at logon on or off. */
   | { readonly kind: 'logon'; readonly on: boolean }
   /** Add a Place: a local one, or a `wsl` one in this distribution. */
@@ -102,6 +105,7 @@ export const ASK = {
   switcherKeys: 'switcher-keys',
   switcherClose: 'switcher-close',
   settings: 'settings',
+  processes: 'processes',
   mate: 'mate',
   mateClose: 'mate-close',
   mateNew: 'mate-new',

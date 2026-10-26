@@ -597,8 +597,9 @@ window's own buttons sit at its right end, in its colours, light or dark as
 the system is. It holds FirstMate, which goes to the Plugin list; then what is
 open, which opens the switcher with every Plugin in the Plugin Order; the space
 you drag the window by; "N Stopped" when any Plugin is Stopped, which opens the
-switcher too; the Mate button, which opens and closes the Mate panel; and the
-gear, which opens the Settings View. In the switcher,
+switcher too; the Mate button, which opens and closes the Mate panel; the
+gauge, which opens the Process View; and the gear, which opens the Settings
+View. In a narrow window the strip keeps the marks and drops the words. In the switcher,
 type to filter the Plugins, use the arrows to move, Enter to open and Esc to
 close. A Stopped Plugin has a Restart button there, which starts its Plugin
 Server again as `firstmate restart` does. Each Plugin Page you open has a view of its own and stays
@@ -648,6 +649,19 @@ is listed with the sentence that says why, and the others list as they are.
 The Host serves no part of the Mate, so no Plugin Page can type into it or
 read a Conversation.
 
+The Process View shows what FirstMate and each Plugin use now, as
+`firstmate usage` says it: FirstMate's own row first, then every Plugin in the
+Plugin Order, each with its state, CPU (against one core), memory (each
+process's fair share), uptime, PID and process count. A thin bar beside each
+CPU and memory figure, on one scale for the whole column, shows which Plugin
+uses the most. A Place column shows when your Plugins are in more than one
+Place. A Stopped row says why and has a Restart button; a Plugin with no
+Plugin Server, or one whose reading failed, says so in its row. The App reads
+`/processes.json` every 2 seconds while the view shows, and stops when you
+close it or hide or minimize the window. A narrow window drops the PID and
+process count first, then the uptime and the Place. The gauge in the strip
+and **Processes…** in the Tray open it, and the breadcrumb says "Processes".
+
 The Settings View has a side list of its sections, Places, Plugin Order, Start
 at logon, Shortcuts, Plugin Settings and Mate, and says the App's version under it. Places shows each Place with
 its kind and its Shelf. There you move a Place's Shelf: type a path, or choose
@@ -689,7 +703,7 @@ started with.
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its
 menu opens the Index Page or any Plugin, restarts a Stopped one, opens the
-**Settings…** view, turns **Start at logon** on and off, and quits. Start at logon is off until you turn it on; the App it starts
+**Processes…** and **Settings…** views, turns **Start at logon** on and off, and quits. Start at logon is off until you turn it on; the App it starts
 begins in the Tray, with the window put away.
 
 A Notice shows as the system's own pop-up under FirstMate's name and mark, and
