@@ -366,16 +366,36 @@ function quit(run: Run): Promise<void> {
  */
 async function end(run: Run): Promise<void> {
   run.server?.stop();
-  if (!ON_WINDOWS) run.child?.kill('SIGTERM');
+  // The whole group is asked, so that a process the Plugin Server started may
+  // end as cleanly as the Plugin Server itself.
+  if (!ON_WINDOWS && run.child !== null) killTree(run.child, 'SIGTERM');
   if (!(await ended(run))) {
     killHard(run.child);
     await run.ended;
   }
 }
 
-/** Kill a process that would not end, and on Windows every process under it. */
+/** Kill a process that would not end, and every process under it. */
 function killHard(child: ChildProcess | null): void {
   if (child !== null) killTree(child, 'SIGKILL');
+}
+
+/**
+ * Once a Plugin Server has ended, asked to or on its own, kill what is left of
+ * its process group, so that no process it started outlives it. It is heard
+ * before the run's own end, so a Host that stops waits for this too. Linux
+ * gives no new process the group's id while the group has a process in it.
+ */
+function killGroupOnExit(child: ChildProcess): void {
+  if (ON_WINDOWS) return;
+  child.once('exit', () => {
+    if (child.pid === undefined) return;
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      // No process is left in the group, which is what the Host wants.
+    }
+  });
 }
 
 /** Whether a run's process ends within the grace the Host gives it. */
@@ -425,6 +445,7 @@ async function startOne(
 
   run.startedAt = Date.now();
   const child = launch(file, plugin);
+  killGroupOnExit(child);
   child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
   // The calling Plugin Name is this pipe's, closed over here and never taken
   // from anything the Plugin Server says.
@@ -563,6 +584,10 @@ async function isFile(path: string): Promise<boolean> {
  * stderr is the Plugin Server's own output, and the Host writes it as its
  * own, so it reaches the terminal and the log alike (log.ts). It is piped
  * rather than inherited because the App has no console to inherit.
+ *
+ * Away from Windows it leads a process group of its own, so that a Plugin
+ * Server that will not end is killed with every process it started: killTree
+ * ends a group, and ends a process that leads none alone.
  */
 function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
   const options = {
@@ -575,6 +600,7 @@ function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
       ...(process.versions.electron === undefined ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
+    detached: !ON_WINDOWS,
   } satisfies SpawnOptions;
   if (plugin.runner.kind === 'wsl') {
     // The distribution starts it in its own directory, by its own path, so
