@@ -200,6 +200,8 @@ packages/host/src/  the Host. Every file is one job.
                    the one tree walk from a Plugin Server.
   usage-linux.ts   the reader of /proc: CPU from stat, PSS from
                    smaps_rollup, a Plugin's processes by FIRSTMATE_PLUGIN.
+  usage-wsl.ts     the reader of one distribution: its /proc printed by
+                   one wsl.exe call, read by usage-linux.ts's functions.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
   notices.ts       hold the Notices for the App, and refuse a bad one.
@@ -363,7 +365,9 @@ and drives it over HTTP, exactly as a browser does.
 - `tests/helpers/plugins.ts` asks a booted Host for one Plugin's state, and
   makes one tool call as a Plugin Page makes it, through `host.ts`.
 - `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, and points a `wsl`
-  Place's root at a folder of the test's own. `tests/helpers/windows.ts` fakes
+  Place's root at a folder of the test's own. It runs each command as a
+  process of its own and notes its PID, as a real distribution does, and can
+  make one distribution fail or hang. `tests/helpers/windows.ts` fakes
   the Windows programs and a GitHub Release, for `firstmate desktop` and the
   logon question of `setup`. `tests/helpers/linux.ts` is a Linux desktop of
   the test's own, with a fake AppImage, and `tests/helpers/release.ts` is the

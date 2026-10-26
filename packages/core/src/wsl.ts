@@ -24,26 +24,45 @@ export function isInsideWsl(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /** What one run of `wsl.exe` said. */
-type Answer = { readonly code: number | null; readonly stdout: string; readonly stderr: string };
+type Answer = {
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  /** It did not answer in the time it was given, and was ended. */
+  readonly late: boolean;
+};
 
-/** Run `wsl.exe` with these words, and wait for its answer. */
-function ask(argv: readonly string[]): Promise<Answer> {
+/**
+ * Run `wsl.exe` with these words, and wait for its answer: for as long as it
+ * takes, or until `waitMs`, when it is ended.
+ */
+function ask(argv: readonly string[], waitMs?: number): Promise<Answer> {
   return new Promise((done, fail) => {
     const child = spawn(WSL_EXE, argv, { stdio: ['ignore', 'pipe', 'pipe'] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
+    let late = false;
+    const timer =
+      waitMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            late = true;
+            child.kill();
+          }, waitMs);
     child.stdout.on('data', (chunk: Buffer) => out.push(chunk));
     child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
     child.once('error', (cause: NodeJS.ErrnoException) => {
+      clearTimeout(timer);
       fail(
         cause.code === 'ENOENT'
           ? refuse('invalid', `${WSL_EXE} is not on the PATH, and a wsl Place needs it.`)
           : new Error(`${WSL_EXE} could not be run: ${cause.message}`, { cause }),
       );
     });
-    child.once('close', (code) =>
-      done({ code, stdout: text(Buffer.concat(out)), stderr: text(Buffer.concat(err)) }),
-    );
+    child.once('close', (code) => {
+      clearTimeout(timer);
+      done({ code, stdout: text(Buffer.concat(out)), stderr: text(Buffer.concat(err)), late });
+    });
   });
 }
 
@@ -71,6 +90,27 @@ export async function homeIn(distribution: string): Promise<string> {
   const answer = await ask(['-d', distribution, '--exec', 'sh', '-c', 'printf %s "$HOME"']);
   if (answer.code !== 0 || !answer.stdout.startsWith('/')) {
     throw refuse('invalid', `the distribution ${distribution} did not answer: ${why(answer)}.`);
+  }
+  return answer.stdout;
+}
+
+/**
+ * What a shell script printed inside a distribution. It fails with a sentence
+ * when the distribution does not answer, or not within `waitMs`, which ends
+ * the call: a reader that asks again must never find the last one still
+ * waiting.
+ */
+export async function printedInside(
+  distribution: string,
+  script: string,
+  waitMs: number,
+): Promise<string> {
+  const answer = await ask(['-d', distribution, '--exec', 'sh', '-c', script], waitMs);
+  if (answer.late) {
+    throw new Error(`the distribution ${distribution} did not answer within ${waitMs / 1000} s.`);
+  }
+  if (answer.code !== 0) {
+    throw new Error(`the distribution ${distribution} did not answer: ${why(answer)}.`);
   }
   return answer.stdout;
 }
