@@ -136,7 +136,7 @@ the connection for the life of the Host.
   process you start inherits it, which is how the Host finds all of them to
   read their Usage
   ([ADR-0032](adr/0032-the-host-reads-usage-when-asked.md)). Pass it on to
-  your children, and do not change it.
+  your children, and do not change it. `firstmate usage` shows what they use.
 - **It is started in your Plugin's directory.** Your working directory is
   the Plugin directory, not `web/` and not the Host's. You can open your
   own files by a relative path.

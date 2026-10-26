@@ -39,6 +39,7 @@ const PRIMER: readonly string[] = [
   'The `firstmate` commands that only read, and what they say:',
   '- firstmate list: every Plugin in the Registry, with its Place and directory.',
   '- firstmate status: whether the Host runs, and the state of each Plugin.',
+  '- firstmate usage: the CPU and memory FirstMate and each Plugin Server use now.',
   '- firstmate logs: what the Host and the Plugin Servers said. `-f` follows it.',
   '- firstmate order: the Plugin Order, the order every list shows the Plugins in.',
   '- firstmate place: every Place, and its kind.',

@@ -19,6 +19,7 @@
  *   node apps/cli/src/cli.ts remove <name>
  *   node apps/cli/src/cli.ts list [--json]
  *   node apps/cli/src/cli.ts status [--json]
+ *   node apps/cli/src/cli.ts usage [--json]
  *   node apps/cli/src/cli.ts restart <name>
  *   node apps/cli/src/cli.ts logs [-f]
  *   node apps/cli/src/cli.ts grant <from> <to>
@@ -64,7 +65,8 @@ import {
 import { logPath, oldLogPath } from '@firstmate/core/runtime';
 import { readSettings, writeSettings } from '@firstmate/core/settings';
 import { STATE_WORDS, type PluginState, type Restarted } from '@firstmate/core/plugin-state';
-import { readHostStatus, reloadHost, restartPlugin } from './running-host.ts';
+import { readHostStatus, readHostUsage, reloadHost, restartPlugin } from './running-host.ts';
+import { cpuText, memoryText, uptimeText, type UsageRow } from '@firstmate/core/usage';
 import { bringAcross } from './one-x.ts';
 import { onTerminal, openPrompt } from './prompt.ts';
 import { whileWaiting } from './progress.ts';
@@ -203,6 +205,15 @@ const COMMANDS: readonly Command[] = [
     does: 'say whether the Host runs, and the state of each Plugin.',
     json: true,
     run: (argv, json) => status(home(), argv, json),
+  },
+  {
+    name: 'usage',
+    group: 'Running',
+    short: 'say what FirstMate and each Plugin use: CPU and memory',
+    takes: '',
+    does: 'say what FirstMate and each Plugin Server use now: CPU, memory and processes.',
+    json: true,
+    run: (argv, json) => usage(home(), argv, json),
   },
   {
     name: 'restart',
@@ -376,10 +387,20 @@ that was never moved follows the ones that were, in the order it was added.
 The Host picks up a new order with no restart.`,
   },
   {
-    about: ['status', 'list', 'order', 'place', 'shelf'],
-    text: `status, list, order, place and shelf say what they read as one JSON value with
---json, and print nothing else. A command that changes something prints no JSON.
-status reads the running Host, and ends with exit code 6 when none answers.`,
+    about: ['status', 'usage', 'list', 'order', 'place', 'shelf'],
+    text: `status, usage, list, order, place and shelf say what they read as one JSON value
+with --json, and print nothing else. A command that changes something prints no
+JSON. status and usage read the running Host, and end with exit code 6 when none
+answers.`,
+  },
+  {
+    about: ['usage'],
+    text: `usage prints FirstMate's own row first, then every Plugin in the Plugin Order:
+its state, CPU, memory, uptime, PID and process count, and its Place when
+Plugins are in more than one. CPU is counted against one core, as top counts
+it, so it can pass 100%. Memory is each process's fair share. A Plugin counts
+its Plugin Server and every process under it. The Host reads it when asked and
+keeps none of it, so usage takes half a second; status does not.`,
   },
   {
     about: ['logs'],
@@ -1251,6 +1272,56 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
     seen.plugins.map((plugin) => ({ cells: [plugin.name, stateWord(plugin.state)] })),
   );
   return 0;
+}
+
+/**
+ * Say what FirstMate and each Plugin use, in the Plugin Order, as the running
+ * Host reads it now (ADR-0032). A row with no figures says why in its state.
+ */
+async function usage(home: string, argv: readonly string[], json: boolean): Promise<number> {
+  if (argv.length > 0) {
+    return typedWrong('usage', 'usage takes nothing.');
+  }
+  const seen = await readHostUsage(home);
+  if (seen === undefined) {
+    if (json) printJson({ running: false });
+    else console.log(`firstmate: ${await noHost()}`);
+    return exit('no-host');
+  }
+  if (json) {
+    printJson({ running: true, ...seen });
+    return 0;
+  }
+  const rows = [seen.firstmate, ...seen.plugins];
+  // A Place is worth a column only when the Plugins are in more than one.
+  const places = new Set(seen.plugins.map((row) => row.place)).size > 1;
+  const header = ['PLUGIN', 'STATE', 'CPU', 'MEMORY', 'UPTIME', 'PID', 'PROCS'];
+  printRows(
+    places ? [header[0] ?? '', 'PLACE', ...header.slice(1)] : header,
+    rows.map((row) => {
+      const [name, ...rest] = usageCells(row);
+      return { cells: places ? [name ?? '', row.place, ...rest] : [name ?? '', ...rest] };
+    }),
+  );
+  return 0;
+}
+
+/** One row of usage: the name, the state and why, then each figure or a dash. */
+function usageCells(row: UsageRow): string[] {
+  const reason =
+    row.why ?? (row.unmeasured === undefined ? undefined : `not measured: ${row.unmeasured}`);
+  const state = reason === undefined ? stateWord(row.state) : `${stateWord(row.state)} (${reason})`;
+  const figure = <T>(value: T | null, text: (value: T) => string): string =>
+    value === null ? '-' : text(value);
+  return [
+    row.name,
+    state,
+    figure(row.cpuPercent, cpuText),
+    figure(row.memoryBytes, memoryText),
+    figure(row.startedAt, (startedAt) => uptimeText(startedAt)),
+    figure(row.pid, String),
+    figure(row.processes, String),
+  ];
 }
 
 /**

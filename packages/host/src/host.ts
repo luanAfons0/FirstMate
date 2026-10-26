@@ -17,6 +17,7 @@ import { shortcutAddress, type Shortcut } from '@firstmate/core/shortcut';
 import { serveStatic, webRoot } from './static-files.ts';
 import type { PluginState, PluginView, Restarted } from '@firstmate/core/plugin-state';
 import type { PluginServer } from './mcp.ts';
+import type { Processes } from '@firstmate/core/usage';
 import { callTools } from './tool-call.ts';
 
 /** Every Plugin address starts here: /p/<name>/. */
@@ -59,6 +60,8 @@ export type HostOptions = {
   readonly reload: () => Promise<void>;
   /** Start one Plugin's Plugin Server again, or nothing when there is no such Plugin. */
   readonly restart: (name: string) => Promise<Restarted | undefined>;
+  /** Read the Usage of FirstMate and of these Plugins, now (ADR-0032). */
+  readonly usage: (plugins: readonly HeldPlugin[]) => Promise<Processes>;
 };
 
 /** Where a Plugin Page calls its own Plugin's tools. */
@@ -99,6 +102,14 @@ const RELOAD_PATH = '/reload';
  * the operator's restart, which a page may never ask for either (ADR-0018).
  */
 const RESTART_PATH = /^\/restart\/([^/]+)$/;
+
+/**
+ * The Usage of FirstMate and of every Plugin, for the App and a terminal
+ * alone. It is read-only, and a page may never read it: every Plugin Page
+ * shares this origin, and no Plugin needs the PIDs and memory of the others
+ * (ADR-0032).
+ */
+const PROCESSES_PATH = '/processes.json';
 
 /** A Host that is listening, and the way to stop it. */
 export type Host = {
@@ -162,6 +173,18 @@ async function handle(
     const views = pluginViews(response, options);
     if (views === null) return;
     sendJson(response, { plugins: views }, method === 'HEAD');
+    return;
+  }
+  if (path === PROCESSES_PATH) {
+    if (!readOnly(response, method)) return;
+    if (!startedByTerminal(request)) {
+      sendText(response, 403, 'Only the App and a terminal may read Usage, never a page.');
+      return;
+    }
+    const order = fromSettings(response, options.order);
+    if (order === null) return;
+    const usage = await options.usage(inPluginOrder(options.plugins(), order));
+    sendJson(response, usage, method === 'HEAD');
     return;
   }
   if (path === RELOAD_PATH) {

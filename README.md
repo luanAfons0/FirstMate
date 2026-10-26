@@ -347,6 +347,8 @@ wrote it, is in the default Place.
 ```sh
 firstmate status
 firstmate status --json
+firstmate usage
+firstmate usage --json
 firstmate restart <name>
 ```
 
@@ -357,6 +359,21 @@ does. With no Host it says `no Host runs.` and ends with exit code `6`. A
 `runtime.json` that a crashed Host left behind names a port nothing answers on,
 and that reads as no Host too.
 
+`usage` says what FirstMate and each Plugin use of the machine now: FirstMate's
+own row first, then every Plugin in the Plugin Order, with its state, CPU,
+memory, uptime, PID and process count, and its Place when the Plugins are in
+more than one. CPU is counted against one core, as `top` counts it, so a busy
+Plugin can pass 100%. Memory is each process's fair share (PSS on Linux), so
+Plugins that share one Node do not each look as big as all of it. A Plugin
+counts its Plugin Server and every process under it, found by
+`FIRSTMATE_PLUGIN`. A Stopped Plugin says why, and a Plugin with no Plugin
+Server has nothing to measure. The Host reads it when asked and keeps none of
+it ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)), so `usage`
+takes half a second and `status` stays as fast as it was. With no Host it says
+`no Host runs.` and ends with exit code `6`. FirstMate reads Usage on Linux
+now; Windows and a `wsl` Place come next, and their rows say `not measured`
+until then.
+
 `restart` stops one Plugin's Plugin Server, Stopped or not, and starts it
 again, after you fix it. The Host never does this by itself: a broken Plugin
 stays Stopped until you say so. It says `restarted <name>. It is Running.`, or
@@ -364,7 +381,7 @@ that the Plugin is Stopped and why, which ends with exit code `1`. An unknown
 Plugin Name is refused with exit code `4`, and with no Host it says `no Host
 runs.` and ends with exit code `6`.
 
-`status`, `list`, `order` and `shelf` say what they read as one JSON value with
+`status`, `usage`, `list`, `order` and `shelf` say what they read as one JSON value with
 `--json`, and print nothing else, so a script can read them. A command that
 changes something prints no JSON, and refuses `--json` as typed wrong.
 
@@ -996,6 +1013,7 @@ process; no address on the Host changes it
 | `/plugins.json`      | The same list, for the App. Nothing is written.    |
 | `/shortcuts.json`    | Every Shortcut and the address it opens, for the App. Nothing is written. |
 | `/notices.json?after=<n>` | The Notices after `n`, for any reader. The App hears them with no poll. Nothing is written. |
+| `/processes.json`    | The Usage of FirstMate and of every Plugin, read now. The App and a terminal only. Nothing is written. |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
 | `POST /reload`       | Read the Registry and the settings again. A terminal only. |
@@ -1005,12 +1023,23 @@ A Plugin Page is a whole page: the Host links to it and the browser goes there,
 rather than framing it under chrome of its own
 ([ADR-0008](docs/adr/0008-a-plugin-page-is-a-whole-page.md)).
 
-`POST /reload` and `POST /restart/<name>` are the Host's own addresses, for the
-command line. Every Plugin Page shares the Host's origin and holds its cookie,
+`POST /reload`, `POST /restart/<name>` and `/processes.json` are the Host's own
+addresses, for the command line and the App. Every Plugin Page shares the Host's origin and holds its cookie,
 so the Host answers them only
 when the request carries no `Origin` and no `Sec-Fetch-Site`: what a browser
 always sends and a terminal never does
-([ADR-0018](docs/adr/0018-a-terminal-asks-the-host-to-reload.md)).
+([ADR-0018](docs/adr/0018-a-terminal-asks-the-host-to-reload.md)). No Plugin
+needs the PIDs and memory of the others, so `/processes.json` refuses a page
+too ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)).
+
+`/processes.json` answers `{ "firstmate": <row>, "plugins": [<row>, …] }`, the
+Plugins in the Plugin Order. A row has `name` (`FirstMate` for FirstMate's own),
+`state`, `place`, `pid` (the Plugin Server's own), `processes`, `cpuPercent`
+(against one core), `memoryBytes` (the fair share), and `startedAt` (an ISO
+time); `why` when it is Stopped; and `unmeasured`, a sentence, when the reading
+failed, with the figures `null`. A row with no Plugin Server running has no
+figures. With no reading younger than 5 seconds, the Host reads twice, half a
+second apart, so the first ask has a CPU figure too.
 
 ## Call a Plugin's tools
 
