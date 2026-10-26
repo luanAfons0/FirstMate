@@ -157,7 +157,8 @@ Windows and needs no Node of its own. Under the App that Node is the App itself,
 strips TypeScript's types. The shebang of `mcp` decides its language, so a
 Plugin Server can still be written in anything. Windows reads no shebang, so
 there the Host runs `mcp.exe`, or else `mcp.cmd` (ADR-0019). Every Plugin
-Server receives `FIRSTMATE_NODE`, and its output goes
+Server receives `FIRSTMATE_NODE`, and `FIRSTMATE_PLUGIN`, its Plugin's name,
+which every process under it inherits (ADR-0032). Its output goes
 to the Host's own output and its log: `firstmate logs` prints it (ADR-0022).
 
 A Plugin is in one of three states, and the Index Page shows which:
@@ -303,7 +304,8 @@ firstmate add worklog /home/me/.worklog --place debian
 ```
 
 The Host starts a `wsl` Plugin as `wsl.exe -d <distribution> --cd <directory>
--- ./mcp`, and reads its files, its Plugin Page among them, through
+-- env FIRSTMATE_PLUGIN=<name> ./mcp`, because Windows hands no variable across,
+and reads its files, its Plugin Page among them, through
 `\\wsl.localhost\<distribution>` or the Windows path you gave. Its paths are the
 distribution's own. A Plugin whose distribution is missing or will not start is
 Stopped with one sentence, and nothing retries it. Its default Shelf is

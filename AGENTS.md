@@ -184,7 +184,8 @@ packages/host/src/  the Host. Every file is one job.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
   index-page.ts    the Index Page, one file with no assets of its own.
-  supervisor.ts    start every Plugin Server, hold the truth about each, and
+  supervisor.ts    start every Plugin Server, hold the truth about each and
+                   each run's facts (PID, start time, why it stopped), and
                    start or stop only what a reload added or removed. On
                    Windows it starts mcp.exe or mcp.cmd (ADR-0019). It
                    starts mcp.ts or mcp.js first, with its own Node
@@ -344,7 +345,7 @@ and drives it over HTTP, exactly as a browser does.
   on Windows and on Linux, and takes about a minute. The App's window has no test.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller`, `notifier`,
-  and `node-form`, `node-js` and `node-first` for the Node form.
+  `namesake`, and `node-form`, `node-js` and `node-first` for the Node form.
   Add a fixture rather than a mock. A fixture with an `mcp` carries its
   Windows form, `mcp.cmd`, beside it (ADR-0019). A fixture with only an
   `mcp.ts` or `mcp.js` needs neither, because the Host runs it with its own
