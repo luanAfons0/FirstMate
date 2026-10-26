@@ -1181,12 +1181,17 @@ function logs(home: string, argv: readonly string[]): number | undefined {
     console.error(`${refusalPrefix()} there is no log yet, at ${path}.`);
     return exit('missing');
   }
+  // -f follows from the last byte printed, not from the size after printing:
+  // a line written in between would be counted as printed, and never be.
+  let at = 0;
   for (const file of [old, path]) {
-    if (existsSync(file)) process.stdout.write(readFileSync(file));
+    if (!existsSync(file)) continue;
+    const printed = readFileSync(file);
+    process.stdout.write(printed);
+    if (file === path) at = printed.length;
   }
   if (!follow) return 0;
 
-  let at = statSync(path, { throwIfNoEntry: false })?.size ?? 0;
   setInterval(() => {
     const size = statSync(path, { throwIfNoEntry: false })?.size ?? 0;
     if (size < at) at = 0;

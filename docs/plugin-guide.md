@@ -154,7 +154,12 @@ the connection for the life of the Host.
   no use to a Plugin Page.
 - **Closing stdin is how you are asked to stop.** The Host closes it and
   then sends `SIGTERM`. Windows has no such signal: there the Host closes
-  stdin, waits five seconds, and then ends your whole process tree.
+  stdin, waits five seconds, and then ends your whole process tree. On
+  Linux your Plugin Server leads a process group of its own, and the
+  `SIGTERM` goes to that whole group. If your Plugin Server has not ended
+  five seconds later, the Host kills the group with `SIGKILL`. And once
+  your Plugin Server has ended, asked to or on its own, the Host kills
+  every process still in its group: nothing you started outlives it.
 
 ## Calling your own tools
 
