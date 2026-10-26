@@ -5,8 +5,12 @@
  * CPU is user plus system time from each process's `stat`, which Linux counts
  * in ticks of 1/100 s. Memory is PSS from `smaps_rollup`: each page shared by
  * several processes is split between them, so Plugins that share one Node do
- * not each look as big as all of it. A process says which Plugin it belongs to
- * by the `FIRSTMATE_PLUGIN` in its environment, which every process under a
+ * not each look as big as all of it. Linux keeps `smaps_rollup` from this
+ * user for a process that is not dumpable, such as one that runs a file it may
+ * run but not read. Such a process still counts, with its CPU, and its memory
+ * is its resident size from `status`, which any user may read: that counts the
+ * pages it shares in full, an over-count rather than memory left out. A
+ * process says which Plugin it belongs to by the `FIRSTMATE_PLUGIN` in its environment, which every process under a
  * Plugin Server inherits, so a child that left its parent is still found.
  */
 import { readdir, readFile } from 'node:fs/promises';
@@ -58,7 +62,7 @@ export function linuxReader(home: string | undefined): ProcessReader {
       return Promise.all(
         seen.map(async (one) => ({
           ...one,
-          memoryBytes: wanted.has(one.pid) ? await readPss(one.pid) : null,
+          memoryBytes: wanted.has(one.pid) ? await readMemory(one.pid) : null,
         })),
       );
     },
@@ -104,14 +108,35 @@ export function pluginOf(environment: string, ownHome: OwnHome): string | null {
   return ownHome(home?.slice(HOME_MARK.length)) ? named.slice(PLUGIN_MARK.length) : null;
 }
 
-/** A process's proportional set size in bytes, or null when it cannot be read. */
-async function readPss(pid: number): Promise<number | null> {
-  const rollup = await readFile(`${PROC}/${pid}/smaps_rollup`, 'utf8').catch(() => null);
-  return rollup === null ? null : pssOf(rollup);
+/** A process's memory in bytes, or null when it ended while it was read. */
+async function readMemory(pid: number): Promise<number | null> {
+  const rollup = await readFile(`${PROC}/${pid}/smaps_rollup`, 'utf8').catch(() => undefined);
+  // Read only when the PSS cannot be, which is seldom.
+  const status =
+    rollup === undefined
+      ? await readFile(`${PROC}/${pid}/status`, 'utf8').catch(() => undefined)
+      : undefined;
+  return memoryOf(rollup, status);
+}
+
+/**
+ * A process's memory in bytes: the PSS its `smaps_rollup` says, or, when that
+ * could not be read, the resident size its `status` says, which over-counts
+ * the pages it shares. Null when neither says one.
+ */
+export function memoryOf(rollup: string | undefined, status: string | undefined): number | null {
+  if (rollup !== undefined) return pssOf(rollup);
+  return status === undefined ? null : rssOf(status);
 }
 
 /** The proportional set size `smaps_rollup` says, in bytes, or null when it says none. */
-export function pssOf(rollup: string): number | null {
+function pssOf(rollup: string): number | null {
   const kilobytes = /^Pss:\s+(\d+) kB$/m.exec(rollup)?.[1];
+  return kilobytes === undefined ? null : Number(kilobytes) * 1024;
+}
+
+/** The resident set size a process's `status` says, in bytes, or null when it says none. */
+function rssOf(status: string): number | null {
+  const kilobytes = /^VmRSS:\s+(\d+) kB$/m.exec(status)?.[1];
   return kilobytes === undefined ? null : Number(kilobytes) * 1024;
 }

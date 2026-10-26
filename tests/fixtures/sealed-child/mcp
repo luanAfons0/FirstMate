@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+// A fixture Plugin Server that starts one child Linux keeps sealed from its
+// own user: a copy of this Node that the user may run but not read. Linux
+// makes such a process undumpable, so its smaps_rollup and its environment
+// cannot be read, and only what any user may read, such as its status, can.
+// The child holds 256 MiB, so a row that leaves its memory out shows it.
+// It ends with its parent, as the spawner's child does.
+import { spawn } from 'node:child_process';
+import { copyFileSync, chmodSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createInterface } from 'node:readline';
+
+const directory = mkdtempSync(join(tmpdir(), 'firstmate-sealed-'));
+const sealed = join(directory, 'node');
+copyFileSync(process.execPath, sealed);
+chmodSync(sealed, 0o111);
+const holder = [
+  'globalThis.held = Buffer.alloc(256 * 1024 * 1024, 1);',
+  'setInterval(() => { if (process.ppid !== Number(process.argv[1])) process.exit(); }, 200);',
+].join(' ');
+const child = spawn(sealed, ['-e', holder, String(process.pid)], { stdio: 'ignore' });
+// The running child keeps its file; the directory is not needed after it starts.
+child.once('spawn', () => rmSync(directory, { recursive: true, force: true }));
+
+const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+
+for await (const line of createInterface({ input: process.stdin })) {
+  if (line.trim() === '') continue;
+  const request = JSON.parse(line);
+  if (request.id === undefined || request.id === null) continue;
+  if (request.method === 'initialize') {
+    reply({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'sealed-child', version: '1.0.0' },
+      },
+    });
+    continue;
+  }
+  reply({
+    jsonrpc: '2.0',
+    id: request.id,
+    error: { code: -32601, message: `no such method: ${request.method}` },
+  });
+}
+// stdin closed: the Host asks this Plugin Server to end, and its child with it.
+child.kill();

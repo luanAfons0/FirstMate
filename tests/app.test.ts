@@ -193,11 +193,37 @@ async function checkOwnRow(host: Booted): Promise<void> {
     electron.some((one) => one.type === 'gpu-process'),
     'the App has a GPU process to count',
   );
-  assert.equal(
-    row.processes,
-    electron.length,
-    `the row counts each of the App's own processes: ${JSON.stringify(electron)}`,
-  );
+  if (row.processes !== electron.length) {
+    // `/processes.json` says how many processes the row counts, not which, so
+    // the message says what this test can see of each one it found, and what
+    // the App said, for a run that only fails on another machine.
+    assert.fail(
+      [
+        `the row counts ${row.processes} processes, and the App has ${electron.length}:`,
+        ...(await Promise.all(electron.map(seenOf))),
+        "the App's output, last lines:",
+        ...host.output().trimEnd().split('\n').slice(-30),
+      ].join('\n'),
+    );
+  }
+}
+
+/**
+ * What this test can see of one of the App's processes: whether its memory
+ * file and its environment can be read, and its state and its PIDs in each
+ * PID namespace, from its status, which any user may read.
+ */
+async function seenOf(one: { readonly pid: number; readonly type: string }): Promise<string> {
+  const at = join('/proc', String(one.pid));
+  const readable = (file: string): Promise<string> =>
+    readFile(join(at, file)).then(
+      () => `${file} readable`,
+      () => `${file} UNREADABLE`,
+    );
+  const status = await readFile(join(at, 'status'), 'utf8').catch(() => '');
+  const field = (name: string): string =>
+    new RegExp(`^${name}:\\s*(.*)$`, 'm').exec(status)?.[1] ?? '?';
+  return `  ${one.pid} ${one.type}: ${await readable('smaps_rollup')}, ${await readable('environ')}, state ${field('State')}, NSpid ${field('NSpid').replaceAll('\t', ' ')}`;
 }
 
 /** The types of process Electron starts and does not name among the App's. */
