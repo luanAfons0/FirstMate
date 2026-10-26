@@ -161,8 +161,10 @@ the connection for the life of the Host.
   Linux your Plugin Server leads a process group of its own, and the
   `SIGTERM` goes to that whole group. If your Plugin Server has not ended
   five seconds later, the Host kills the group with `SIGKILL`. And once
-  your Plugin Server has ended, asked to or on its own, the Host kills
-  every process still in its group: nothing you started outlives it.
+  your Plugin Server has ended, asked to or on its own, the Host sends
+  `SIGTERM` to every process still in its group, and `SIGKILL` to what is
+  left five seconds later: a process you started gets the same time to end
+  cleanly, and nothing you started outlives it.
 
 ## Calling your own tools
 

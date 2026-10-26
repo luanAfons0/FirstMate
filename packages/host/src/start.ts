@@ -12,7 +12,7 @@
  * no Plugin Server outlives either.
  */
 import { randomBytes } from 'node:crypto';
-import { BIND_ADDRESS, readConfig, type Config } from '@firstmate/core/config';
+import { BIND_ADDRESS, HOME_VARIABLE, readConfig, type Config } from '@firstmate/core/config';
 import { startHost } from './host.ts';
 import { keepLog } from './log.ts';
 import { openNotices, type Notice } from './notices.ts';
@@ -112,7 +112,9 @@ export async function start(
   // Read when the App or a terminal asks, and kept nowhere (ADR-0032).
   const usage = openUsage({
     runOf: (name) => supervisor.runOf(name),
-    ownPids: () => ownPidsOf(hooks),
+    ownPids: ownPidsOf(hooks),
+    // Each Plugin Server inherits the Host's environment, its home with it.
+    home: process.env[HOME_VARIABLE],
   });
 
   const host = await startHost({
@@ -222,15 +224,24 @@ function safely<T>(read: () => T): T | undefined {
 }
 
 /**
- * The Host's own PID, and every PID its holder names. The row counts the
+ * A reader of the Host's own PID, and every PID its holder names. The row counts the
  * Host's own process even when a hook leaves it out or fails, because a hook
  * that throws is the holder's fault and must not break the Host.
  */
-function ownPidsOf(hooks: HostHooks): readonly number[] {
-  try {
-    return [...new Set([process.pid, ...(hooks.ownPids?.() ?? [])])];
-  } catch (fault: unknown) {
-    console.error('FirstMate: a hook of the program that holds the Host failed.', fault);
-    return [process.pid];
-  }
+function ownPidsOf(hooks: HostHooks): () => readonly number[] {
+  // The Process View asks every 2 seconds, so a hook that keeps failing is
+  // said once, and again only after it has worked (ADR-0022).
+  let said = false;
+  return () => {
+    try {
+      const pids = [...new Set([process.pid, ...(hooks.ownPids?.() ?? [])])];
+      said = false;
+      return pids;
+    } catch (fault: unknown) {
+      if (!said)
+        console.error('FirstMate: a hook of the program that holds the Host failed.', fault);
+      said = true;
+      return [process.pid];
+    }
+  };
 }

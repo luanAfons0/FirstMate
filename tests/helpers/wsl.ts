@@ -109,6 +109,14 @@ fi
 if [ -f '${silent}/'"$distribution.hangs" ]; then exec sleep 60; fi
 export HOME='${home}'
 if [ -n "$directory" ]; then cd '${root}'"$directory" || exit 1; fi
+# A reading of /proc sees only the processes that name a Plugin, as a
+# distribution with a few processes would hold, whatever else runs here.
+if [ "$1" = sh ] && [ "$2" = -c ] && [ "\${3#cd /proc }" != "$3" ]; then
+  view="$(mktemp -d '${scratch}/proc.XXXXXX')"
+  grep -a -l -z '^FIRSTMATE_PLUGIN=' /proc/[0-9]*/environ 2>/dev/null |
+    while IFS=/ read -r _ _ pid _; do ln -s "/proc/$pid" "$view/$pid"; done
+  set -- sh -c "cd '$view' \${3#cd /proc }"
+fi
 # A process of its own, as inside a real distribution, which notes its PID.
 sh -c 'printf "%s %s\\n" "$$" "$*" >> "$0"; exec "$@"' '${ranLog}' "$@"
 `;
