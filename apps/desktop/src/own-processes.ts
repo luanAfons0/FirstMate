@@ -6,9 +6,11 @@
  * takes no Electron import (ADR-0032). FirstMate's cost is every process
  * Electron runs for the App: the main process, the GPU process, its helpers,
  * and the renderers of the App's own views and of the Index Page, even while
- * they load. A Plugin Page's renderer is the Plugin's cost, and FirstMate's
- * row never counts it. A Plugin Server is no process of Electron's, and has a
- * row of its own.
+ * they load. Electron names a process only once it has connected, so one
+ * still starting, such as a slow GPU process, is counted from then on. A
+ * Plugin Page's renderer is the Plugin's cost, and FirstMate's row never
+ * counts it. A Plugin Server is no process of Electron's, and has a row of its
+ * own.
  */
 import { app, webContents, type WebContents } from 'electron';
 import { INDEX, ownerOf, type HostAt } from './addresses.ts';

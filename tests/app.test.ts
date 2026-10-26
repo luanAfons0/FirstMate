@@ -181,10 +181,14 @@ async function checkOwnRow(host: Booted): Promise<void> {
     (row.processes ?? 0) > 1,
     `the row counts more than the main process: ${row.processes}`,
   );
-  // Electron starts and ends a helper now and then, so the two counts are
-  // compared again, a few times, before the test calls them different.
+  // Electron starts and ends a helper now and then, and it names a process
+  // among the App's only once that process has connected to it. The GPU
+  // process shows in /proc as soon as it starts, but on a CI runner it draws
+  // in software under xvfb and may take seconds to connect, and until then the
+  // App cannot count it. So the two counts are compared again, for up to 20
+  // seconds, before the test calls them different.
   let electron = await electronProcesses(row.pid);
-  for (let tries = 0; row.processes !== electron.length && tries < 5; tries += 1) {
+  for (let tries = 0; row.processes !== electron.length && tries < 40; tries += 1) {
     await delay(500);
     row = await ask();
     electron = await electronProcesses(row.pid ?? 0);
