@@ -23,12 +23,20 @@ The Host's record of which Plugins exist, which Place each is in, where their di
 _Avoid_: manifest, catalogue, config, lockfile
 
 **Plugin Order**:
-The order every list of Plugins shows them in, chosen by the operator. A Plugin it does not name follows, in the order it was added.
+The order every list of Plugins shows them in, chosen by the operator. A Plugin it does not name follows, in the order it was added. The one exception is the Process View, while the operator sorts it by Usage.
 _Avoid_: sort, ranking, priority
 
 **Settings View**:
 The window's own page for FirstMate's settings, opened from the gear in the strip. The Host never serves it, so no Plugin Page can reach it. It opens each Plugin's Plugin Settings, and holds none of them.
 _Avoid_: preferences, options, config page, settings page
+
+**Process View**:
+The window's own page that shows every Plugin's state and Usage, and FirstMate's own Usage first. It is opened from the strip or the Tray. The Host never serves it, and no Plugin Page can read what it shows.
+_Avoid_: task manager, monitor, dashboard, stats page
+
+**Usage**:
+The CPU and memory that a Plugin Server and every process under it use now, or that FirstMate's own processes use now. It is read when asked and never kept. CPU is counted against one core. Memory is each process's fair share, so memory that processes share is counted once.
+_Avoid_: metrics, stats, health, telemetry, load, resources
 
 **Place**:
 A named location where Plugins are installed and their Plugin Servers run, such
