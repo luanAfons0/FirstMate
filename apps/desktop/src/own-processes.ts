@@ -31,33 +31,10 @@ export function ownProcesses(host: HostAt | undefined): number[] {
     const pid = page.getOSProcessId();
     if (pid > 0 && isPluginPage(page, host)) plugins.add(pid);
   }
-  const own = app
+  return app
     .getAppMetrics()
     .filter((metric) => metric.type !== RENDERER || !plugins.has(metric.pid))
     .map((metric) => metric.pid);
-  // DIAGNOSTIC, to be removed.
-  console.error(
-    'DIAG',
-    JSON.stringify({
-      host: host?.port ?? null,
-      pages: webContents.getAllWebContents().map((page) =>
-        page.isDestroyed()
-          ? 'destroyed'
-          : `${page.getType()} ${page.getOSProcessId()} ${page.getProcessId()} ${page
-              .getURL()
-              .replace(/token=[^&#]*/, 'token=X')
-              .slice(0, 100)} plugin=${isPluginPage(page, host)}`,
-      ),
-      metrics: app
-        .getAppMetrics()
-        .map(
-          (metric) =>
-            `${metric.pid} ${metric.type} ${metric.serviceName ?? ''} ${metric.name ?? ''}`,
-        ),
-      own,
-    }),
-  );
-  return own;
 }
 
 /**
