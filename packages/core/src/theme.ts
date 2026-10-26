@@ -38,7 +38,7 @@ const DARK = {
   stopped: '#ff6f61',
   'stopped-soft': 'rgba(255, 111, 97, .12)',
   brand: '#3fae55',
-  /* A row under the pointer, and the hatch tint the App mock draws with. */
+  /* The tint of a row under the pointer, in the Process View's table. */
   'row-hover': 'rgba(255, 255, 255, .025)',
   'shadow-panel': '0 14px 34px -10px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .35)',
   'shadow-window': '0 30px 70px -20px rgba(0, 0, 0, .75), 0 0 0 1px rgba(255, 255, 255, .06)',

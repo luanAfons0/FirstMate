@@ -43,16 +43,17 @@ export type Processes = {
 /** The name of FirstMate's own row. It holds capitals, so no Plugin Name can be it. */
 export const FIRSTMATE_ROW = 'FirstMate';
 
-const MEBIBYTE = 1024 * 1024;
-
-/** A CPU figure, as `3.1%`. */
+/**
+ * A CPU figure, as `3.1%`. It and `memoryText` use nothing outside their own
+ * body, because the Process View's page script runs their source as well.
+ */
 export function cpuText(percent: number): string {
   return `${percent.toFixed(1)}%`;
 }
 
 /** A memory figure, as `58 MB`, or `1.25 GB` from 1024 MB up. */
 export function memoryText(bytes: number): string {
-  const megabytes = bytes / MEBIBYTE;
+  const megabytes = bytes / (1024 * 1024);
   return megabytes >= 1024 ? `${(megabytes / 1024).toFixed(2)} GB` : `${Math.round(megabytes)} MB`;
 }
 
