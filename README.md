@@ -378,7 +378,8 @@ takes half a second (on Windows a second or two, through PowerShell) and
 `status` stays as fast as it was. With no Host it says `no Host runs.` and
 ends with exit code `6`. FirstMate reads Usage on Linux, on Windows and in a
 `wsl` Place now. On Windows, with no `powershell.exe` on the PATH, every row
-says `not measured` and why. A `wsl` Plugin is measured inside its distribution, with one
+says `not measured` and why. While the Process View asks, one PowerShell
+answers every reading, and it ends a few seconds after the last one. A `wsl` Plugin is measured inside its distribution, with one
 `wsl.exe` call per reading, and its PID is the one it has there. A distribution
 that holds no running Plugin is never asked, so a reading never starts one, and
 one that does not answer within 3 seconds leaves its own rows `not measured`.

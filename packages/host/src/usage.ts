@@ -55,6 +55,8 @@ export type UsageSources = {
 export type Usage = {
   /** Read FirstMate's Usage and these Plugins', in the order given. */
   read(plugins: readonly HeldPlugin[]): Promise<Processes>;
+  /** End what the readers keep open between readings, as the Host stops. */
+  close(): Promise<void>;
 };
 
 /** One reading of one source: when it was taken, and every process's CPU time then. */
@@ -176,6 +178,9 @@ export function openUsage(sources: UsageSources): Usage {
         reading = undefined;
       });
       return reading;
+    },
+    async close() {
+      await local?.close?.();
     },
   };
 }

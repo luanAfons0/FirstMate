@@ -5,7 +5,9 @@
  */
 import assert from 'node:assert/strict';
 import { cp, mkdir } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import test from 'node:test';
 import {
   bootHost,
@@ -34,6 +36,8 @@ type Row = {
 };
 
 type Processes = { firstmate: Row; plugins: Row[] };
+
+const run = promisify(execFile);
 
 /** Why the figures of a local Plugin are read on Linux and Windows alone. */
 const NO_READER =
@@ -205,6 +209,60 @@ test(
     assert.equal(rowOf(processes, 'quitter').why, 'exit 3.', 'a Stopped row still says why');
   },
 );
+
+test(
+  'a run of refreshes asks one PowerShell, which ends after the asks stop',
+  { skip: NOT_WINDOWS },
+  async (t) => {
+    const host = await bootHost(t, [{ name: 'spawner', directory: 'spawner' }]);
+
+    const first = await processesOf(host);
+    assertMeasured(rowOf(first, 'spawner'));
+    const hostPid = first.firstmate.pid ?? 0;
+    const [shell, ...more] = await powerShellsUnder(hostPid);
+    assert.ok(shell !== undefined, 'a PowerShell stays open after a reading');
+    assert.deepEqual(more, [], 'one PowerShell, not one per reading');
+    for (let refresh = 0; refresh < 3; refresh += 1) {
+      assertMeasured(rowOf(await processesOf(host), 'spawner'));
+      assert.deepEqual(await powerShellsUnder(hostPid), [shell], 'the same PowerShell answers');
+    }
+
+    await untilTrue(async () => (await powerShellsUnder(hostPid)).length === 0, 20_000);
+    assertMeasured(rowOf(await processesOf(host), 'spawner'));
+  },
+);
+
+test(
+  'a PowerShell that dies is started again at the next reading',
+  { skip: NOT_WINDOWS },
+  async (t) => {
+    const host = await bootHost(t, [{ name: 'spawner', directory: 'spawner' }]);
+    const hostPid = (await processesOf(host)).firstmate.pid ?? 0;
+    const [shell] = await powerShellsUnder(hostPid);
+    assert.ok(shell !== undefined, 'a PowerShell stays open after a reading');
+
+    process.kill(shell);
+    await untilTrue(async () => !isAlive(shell), 10_000);
+
+    const after = await processesOf(host);
+    assertMeasured(after.firstmate);
+    assertMeasured(rowOf(after, 'spawner'));
+    const [again] = await powerShellsUnder(hostPid);
+    assert.ok(again !== undefined && again !== shell, 'a new PowerShell answers');
+  },
+);
+
+test('the PowerShell does not outlive a Host that ends', { skip: NOT_WINDOWS }, async (t) => {
+  // No Plugin, so the Host ends alone: Windows ends one process at a time.
+  const host = await bootHost(t, []);
+  const hostPid = (await processesOf(host)).firstmate.pid ?? 0;
+  const [shell] = await powerShellsUnder(hostPid);
+  assert.ok(shell !== undefined, 'a PowerShell stays open after a reading');
+
+  process.kill(hostPid);
+
+  await untilTrue(async () => !isAlive(shell), 10_000);
+});
 
 test('a Stopped Plugin says why, and a Plugin with no Plugin Server says so', async (t) => {
   const host = await bootHost(t, [
@@ -414,4 +472,38 @@ for (const [how, why] of [
       assertMeasured(processes.firstmate);
     },
   );
+}
+
+/** The PIDs of the PowerShells whose parent is this process, as Windows lists them now. */
+async function powerShellsUnder(parent: number): Promise<number[]> {
+  const { stdout } = await run('powershell.exe', [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    `(Get-CimInstance Win32_Process -Filter "ParentProcessId=${parent} AND Name='powershell.exe'").ProcessId`,
+  ]);
+  return stdout
+    .split(/\r?\n/)
+    .filter((line) => /^\d+$/.test(line.trim()))
+    .map(Number);
+}
+
+/** Whether a process of this PID runs now. */
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Wait until the check holds, and fail if it never does in time. */
+async function untilTrue(check: () => Promise<boolean>, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`it did not happen in ${timeoutMs / 1000} s`);
+    await new Promise((done) => setTimeout(done, 200));
+  }
 }

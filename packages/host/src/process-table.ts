@@ -37,6 +37,12 @@ export type ProcessReader = {
    * counts no other; it is null for the rest.
    */
   read(roots: readonly number[]): Promise<readonly ProcessFacts[]>;
+  /**
+   * End what the reader keeps open between readings, such as a PowerShell on
+   * Windows, and resolve when it has ended. A reader that keeps nothing open
+   * has none.
+   */
+  close?(): Promise<void>;
 };
 
 /**

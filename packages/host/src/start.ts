@@ -143,7 +143,8 @@ export async function start(
     // The runtime file describes a run. This one is over, so it goes with it.
     stopped ??= (async () => {
       removeRuntimeFile(config.home);
-      await Promise.all([supervisor.stopAll(), host.close()]);
+      // No PowerShell that reads Usage outlives the Host.
+      await Promise.all([supervisor.stopAll(), host.close(), usage.close()]);
       // Every line a Plugin Server said on its way out is in the log before
       // stop resolves, because whoever stopped the Host may end the process next.
       await log.drained();
