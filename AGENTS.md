@@ -361,6 +361,10 @@ and drives it over HTTP, exactly as a browser does.
   lets the whole inside of the Host be rewritten without touching a test.
 - A test asserts on what a browser and the Tray can see: status codes, headers,
   response bytes, and the files the Host writes into its home directory.
+  The one exception: a test may also look at the system's process table, to
+  prove which processes run or end, as `processes.test.ts`,
+  `plugin-server-tree.test.ts` and `app.test.ts` do. It never looks at a
+  module of the Host.
 - Tests run the source. `tests/build.test.ts` alone builds the bundle, with the
   helper's `build`, and boots it through the same helper with `built`.
 - `tests/app.test.ts` alone packages the App, with the helper's `packageApp`,
@@ -376,6 +380,8 @@ and drives it over HTTP, exactly as a browser does.
   file outside its own directory, so it proves what it holds and nothing more.
 - `tests/helpers/plugins.ts` asks a booted Host for one Plugin's state, and
   makes one tool call as a Plugin Page makes it, through `host.ts`.
+- `tests/helpers/processes.ts` says whether a process runs, and waits until
+  a check holds: the two questions a test asks the process table.
 - `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, and points a `wsl`
   Place's root at a folder of the test's own. It runs each command as a
   process of its own and notes its PID, as a real distribution does, and can
