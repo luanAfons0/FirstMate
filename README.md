@@ -61,7 +61,8 @@ deb are not signed either, and Linux does not ask.
 To work on FirstMate itself, see [Work on FirstMate](#work-on-firstmate).
 
 Coming from 1.x? See [Moving from 1.x](#moving-from-1x) and the
-[2.0.0 release notes](docs/releases/2.0.0.md).
+[2.0.0 release notes](docs/releases/2.0.0.md). What 2.1.0 adds is in the
+[2.1.0 release notes](docs/releases/2.1.0.md).
 
 ## Set it up
 
