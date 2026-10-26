@@ -533,7 +533,6 @@ function shortLine(name: string, short: string, column: number): string {
  */
 function shortHelp(stream: NodeJS.WriteStream): string {
   return `firstmate: run your own tools on your own machine. usage: firstmate <command>
-
 ${GROUPS.map((group) =>
   [
     groupName(group, stream),
@@ -1295,18 +1294,16 @@ async function usage(home: string, argv: readonly string[], json: boolean): Prom
   const rows = [seen.firstmate, ...seen.plugins];
   // A Place is worth a column only when the Plugins are in more than one.
   const places = new Set(seen.plugins.map((row) => row.place)).size > 1;
-  const header = ['PLUGIN', 'STATE', 'CPU', 'MEMORY', 'UPTIME', 'PID', 'PROCS'];
+  const placed = (name: string, place: string, rest: readonly string[]): string[] =>
+    places ? [name, place, ...rest] : [name, ...rest];
   printRows(
-    places ? [header[0] ?? '', 'PLACE', ...header.slice(1)] : header,
-    rows.map((row) => {
-      const [name, ...rest] = usageCells(row);
-      return { cells: places ? [name ?? '', row.place, ...rest] : [name ?? '', ...rest] };
-    }),
+    placed('PLUGIN', 'PLACE', ['STATE', 'CPU', 'MEMORY', 'UPTIME', 'PID', 'PROCS']),
+    rows.map((row) => ({ cells: placed(row.name, row.place, usageCells(row)) })),
   );
   return 0;
 }
 
-/** One row of usage: the name, the state and why, then each figure or a dash. */
+/** One row of usage after its name: the state and why, then each figure or a dash. */
 function usageCells(row: UsageRow): string[] {
   const reason =
     row.why ?? (row.unmeasured === undefined ? undefined : `not measured: ${row.unmeasured}`);
@@ -1314,7 +1311,6 @@ function usageCells(row: UsageRow): string[] {
   const figure = <T>(value: T | null, text: (value: T) => string): string =>
     value === null ? '-' : text(value);
   return [
-    row.name,
     state,
     figure(row.cpuPercent, cpuText),
     figure(row.memoryBytes, memoryText),

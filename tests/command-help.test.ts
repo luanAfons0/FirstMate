@@ -141,8 +141,7 @@ test('the short help names every command once, and fits in one screen', async (t
   const helped = await firstmate(home, ['--help']);
   const lines = helped.stdout.trimEnd().split('\n');
 
-  // Twenty commands in five groups, a title and two lines on where the rest is.
-  assert.ok(lines.length <= 30, `30 lines at most, not ${lines.length}`);
+  assert.ok(lines.length < 30, `under 30 lines, not ${lines.length}`);
   for (const line of lines) assert.ok(line.length <= 80, `under 80 columns: ${line}`);
   for (const [name] of COMMANDS) {
     const rows = lines.filter((line) => new RegExp(`^ {2}${name} {2,}\\S`).test(line));

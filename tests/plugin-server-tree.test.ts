@@ -3,49 +3,29 @@
  * restart, a Host stop and a Plugin Server that ends on its own leave no
  * child of it running.
  *
- * Each fixture's Plugin Server starts a child that ignores SIGTERM.
- * `stubborn-parent` ignores SIGTERM too, so it is killed; `parting-parent`
- * ends on SIGTERM and leaves its child behind. Linux alone: on Windows the
+ * Each fixture's Plugin Server starts a child. `stubborn-parent` and its
+ * child ignore SIGTERM, so both are killed; `parting-parent` ends on SIGTERM
+ * and leaves behind a child that ignores it. `tidy-parent`'s child ends on
+ * SIGTERM, a little later, so it shows that the rest of a Plugin Server's
+ * group gets the same grace as the Plugin Server. Linux alone: on Windows the
  * Host already ends the whole tree with `taskkill /t` (ADR-0019), and this
  * test reads `/proc`.
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test, { type TestContext } from 'node:test';
 import { bootHost, firstmate, until, type Booted } from './helpers/host.ts';
+import { isRunning, untilTrue } from './helpers/processes.ts';
 
 const SKIP =
   process.platform === 'linux'
     ? false
     : 'Linux alone: Windows ends a Plugin Server with taskkill /t, and this test reads /proc';
 
-/** How long the system has to reap a killed child before the test says it lives. */
-const REAP_MS = 5_000;
-
-/** Whether a process runs. A zombie has ended, and waits only to be reaped. */
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-  } catch {
-    return false;
-  }
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    return stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3) !== 'Z';
-  } catch {
-    return false;
-  }
-}
-
-/** Whether a process ends within the time the system has to reap it. */
-async function ends(pid: number): Promise<boolean> {
-  const deadline = Date.now() + REAP_MS;
-  while (isRunning(pid)) {
-    if (Date.now() > deadline) return false;
-    await new Promise((done) => setTimeout(done, 50));
-  }
-  return true;
-}
+/**
+ * How long a child has to end before the test says it lives: the five seconds
+ * of grace the Host gives a Plugin Server's group, and time to reap it.
+ */
+const REAP_MS = 10_000;
 
 /**
  * The pid of the child a Plugin Server started, said after `from` in the
@@ -53,11 +33,10 @@ async function ends(pid: number): Promise<boolean> {
  * a failed test leaves nothing behind.
  */
 async function childOf(t: TestContext, host: Booted, name: string, from = 0): Promise<number> {
-  const said = new RegExp(`${name}: started a child with pid (\\d+)`, 'g');
-  said.lastIndex = from;
-  await until(host, { exec: (output: string) => said.exec(output) } as RegExp);
-  said.lastIndex = from;
-  const pid = Number(said.exec(host.output())?.[1]);
+  // Not a /g pattern: its lastIndex would move between asks, and find a line said before `from`.
+  const said = new RegExp(`${name}: started a child with pid (\\d+)`);
+  await until(host, { exec: (output: string) => said.exec(output.slice(from)) } as RegExp);
+  const pid = Number(said.exec(host.output().slice(from))?.[1]);
   t.after(() => {
     if (isRunning(pid)) process.kill(pid, 'SIGKILL');
   });
@@ -83,7 +62,7 @@ for (const { name, onSigterm } of PARENTS) {
     assert.match(host.output(), onSigterm);
     // The restarted Plugin Server's child runs, and is killed should the test fail.
     await childOf(t, host, name, before);
-    assert.equal(await ends(child), true, `the child ${child} outlived the restart`);
+    await untilTrue(() => !isRunning(child), REAP_MS, `the child ${child} outlived the restart`);
   });
 
   test(`a Host stop leaves no child of ${name}`, { skip: SKIP }, async (t) => {
@@ -93,7 +72,7 @@ for (const { name, onSigterm } of PARENTS) {
     await host.stop();
 
     assert.match(host.output(), onSigterm);
-    assert.equal(await ends(child), true, `the child ${child} outlived the Host`);
+    await untilTrue(() => !isRunning(child), REAP_MS, `the child ${child} outlived the Host`);
   });
 }
 
@@ -106,5 +85,57 @@ test('a Plugin Server that ends on its own leaves no child', { skip: SKIP }, asy
   process.kill(server, 'SIGTERM');
 
   await until(host, /the Plugin named parting-parent is Stopped/);
-  assert.equal(await ends(child), true, `the child ${child} outlived its Plugin Server`);
+  await untilTrue(
+    () => !isRunning(child),
+    REAP_MS,
+    `the child ${child} outlived its Plugin Server`,
+  );
 });
+
+test('a child of a restarted Plugin Server has time to end cleanly', { skip: SKIP }, async (t) => {
+  const host = await bootHost(t, [{ name: 'tidy-parent', directory: 'tidy-parent' }]);
+  const child = await childOf(t, host, 'tidy-parent');
+  await until(host, /tidy-parent: the child waits for SIGTERM/);
+
+  const restarted = await firstmate(host.home, ['restart', 'tidy-parent']);
+
+  assert.equal(restarted.code, 0, restarted.stderr);
+  await untilTrue(() => !isRunning(child), REAP_MS, `the child ${child} outlived the restart`);
+  assert.match(host.output(), /tidy-parent: the child ended cleanly/);
+});
+
+test(
+  'a child of a Plugin Server that ends on its own has time to end cleanly',
+  { skip: SKIP },
+  async (t) => {
+    const host = await bootHost(t, [{ name: 'tidy-parent', directory: 'tidy-parent' }]);
+    const child = await childOf(t, host, 'tidy-parent');
+    await until(host, /tidy-parent: the child waits for SIGTERM/);
+    const server = Number((await until(host, /tidy-parent: the Plugin Server has pid (\d+)/))[1]);
+
+    // Not the Host's doing: something else ends the Plugin Server alone.
+    process.kill(server, 'SIGTERM');
+
+    await untilTrue(
+      () => !isRunning(child),
+      REAP_MS,
+      `the child ${child} outlived its Plugin Server`,
+    );
+    assert.match(host.output(), /tidy-parent: the child ended cleanly/);
+  },
+);
+
+test(
+  'a Host stop waits for a child of a Plugin Server to end cleanly',
+  { skip: SKIP },
+  async (t) => {
+    const host = await bootHost(t, [{ name: 'tidy-parent', directory: 'tidy-parent' }]);
+    const child = await childOf(t, host, 'tidy-parent');
+    await until(host, /tidy-parent: the child waits for SIGTERM/);
+
+    await host.stop();
+
+    assert.equal(isRunning(child), false, `the child ${child} outlived the Host`);
+    assert.match(host.output(), /tidy-parent: the child ended cleanly/);
+  },
+);

@@ -15,7 +15,6 @@
  * CPU figure. It has no timer of its own (ADR-0004).
  */
 import { setTimeout as delay } from 'node:timers/promises';
-import { HOME_VARIABLE } from '@firstmate/core/config';
 import { DEFAULT_PLACE } from '@firstmate/core/places';
 import type { HeldPlugin } from '@firstmate/core/plugin-places';
 import { FIRSTMATE_ROW, type Processes, type UsageRow } from '@firstmate/core/usage';
@@ -38,10 +37,11 @@ const LOCAL = 'local';
  * The reader of this machine's processes, for each system FirstMate reads
  * Usage on. A system with none says so in each row of a local Plugin.
  */
-const LOCAL_READERS: Partial<Record<NodeJS.Platform, () => ProcessReader>> = {
-  linux: () => linuxReader(process.env[HOME_VARIABLE]),
-  win32: () => windowsReader(),
-};
+const LOCAL_READERS: Partial<Record<NodeJS.Platform, (home: string | undefined) => ProcessReader>> =
+  {
+    linux: (home) => linuxReader(home),
+    win32: () => windowsReader(),
+  };
 
 /** What the Host reads Usage from. */
 export type UsageSources = {
@@ -49,6 +49,11 @@ export type UsageSources = {
   readonly runOf: (name: string) => RunFacts | undefined;
   /** The PIDs FirstMate's own row counts: the Host's own process, unless the App says more. */
   readonly ownPids: () => readonly number[];
+  /**
+   * The `FIRSTMATE_HOME` the Host's Plugin Servers inherit, undefined for the
+   * default home. A process that names a Plugin is this Host's only with it.
+   */
+  readonly home: string | undefined;
 };
 
 /** Usage, read when asked. */
@@ -78,7 +83,7 @@ type Measured =
 
 /** Open Usage over the Supervisor's runs. Nothing is read until it is asked. */
 export function openUsage(sources: UsageSources): Usage {
-  const local = LOCAL_READERS[process.platform]?.();
+  const local = LOCAL_READERS[process.platform]?.(sources.home);
   // The process's own start, in the App and in a bare Host alike.
   const ownStart = new Date(Date.now() - process.uptime() * 1000).toISOString();
   const last = new Map<string, Reading>();
@@ -147,7 +152,7 @@ export function openUsage(sources: UsageSources): Usage {
           key,
           // Inside a distribution the Plugin Servers are found by
           // FIRSTMATE_PLUGIN, so no PID of this machine is a root there.
-          await measure(key, wslReader(distribution, process.env[HOME_VARIABLE]), []),
+          await measure(key, wslReader(distribution, sources.home), []),
         ]),
       ]),
     );
@@ -159,7 +164,7 @@ export function openUsage(sources: UsageSources): Usage {
       place: DEFAULT_PLACE,
       pid: process.pid,
       startedAt: ownStart,
-      ...counted(here, ownPids, null),
+      ...counted(here, { kind: 'own', pids: ownPids }),
     };
     return {
       firstmate,
@@ -211,7 +216,7 @@ function pluginRow(plugin: HeldPlugin, run: RunFacts | undefined, here: Measured
   // wrong process: the Plugin Server's own PID is inside its distribution.
   const local = isLocal(run);
   if (here.kind === 'unmeasured') {
-    return { ...idle, pid: local ? run.pid : null, startedAt, ...counted(here, [], null) };
+    return { ...idle, pid: local ? run.pid : null, startedAt, ...unmeasured(here.why) };
   }
   const pid = local ? run.pid : serverIn(here.table, plugin.name);
   const row = { ...idle, pid, startedAt };
@@ -221,7 +226,7 @@ function pluginRow(plugin: HeldPlugin, run: RunFacts | undefined, here: Measured
   if (!here.table.some((one) => one.pid === pid)) {
     return { ...row, unmeasured: `its Plugin Server, PID ${pid}, is not in the process table.` };
   }
-  return { ...row, ...counted(here, [pid], plugin.name) };
+  return { ...row, ...counted(here, { kind: 'plugin', name: plugin.name, server: pid }) };
 }
 
 /**
@@ -238,27 +243,47 @@ function serverIn(table: readonly ProcessFacts[], plugin: string): number | null
   return first?.pid ?? null;
 }
 
+/** Whose processes a row counts. */
+type Counting =
+  /**
+   * FirstMate's own row: these processes alone, and no tree under them,
+   * because everything under the Host is a Plugin Server, with a row of its own.
+   */
+  | { readonly kind: 'own'; readonly pids: readonly number[] }
+  /** A Plugin's: its Plugin Server, every process under it, and every one that names it. */
+  | { readonly kind: 'plugin'; readonly name: string; readonly server: number };
+
+/** The figures of a row, and why there are none when its Place was not measured. */
+type Figures = Pick<UsageRow, 'processes' | 'cpuPercent' | 'memoryBytes' | 'unmeasured'>;
+
+/** The figures of a row whose reading failed: none, and why. */
+function unmeasured(why: string): Figures {
+  return { processes: null, cpuPercent: null, memoryBytes: null, unmeasured: why };
+}
+
 /** The figures of a row: the processes it counts, their CPU and their memory. */
-function counted(
-  here: Measured,
-  roots: readonly number[],
-  plugin: string | null,
-): Pick<UsageRow, 'processes' | 'cpuPercent' | 'memoryBytes' | 'unmeasured'> {
-  if (here.kind === 'unmeasured') {
-    return { processes: null, cpuPercent: null, memoryBytes: null, unmeasured: here.why };
-  }
-  // FirstMate's own row counts its own processes alone: everything under the
-  // Host is a Plugin Server, which has a row of its own.
-  const pids = plugin === null ? new Set(roots) : treeOf(here.table, roots);
-  const mine = here.table.filter(
-    (one) => pids.has(one.pid) || (plugin !== null && one.plugin === plugin),
-  );
+function counted(here: Measured, counting: Counting): Figures {
+  if (here.kind === 'unmeasured') return unmeasured(here.why);
+  const mine =
+    counting.kind === 'own'
+      ? here.table.filter((one) => counting.pids.includes(one.pid))
+      : pluginsOwn(here.table, counting.name, counting.server);
   const cpu = mine.reduce((sum, one) => sum + here.cpu(one), 0);
   return {
     processes: mine.length,
     cpuPercent: Math.round(cpu * 1000) / 10,
     memoryBytes: mine.reduce((sum, one) => sum + (one.memoryBytes ?? 0), 0),
   };
+}
+
+/** A Plugin's processes: its Plugin Server, every one under it, and every one that names it. */
+function pluginsOwn(
+  table: readonly ProcessFacts[],
+  name: string,
+  server: number,
+): readonly ProcessFacts[] {
+  const tree = treeOf(table, [server]);
+  return table.filter((one) => tree.has(one.pid) || one.plugin === name);
 }
 
 /** Read a source once, and note when, and what each process had used by then. */

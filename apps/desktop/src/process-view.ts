@@ -37,8 +37,8 @@ import {
   uptimeText,
   type UsageRow,
 } from '@firstmate/core/usage';
-import { processesSortAsk, restartAsk } from './ask.ts';
-import type { Plugins, Usage } from './host-lists.ts';
+import { processesSortAsk, restartAsk, type ProcessesSort } from './ask.ts';
+import type { Plugins, ProcessesAnswer } from './host-lists.ts';
 import { escaped, written, type Written } from './pages.ts';
 
 /** How often the view reads Usage again while it is shown, in milliseconds. */
@@ -47,7 +47,7 @@ export const EVERY_MS = 2_000;
 /** What the Process View shows. */
 export type ProcessesShown = {
   /** The last reading, or `first` while the first one is on its way. */
-  readonly usage: Usage | { readonly kind: 'first' };
+  readonly usage: ProcessesAnswer | { readonly kind: 'first' };
   /** Every Plugin the Host last named, which the first reading's rows are drawn from. */
   readonly plugins: Plugins;
   /** The Plugins whose restart was asked for and has not answered yet. */
@@ -69,7 +69,7 @@ const ICONS: readonly IconName[] = [
 ];
 
 /** A figure column the rows can be sorted by. */
-export type SortKey = 'cpu' | 'memory';
+export type SortKey = Exclude<ProcessesSort, 'plugin-order'>;
 
 /**
  * A sort of the Plugins' rows, largest first, by one figure column. The order
@@ -141,7 +141,7 @@ every ${EVERY_MS / 1000} s</span>`;
   const back =
     shown.sort === undefined
       ? ''
-      : `<button class="back" type="button" data-ask="${processesSortAsk('plugin-order')}" \
+      : `<button class="back" type="button" data-ask="${escaped(processesSortAsk('plugin-order'))}" \
 data-from="${shown.sort.by}" title="Put the rows back in the Plugin Order">\
 ${icon('list-numbers')}Plugin Order</button>`;
   const head = (counted: string): string =>
@@ -185,7 +185,7 @@ function headRow(withPlace: boolean, sort: Sort | undefined): string {
   const place = withPlace ? '<th class="c-place w-place" scope="col">Place</th>' : '';
   const figure = (column: Column): string => {
     const on = sort?.by === column.key;
-    const ask = processesSortAsk(on ? 'plugin-order' : column.key);
+    const ask = escaped(processesSortAsk(on ? 'plugin-order' : column.key));
     const title = on ? 'Back to the Plugin Order' : `Sort by ${column.words}, largest first`;
     return `<th class="num u w-u" scope="col" data-key="${column.key}"\
 ${on ? ' aria-sort="descending"' : ''}><button class="sort" type="button" data-ask="${ask}" \
@@ -219,7 +219,9 @@ function toldRows(shown: ProcessesShown): Rows {
   if (shown.usage.kind !== 'told') return { html: '', count: 0, withPlace: false };
   const { firstmate, plugins } = shown.usage.processes;
   const all = [firstmate, ...inOrder(plugins, shown.sort)];
-  const withPlace = new Set(all.map((row) => row.place)).size > 1;
+  // A Place is worth a column only when the Plugins are in more than one, as
+  // `firstmate usage` has it: FirstMate's own row does not count.
+  const withPlace = new Set(plugins.map((row) => row.place)).size > 1;
   const scales = { cpu: scaleOf(all, CPU), memory: scaleOf(all, MEMORY) };
   const html = all
     .map((row) => {
@@ -242,10 +244,7 @@ function firstRows(plugins: Plugins): Rows {
 ${SKELETON}</tr>`;
   const html = named
     .map((plugin) => {
-      const said =
-        plugin.state === 'no-plugin-server'
-          ? gapCells(`<span class="gap none">${STATE_WORDS['no-plugin-server']}</span>`)
-          : SKELETON;
+      const said = plugin.state === 'no-plugin-server' ? noServerCells() : SKELETON;
       return `<tr data-key="${escaped(plugin.name)}"><td>${who(plugin)}</td>${said}</tr>`;
     })
     .join('');
@@ -276,9 +275,7 @@ function cells(
   shown: ProcessesShown,
 ): string {
   if (row.state === 'stopped') return gapCells(stoppedGap(row, shown.restarting));
-  if (row.state === 'no-plugin-server') {
-    return gapCells(`<span class="gap none">${STATE_WORDS['no-plugin-server']}</span>`);
-  }
+  if (row.state === 'no-plugin-server') return noServerCells();
   if (row.unmeasured !== undefined) {
     const said = escaped(`not measured: ${row.unmeasured}`);
     return gapCells(`<span class="gap unread" title="${said}">${icon('warning-circle')}\
@@ -306,6 +303,11 @@ function meter(row: UsageRow, column: Column, scale: Scale): string {
   return `<div class="meter" data-key="${column.key}"${top}${solo} \
 style="--f: ${share.toFixed(4)}"><span class="bar"></span>\
 <span class="v" data-v="${value}">${column.text(value)}</span></div>`;
+}
+
+/** The cells of a Plugin that ships no Plugin Server: there is nothing to measure. */
+function noServerCells(): string {
+  return gapCells(`<span class="gap none">${STATE_WORDS['no-plugin-server']}</span>`);
 }
 
 /**
@@ -340,24 +342,16 @@ const GLIDE_MS = 220;
  * The page's own script, which runs after each body is put in place. Each
  * figure moves from what it shows to its new value in 0.22 s on the theme's
  * ease, as its bar does in the style; a figure that just appeared, or one
- * under reduced motion, shows its value at once. It says each value as
- * `cpuText` and `memoryText` in `@firstmate/core/usage` do. When rows move,
+ * under reduced motion, shows its value at once. It says each value with
+ * `cpuText` and `memoryText` of `@firstmate/core/usage`, whose source it
+ * carries, so the page and the main process never word a figure apart. When rows move,
  * from a sort, the table stands still for two frames, so no bar grows again.
  * After the Plugin Order button, which goes away, the focus lands on the
  * header that was sorted.
  */
 const SCRIPT = `
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
-const MEBIBYTE = 1024 * 1024;
-const said = {
-  cpu: (value) => value.toFixed(1) + '%',
-  memory: (value) => {
-    const megabytes = value / MEBIBYTE;
-    return megabytes >= 1024
-      ? (megabytes / 1024).toFixed(2) + ' GB'
-      : Math.round(megabytes) + ' MB';
-  },
-};
+const said = { cpu: ${String(cpuText)}, memory: ${String(memoryText)} };
 const out = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
 // Each figure: the value it shows now, and the one it moves to.
 const moving = new WeakMap();

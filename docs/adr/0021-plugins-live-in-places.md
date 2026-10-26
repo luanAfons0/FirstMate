@@ -45,3 +45,7 @@ Leave the default Place in the settings file like any other. The Host would have
 A second `local` Place is allowed. It runs its Plugin Servers on this machine as the default one does, and differs only in its Shelf.
 
 The Index Page shows the default Place's Shelf. The other Places and their Shelves are in `firstmate place`, and in the Settings View, which also adds and removes a Place and moves its Shelf (ADR-0012).
+
+## Amended: the wsl start names the Plugin (2026-10-26, ADR-0032)
+
+The Host now starts a `wsl` Plugin Server as `wsl.exe -d <distribution> --cd <directory> -- env FIRSTMATE_PLUGIN=<name> ./mcp`. `wsl.exe` hands no variable across, so `env` sets `FIRSTMATE_PLUGIN` inside the distribution, and the Host finds the Plugin's processes there by it when it reads Usage (ADR-0032). The `mcp` file is still unchanged, and `FIRSTMATE_NODE` still does not cross over.

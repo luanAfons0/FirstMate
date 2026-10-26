@@ -14,6 +14,14 @@ import { admitted, type HostAt } from './addresses.ts';
 /** How long the App waits for the Host it holds to answer. */
 const ASK_TIMEOUT_MS = 5_000;
 
+/**
+ * How long the App waits for `/processes.json`. More than the other asks:
+ * the first reading on Windows starts a PowerShell and reads twice, and the
+ * Host gives each answer of that PowerShell up to 10 seconds of its own, so
+ * this is above what the Host waits (ADR-0032).
+ */
+const PROCESSES_TIMEOUT_MS = 25_000;
+
 /** How long the App waits for a Plugin Server to start again. */
 const RESTART_TIMEOUT_MS = 30_000;
 
@@ -79,7 +87,7 @@ export async function askToRestart(host: HostAt, name: string): Promise<string |
  * What the Host said about Usage: FirstMate's row and one per Plugin, or the
  * fact that it would not say.
  */
-export type Usage =
+export type ProcessesAnswer =
   { readonly kind: 'told'; readonly processes: Processes } | { readonly kind: 'untold' };
 
 /**
@@ -88,8 +96,8 @@ export type Usage =
  * App and a terminal (ADR-0032). A row that cannot be read is left out; a
  * FirstMate row that cannot be read is a Host that would not say.
  */
-export async function askForProcesses(host: HostAt): Promise<Usage> {
-  const said = await askFor(host, '/processes.json');
+export async function askForProcesses(host: HostAt): Promise<ProcessesAnswer> {
+  const said = await askFor(host, '/processes.json', PROCESSES_TIMEOUT_MS);
   if (typeof said !== 'object' || said === null) return { kind: 'untold' };
   const { firstmate, plugins } = said as Record<string, unknown>;
   const [own] = usageRow(firstmate);
@@ -172,10 +180,10 @@ function oneShortcut(row: unknown): readonly ShortcutSeen[] {
 }
 
 /** What the Host answers at one address, read as JSON, or undefined when it does not. */
-async function askFor(host: HostAt, path: string): Promise<unknown> {
+async function askFor(host: HostAt, path: string, timeoutMs = ASK_TIMEOUT_MS): Promise<unknown> {
   try {
     const answer = await fetch(admitted(host, path), {
-      signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!answer.ok) {
       // The Host says why in one sentence, such as a damaged settings file.

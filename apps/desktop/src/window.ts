@@ -94,7 +94,7 @@ import {
   askToRestart,
   stoppedCount,
   type Plugins,
-  type Usage,
+  type ProcessesAnswer,
 } from './host-lists.ts';
 import { markPath } from './marks.ts';
 import { holdMatePanel, isPanelAsk } from './mate.ts';
@@ -239,7 +239,7 @@ export function openWindow(
   /** The App's own view shown in place of the content views, if one is. */
   let aside: 'settings' | 'processes' | undefined;
   /** The last reading of Usage the Process View shows, since it last opened. */
-  let usage: Usage | { readonly kind: 'first' } = { kind: 'first' };
+  let usage: ProcessesAnswer | { readonly kind: 'first' } = { kind: 'first' };
   /** How the Process View sorts its rows, until a click or its closing puts them back. */
   let sort: Sort | undefined;
   /** What became of the last change the Settings View asked for. */
@@ -277,6 +277,13 @@ export function openWindow(
   window.contentView.addChildView(matePanel);
   window.contentView.addChildView(mateBox);
   window.contentView.addChildView(switcher);
+  /** Every view of the App's own, which alone carry the preload. */
+  const ownViews = [strip, switcher, settings, processes, matePanel, mateBox] as const;
+  /** The App's own view each `aside` shows in place of the content views. */
+  const asideViews: Readonly<Record<NonNullable<typeof aside>, WebContentsView>> = {
+    settings,
+    processes,
+  };
 
   /** Each App view's page, loaded once and then sent what it shows. */
   const stripShown = ownPage(strip);
@@ -317,7 +324,7 @@ export function openWindow(
 
   /** The view shown below the strip: the Settings View, the Process View, or a page. */
   const shownView = (): WebContentsView | undefined =>
-    aside === 'settings' ? settings : aside === 'processes' ? processes : contents.get(current);
+    aside === undefined ? contents.get(current) : asideViews[aside];
 
   const here = (): Here => {
     if (aside !== undefined) return { kind: aside };
@@ -383,10 +390,10 @@ export function openWindow(
     }
     mateBox.setBounds({ x: 0, y: STRIP_HEIGHT, width: pageWidth, height: BOX_HEIGHT });
     mateBox.setVisible(boxShows());
-    settings.setBounds(below);
-    settings.setVisible(pageShows && aside === 'settings');
-    processes.setBounds(below);
-    processes.setVisible(pageShows && aside === 'processes');
+    for (const [kind, view] of Object.entries(asideViews)) {
+      view.setBounds(below);
+      view.setVisible(pageShows && aside === kind);
+    }
     matePanel.setBounds({
       x: width - sides.panel,
       y: STRIP_HEIGHT,
@@ -740,9 +747,7 @@ export function openWindow(
       mate.toggle();
     });
   };
-  for (const view of [strip, settings, processes, matePanel, mateBox, switcher]) {
-    holdMateKey(view.webContents);
-  }
+  for (const view of ownViews) holdMateKey(view.webContents);
 
   /** What only the Mate panel may ask for: everything it does with the Mate. */
   const MATE_PANEL_ONLY: ReadonlySet<Asked['kind']> = new Set([
@@ -760,34 +765,32 @@ export function openWindow(
     'mate-width',
   ]);
 
+  /** The asks only some of the App's own views may make, and the views that may. */
+  const ONLY_FROM = new Map<Asked['kind'], readonly WebContentsView[]>([
+    ...[...SETTINGS_VIEW_ONLY].map((kind) => [kind, [settings]] as const),
+    // Only the switcher and the Process View carry a Restart button.
+    ['restart', [switcher, processes]],
+    // Only the Process View sorts itself.
+    ['processes-sort', [processes]],
+    // Only the strip's gauge opens the Process View; the Tray asks through `showProcesses`.
+    ['processes', [strip]],
+    // The Mate runs the operator's Agent: it takes an ask from its own panel
+    // alone, and the strip only opens and closes it (ADR-0031).
+    ...[...MATE_PANEL_ONLY].map((kind) => [kind, [matePanel]] as const),
+    ['mate', [strip]],
+    // The box asks the Mate one thing, and nothing else asks it that.
+    ['mate-ask', [mateBox]],
+  ]);
+
   const ask = (event: IpcMainEvent, said: unknown): void => {
     // Only the App's own views carry the preload. The check is here as well,
     // so that the rule does not rest on the preload alone.
-    const own = [strip, switcher, settings, processes, matePanel, mateBox].some(
-      (view) => view.webContents === event.sender,
-    );
-    if (!own) return;
+    if (!ownViews.some((view) => view.webContents === event.sender)) return;
     const asked = readAsked(said);
-    if (SETTINGS_VIEW_ONLY.has(asked.kind) && event.sender !== settings.webContents) return;
-    // Only the switcher and the Process View carry a Restart button.
-    if (
-      asked.kind === 'restart' &&
-      event.sender !== switcher.webContents &&
-      event.sender !== processes.webContents
-    ) {
-      return;
-    }
-    // Only the Process View sorts itself.
-    if (asked.kind === 'processes-sort' && event.sender !== processes.webContents) return;
-    // Only the strip's gauge opens the Process View; the Tray asks through `showProcesses`.
-    if (asked.kind === 'processes' && event.sender !== strip.webContents) return;
-    // The Mate runs the operator's Agent: it takes an ask from its own panel
-    // alone, and the strip only opens and closes it (ADR-0031).
-    if (MATE_PANEL_ONLY.has(asked.kind) && event.sender !== matePanel.webContents) return;
-    if (asked.kind === 'mate' && event.sender !== strip.webContents) return;
-    // The box asks the Mate one thing, and nothing else asks it that.
-    if ((asked.kind === 'mate-ask') !== (event.sender === mateBox.webContents)) return;
-    // The panel asks for nothing else.
+    const from = ONLY_FROM.get(asked.kind);
+    if (from !== undefined && !from.some((view) => view.webContents === event.sender)) return;
+    // The box and the panel ask for nothing but their own.
+    if (event.sender === mateBox.webContents && asked.kind !== 'mate-ask') return;
     if (event.sender === matePanel.webContents && !MATE_PANEL_ONLY.has(asked.kind)) return;
     act(asked);
   };
@@ -806,8 +809,7 @@ export function openWindow(
     reading.shown(false);
     ipcMain.off(ASK_CHANNEL, ask);
     nativeTheme.off('updated', followTheme);
-    const own = [strip, switcher, settings, processes, matePanel, mateBox];
-    for (const view of [...own, ...contents.values()]) {
+    for (const view of [...ownViews, ...contents.values()]) {
       view.webContents.close();
     }
   });

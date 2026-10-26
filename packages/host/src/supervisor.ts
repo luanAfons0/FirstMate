@@ -103,6 +103,9 @@ const PLUGIN_VARIABLE = 'FIRSTMATE_PLUGIN';
  */
 const STOP_GRACE_MS = 5_000;
 
+/** How often the Host looks whether a Plugin Server's group is empty, while it ends. */
+const GROUP_LOOK_MS = 50;
+
 /** The MCP version the Host asks for when it starts a Plugin Server. */
 const PROTOCOL_VERSION = '2025-06-18';
 
@@ -188,7 +191,10 @@ type Run = {
   startedAt: number | null;
   /** Whether the process has ended, so its PID may already be another's. */
   exited: boolean;
-  /** Settles once the process has ended, and at once when none was spawned. */
+  /**
+   * Settles once the process, and the rest of its process group, has ended,
+   * and at once when none was spawned.
+   */
   ended: Promise<void>;
   /** Why the Plugin is Stopped, once it is. */
   why: string | null;
@@ -381,21 +387,46 @@ function killHard(child: ChildProcess | null): void {
 }
 
 /**
- * Once a Plugin Server has ended, asked to or on its own, kill what is left of
- * its process group, so that no process it started outlives it. It is heard
- * before the run's own end, so a Host that stops waits for this too. Linux
- * gives no new process the group's id while the group has a process in it.
+ * Once a Plugin Server has ended, asked to or on its own, end what is left of
+ * its process group, so that no process it started outlives it. The rest of
+ * the group gets the grace the Plugin Server got: SIGTERM, then SIGKILL for
+ * whatever is still there after it. Resolves once the group is empty, so a
+ * restart and a Host that stops wait for it too. Linux gives no new process
+ * the group's id while the group has a process in it.
  */
-function killGroupOnExit(child: ChildProcess): void {
-  if (ON_WINDOWS) return;
-  child.once('exit', () => {
-    if (child.pid === undefined) return;
-    try {
-      process.kill(-child.pid, 'SIGKILL');
-    } catch {
-      // No process is left in the group, which is what the Host wants.
-    }
+function endGroupOnExit(child: ChildProcess): Promise<void> {
+  if (ON_WINDOWS) return Promise.resolve();
+  return new Promise((done) => {
+    child.once('exit', () => {
+      const group = child.pid;
+      if (group === undefined || !signalGroup(group, 'SIGTERM')) {
+        done();
+        return;
+      }
+      const deadline = Date.now() + STOP_GRACE_MS;
+      const look = (): void => {
+        if (signalGroup(group, 0) && Date.now() < deadline) {
+          setTimeout(look, GROUP_LOOK_MS);
+          return;
+        }
+        signalGroup(group, 'SIGKILL');
+        done();
+      };
+      look();
+    });
+    child.once('error', () => done());
   });
+}
+
+/** Send a signal to a process group: whether any process was in it to get it. */
+function signalGroup(group: number, signal: NodeJS.Signals | 0): boolean {
+  try {
+    process.kill(-group, signal);
+    return true;
+  } catch {
+    // No process is left in the group, which is what the Host wants.
+    return false;
+  }
 }
 
 /** Whether a run's process ends within the grace the Host gives it. */
@@ -445,7 +476,7 @@ async function startOne(
 
   run.startedAt = Date.now();
   const child = launch(file, plugin);
-  killGroupOnExit(child);
+  const groupEnded = endGroupOnExit(child);
   child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
   // The calling Plugin Name is this pipe's, closed over here and never taken
   // from anything the Plugin Server says.
@@ -453,11 +484,12 @@ async function startOne(
   child.once('error', (cause) => say(cause.message));
   child.once('exit', (code, signal) => say(signal ?? `exit ${code ?? 0}`));
   run.child = child;
-  // Heard after the two above, so a run that has ended has said why.
+  // Heard after the two above, so a run that has ended has said why. It ends
+  // once the rest of the Plugin Server's group has ended too.
   run.ended = new Promise((done) => {
     const over = (): void => {
       run.exited = true;
-      done();
+      void groupEnded.then(done);
     };
     child.once('exit', over);
     child.once('error', over);

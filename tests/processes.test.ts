@@ -20,6 +20,7 @@ import {
 } from './helpers/host.ts';
 import { fakeWsl, type Wsl } from './helpers/wsl.ts';
 import { pathWith } from './helpers/path.ts';
+import { isRunning, untilTrue } from './helpers/processes.ts';
 
 /** One row of `/processes.json`, as the App and a terminal read it. */
 type Row = {
@@ -242,7 +243,7 @@ test(
     assert.ok(shell !== undefined, 'a PowerShell stays open after a reading');
 
     process.kill(shell);
-    await untilTrue(async () => !isAlive(shell), 10_000);
+    await untilTrue(async () => !isRunning(shell), 10_000);
 
     const after = await processesOf(host);
     assertMeasured(after.firstmate);
@@ -261,7 +262,7 @@ test('the PowerShell does not outlive a Host that ends', { skip: NOT_WINDOWS }, 
 
   process.kill(hostPid);
 
-  await untilTrue(async () => !isAlive(shell), 10_000);
+  await untilTrue(async () => !isRunning(shell), 10_000);
 });
 
 test('a Stopped Plugin says why, and a Plugin with no Plugin Server says so', async (t) => {
@@ -487,23 +488,4 @@ async function powerShellsUnder(parent: number): Promise<number[]> {
     .split(/\r?\n/)
     .filter((line) => /^\d+$/.test(line.trim()))
     .map(Number);
-}
-
-/** Whether a process of this PID runs now. */
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Wait until the check holds, and fail if it never does in time. */
-async function untilTrue(check: () => Promise<boolean>, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!(await check())) {
-    if (Date.now() > deadline) throw new Error(`it did not happen in ${timeoutMs / 1000} s`);
-    await new Promise((done) => setTimeout(done, 200));
-  }
 }

@@ -8,11 +8,11 @@
  * the last one, so a slow reading never piles asks up on the Host. An answer
  * that arrives after the view closed or the window hid is dropped.
  */
-import type { Usage } from './host-lists.ts';
+import type { ProcessesAnswer } from './host-lists.ts';
 import { EVERY_MS } from './process-view.ts';
 
-/** The reading, as the window drives it. */
-export type Reading = {
+/** The polling of `/processes.json`, as the window drives it. */
+export type Polling = {
   /**
    * Whether the view is shown in a visible window now. The first `true` reads
    * at once and then every 2 seconds; `false` stops reading.
@@ -26,21 +26,36 @@ export type Reading = {
  * Read Usage with `read` while the view is shown, and hand each answer to
  * `told`.
  */
-export function keepReading(read: () => Promise<Usage>, told: (usage: Usage) => void): Reading {
+export function keepReading(
+  read: () => Promise<ProcessesAnswer>,
+  told: (usage: ProcessesAnswer) => void,
+): Polling {
   /** Counted at each start and stop, so an answer from an earlier run is dropped. */
   let run = 0;
   let on = false;
   let timer: NodeJS.Timeout | undefined;
+  /** Whether the last failure was said, so one that repeats is said once. */
+  let said = false;
 
   const ask = (): void => {
     timer = undefined;
     const mine = run;
     const asked = Date.now();
-    void read().then((usage) => {
-      if (mine !== run) return;
-      told(usage);
-      timer = setTimeout(ask, Math.max(EVERY_MS - (Date.now() - asked), 0));
-    });
+    void read()
+      .then((usage) => {
+        if (mine !== run) return;
+        told(usage);
+        said = false;
+      })
+      .catch((fault: unknown) => {
+        // A fault here must not end the polling: say it once, and read on.
+        if (!said) console.error('FirstMate: the Process View could not show a reading.', fault);
+        said = true;
+      })
+      .finally(() => {
+        if (mine !== run) return;
+        timer = setTimeout(ask, Math.max(EVERY_MS - (Date.now() - asked), 0));
+      });
   };
 
   const stop = (): void => {
