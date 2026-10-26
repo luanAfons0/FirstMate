@@ -257,7 +257,9 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
                    process.
   src/settings-view.ts the Settings View, as a page the App writes.
   src/process-view.ts the Process View, as a page the App writes: FirstMate's
-                   row, then every Plugin, with its Usage (ADR-0032).
+                   row, then every Plugin, with its Usage (ADR-0032), its
+                   sort by CPU or Memory, and the script that moves each
+                   figure to a new reading.
   src/processes.ts the Process View's reading of /processes.json, every 2 s
                    while the view shows in a visible window, and none after.
   src/mate.ts      the Mate panel: its state, its asks, its Conversation, and
