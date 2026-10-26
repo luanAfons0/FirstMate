@@ -33,6 +33,7 @@ import type { Notice } from '@firstmate/host/notices';
 import { start, type RunningHost } from '@firstmate/host/start';
 import { askForPlugins, askForShortcuts } from './host-lists.ts';
 import { nameTheApp, showNotices } from './notices.ts';
+import { ownProcesses } from './own-processes.ts';
 import { guardPermissions } from './permissions.ts';
 import { makePopup } from './popup.ts';
 import { holdShortcuts } from './shortcuts.ts';
@@ -78,13 +79,18 @@ function main(): void {
   let notify = (notice: Notice): void => {
     early.push(notice);
   };
+  // Where the Host listens, once it does, so a Plugin Page's address is known.
+  let listening: RunningHost | undefined;
   const host = start(config, {
     onChange: () => {
       refresh();
       reread();
     },
     onNotice: (notice) => notify(notice),
+    // FirstMate's row of Usage counts the App's own processes (ADR-0032).
+    ownPids: () => ownProcesses(listening),
   });
+  void host.then((running) => (listening = running)).catch(() => undefined);
   stopOnQuit(host);
 
   // The window, the strip and the Tray show as soon as Electron is ready,

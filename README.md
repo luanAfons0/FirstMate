@@ -368,7 +368,10 @@ Windows), so
 Plugins that share one Node do not each look as big as all of it. A Plugin
 counts its Plugin Server and every process under it, found by
 `FIRSTMATE_PLUGIN`, and on Windows by its parent, since Windows lets no process
-read another's environment. A Stopped Plugin says why, and a Plugin with no Plugin
+read another's environment. FirstMate's row counts the Host's own process; in
+the App it counts the whole App: the main process, the GPU process, Electron's
+helpers and the renderers of the App's own views and the Index Page, and never a
+Plugin Page, which is the Plugin's cost. A Stopped Plugin says why, and a Plugin with no Plugin
 Server has nothing to measure. The Host reads it when asked and keeps none of
 it ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)), so `usage`
 takes half a second (on Windows a second or two, through PowerShell) and
@@ -1040,7 +1043,8 @@ too ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)).
 
 `/processes.json` answers `{ "firstmate": <row>, "plugins": [<row>, …] }`, the
 Plugins in the Plugin Order. A row has `name` (`FirstMate` for FirstMate's own),
-`state`, `place`, `pid` (the Plugin Server's own), `processes`, `cpuPercent`
+`state`, `place`, `pid` (the Plugin Server's own, or the Host's for
+FirstMate's row), `processes`, `cpuPercent`
 (against one core), `memoryBytes` (the fair share), and `startedAt` (an ISO
 time); `why` when it is Stopped; and `unmeasured`, a sentence, when the reading
 failed, with the figures `null`. A row with no Plugin Server running has no
