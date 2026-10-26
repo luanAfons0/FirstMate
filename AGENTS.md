@@ -240,20 +240,25 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/main.ts      the main process: start the Host, hold the one-App lock,
                    wire the parts below together, stop the Host on Quit.
   src/window.ts    the window: the strip, the switcher, the Settings View,
-                   the Mate panel and Ctrl+Shift+K, and one view for the
-                   Index Page and each Plugin Page.
+                   the Process View, the Mate panel and Ctrl+Shift+K, and one
+                   view for the Index Page and each Plugin Page.
   src/pages.ts     the App's own pages, written as data addresses. The Host
                    never serves them (ADR-0008).
   src/preload.ts   the one preload, on the App's own views and never on a
                    Plugin Page. `ask.ts` reads what it sends.
   src/addresses.ts the Host's addresses, and which owner each belongs to.
-  src/host-lists.ts what /plugins.json says, as the App reads it.
+  src/host-lists.ts what /plugins.json and /processes.json say, as the App
+                   reads them.
   src/tray.ts      the Tray: the marks, the menu, and start at logon.
   src/logon.ts     start at logon: the Run entry setup writes too.
   src/settings.ts  what the Settings View shows, the Mate settings too, and
                    the changes it asks for, made through core in the main
                    process.
   src/settings-view.ts the Settings View, as a page the App writes.
+  src/process-view.ts the Process View, as a page the App writes: FirstMate's
+                   row, then every Plugin, with its Usage (ADR-0032).
+  src/processes.ts the Process View's reading of /processes.json, every 2 s
+                   while the view shows in a visible window, and none after.
   src/mate.ts      the Mate panel: its state, its asks, its Conversation, and
                    the run of the Agent that answers it, in the main process.
   src/mate-view.ts the Mate panel and its Recents, as a page the App writes,
