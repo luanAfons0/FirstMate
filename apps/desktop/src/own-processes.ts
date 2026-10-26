@@ -5,9 +5,10 @@
  * its own, so it gives the Host their PIDs through a start hook, and the Host
  * takes no Electron import (ADR-0032). FirstMate's cost is every process
  * Electron runs for the App: the main process, the GPU process, its helpers,
- * and the renderers of the App's own views and of the Index Page. A Plugin
- * Page's renderer is the Plugin's cost, and FirstMate's row never counts it.
- * A Plugin Server is no process of Electron's, and has a row of its own.
+ * and the renderers of the App's own views and of the Index Page, even while
+ * they load. A Plugin Page's renderer is the Plugin's cost, and FirstMate's
+ * row never counts it. A Plugin Server is no process of Electron's, and has a
+ * row of its own.
  */
 import { app, webContents, type WebContents } from 'electron';
 import { INDEX, ownerOf, type HostAt } from './addresses.ts';
@@ -21,29 +22,28 @@ const RENDERER = 'Tab';
  */
 export function ownProcesses(host: HostAt | undefined): number[] {
   // A renderer may show several pages, and one Plugin Page in it is enough
-  // to make it the Plugin's.
-  const own = new Set<number>();
+  // to make it the Plugin's. A renderer that shows no Plugin Page is the
+  // App's: one whose page is still blank or on its way, and one Electron
+  // keeps ready for the next page, which shows no page yet.
   const plugins = new Set<number>();
   for (const page of webContents.getAllWebContents()) {
     if (page.isDestroyed()) continue;
     const pid = page.getOSProcessId();
-    if (pid > 0) (isOwnPage(page, host) ? own : plugins).add(pid);
+    if (pid > 0 && isPluginPage(page, host)) plugins.add(pid);
   }
   return app
     .getAppMetrics()
-    .filter((metric) =>
-      metric.type === RENDERER ? own.has(metric.pid) && !plugins.has(metric.pid) : true,
-    )
+    .filter((metric) => metric.type !== RENDERER || !plugins.has(metric.pid))
     .map((metric) => metric.pid);
 }
 
 /**
- * Whether a view shows a page of the App's own, written as a data address,
- * or the Index Page. Anything else, a blank page or one still on its way,
- * may be a Plugin's, so it is not counted as the App's.
+ * Whether a view shows a Plugin Page: an address on the Host that a Plugin
+ * owns, or one off the Host that a Plugin Page went to. A page of the App's
+ * own, written as a data address, the Index Page, and a blank page are not.
  */
-function isOwnPage(page: WebContents, host: HostAt | undefined): boolean {
+function isPluginPage(page: WebContents, host: HostAt | undefined): boolean {
   const address = page.getURL();
-  if (address.startsWith('data:')) return true;
-  return host !== undefined && address !== '' && ownerOf(host, address) === INDEX;
+  if (address === '' || address === 'about:blank' || address.startsWith('data:')) return false;
+  return host === undefined || ownerOf(host, address) !== INDEX;
 }
