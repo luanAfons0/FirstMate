@@ -20,6 +20,7 @@ const COMMANDS: readonly [string, string][] = [
   ['remove', ' <name>'],
   ['list', ''],
   ['status', ''],
+  ['usage', ''],
   ['restart', ' <name>'],
   ['logs', ' [-f]'],
   ['grant', ' <from> <to>'],

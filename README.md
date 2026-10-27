@@ -157,7 +157,8 @@ Windows and needs no Node of its own. Under the App that Node is the App itself,
 strips TypeScript's types. The shebang of `mcp` decides its language, so a
 Plugin Server can still be written in anything. Windows reads no shebang, so
 there the Host runs `mcp.exe`, or else `mcp.cmd` (ADR-0019). Every Plugin
-Server receives `FIRSTMATE_NODE`, and its output goes
+Server receives `FIRSTMATE_NODE`, and `FIRSTMATE_PLUGIN`, its Plugin's name,
+which every process under it inherits (ADR-0032). Its output goes
 to the Host's own output and its log: `firstmate logs` prints it (ADR-0022).
 
 A Plugin is in one of three states, and the Index Page shows which:
@@ -303,7 +304,8 @@ firstmate add worklog /home/me/.worklog --place debian
 ```
 
 The Host starts a `wsl` Plugin as `wsl.exe -d <distribution> --cd <directory>
--- ./mcp`, and reads its files, its Plugin Page among them, through
+-- env FIRSTMATE_PLUGIN=<name> ./mcp`, because Windows hands no variable across,
+and reads its files, its Plugin Page among them, through
 `\\wsl.localhost\<distribution>` or the Windows path you gave. Its paths are the
 distribution's own. A Plugin whose distribution is missing or will not start is
 Stopped with one sentence, and nothing retries it. Its default Shelf is
@@ -345,6 +347,8 @@ wrote it, is in the default Place.
 ```sh
 firstmate status
 firstmate status --json
+firstmate usage
+firstmate usage --json
 firstmate restart <name>
 ```
 
@@ -355,6 +359,33 @@ does. With no Host it says `no Host runs.` and ends with exit code `6`. A
 `runtime.json` that a crashed Host left behind names a port nothing answers on,
 and that reads as no Host too.
 
+`usage` says what FirstMate and each Plugin use of the machine now: FirstMate's
+own row first, then every Plugin in the Plugin Order, with its state, CPU,
+memory, uptime, PID and process count, and its Place when the Plugins are in
+more than one. CPU is counted against one core, as `top` counts it, so a busy
+Plugin can pass 100%. Memory is each process's fair share (PSS on Linux, the private working set on
+Windows), so
+Plugins that share one Node do not each look as big as all of it. On Linux a
+process whose PSS its own user may not read, because it is not dumpable, still
+counts, with its resident size, which counts shared memory in full. A Plugin
+counts its Plugin Server and every process under it, found by
+`FIRSTMATE_PLUGIN`, and on Windows by its parent, since Windows lets no process
+read another's environment. FirstMate's row counts the Host's own process; in
+the App it counts the whole App: the main process, the GPU process, Electron's
+helpers and the renderers of the App's own views and the Index Page, and never a
+Plugin Page, which is the Plugin's cost. A Stopped Plugin says why, and a Plugin with no Plugin
+Server has nothing to measure. The Host reads it when asked and keeps none of
+it ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)), so `usage`
+takes half a second (on Windows a second or two, through PowerShell) and
+`status` stays as fast as it was. With no Host it says `no Host runs.` and
+ends with exit code `6`. FirstMate reads Usage on Linux, on Windows and in a
+`wsl` Place now. On Windows, with no `powershell.exe` on the PATH, every row
+says `not measured` and why. While the Process View asks, one PowerShell
+answers every reading, and it ends a few seconds after the last one. A `wsl` Plugin is measured inside its distribution, with one
+`wsl.exe` call per reading, and its PID is the one it has there. A distribution
+that holds no running Plugin is never asked, so a reading never starts one, and
+one that does not answer within 3 seconds leaves its own rows `not measured`.
+
 `restart` stops one Plugin's Plugin Server, Stopped or not, and starts it
 again, after you fix it. The Host never does this by itself: a broken Plugin
 stays Stopped until you say so. It says `restarted <name>. It is Running.`, or
@@ -362,7 +393,7 @@ that the Plugin is Stopped and why, which ends with exit code `1`. An unknown
 Plugin Name is refused with exit code `4`, and with no Host it says `no Host
 runs.` and ends with exit code `6`.
 
-`status`, `list`, `order` and `shelf` say what they read as one JSON value with
+`status`, `usage`, `list`, `order` and `shelf` say what they read as one JSON value with
 `--json`, and print nothing else, so a script can read them. A command that
 changes something prints no JSON, and refuses `--json` as typed wrong.
 
@@ -578,8 +609,9 @@ window's own buttons sit at its right end, in its colours, light or dark as
 the system is. It holds FirstMate, which goes to the Plugin list; then what is
 open, which opens the switcher with every Plugin in the Plugin Order; the space
 you drag the window by; "N Stopped" when any Plugin is Stopped, which opens the
-switcher too; the Mate button, which opens and closes the Mate panel; and the
-gear, which opens the Settings View. In the switcher,
+switcher too; the Mate button, which opens and closes the Mate panel; the
+gauge, which opens the Process View; and the gear, which opens the Settings
+View. In a narrow window the strip keeps the marks and drops the words. In the switcher,
 type to filter the Plugins, use the arrows to move, Enter to open and Esc to
 close. A Stopped Plugin has a Restart button there, which starts its Plugin
 Server again as `firstmate restart` does. Each Plugin Page you open has a view of its own and stays
@@ -629,6 +661,23 @@ is listed with the sentence that says why, and the others list as they are.
 The Host serves no part of the Mate, so no Plugin Page can type into it or
 read a Conversation.
 
+The Process View shows what FirstMate and each Plugin use now, as
+`firstmate usage` says it: FirstMate's own row first, then every Plugin in the
+Plugin Order, each with its state, CPU (against one core), memory (each
+process's fair share), uptime, PID and process count. A thin bar beside each
+CPU and memory figure, on one scale for the whole column, shows which Plugin
+uses the most. Click CPU or Memory to sort the Plugins by it, largest first,
+with FirstMate's row still first; the rows then hold their places between
+readings, and a second click, **Plugin Order** or closing the view puts them
+back. Each figure and its bar move to a new reading in a fifth of a second, or
+at once when your system asks for reduced motion. A Place column shows when
+your Plugins are in more than one Place. A Stopped row says why and has a Restart button; a Plugin with no
+Plugin Server, or one whose reading failed, says so in its row. The App reads
+`/processes.json` every 2 seconds while the view shows, and stops when you
+close it or hide or minimize the window. A narrow window drops the PID and
+process count first, then the uptime and the Place. The gauge in the strip
+and **Processes…** in the Tray open it, and the breadcrumb says "Processes".
+
 The Settings View has a side list of its sections, Places, Plugin Order, Start
 at logon, Shortcuts, Plugin Settings and Mate, and says the App's version under it. Places shows each Place with
 its kind and its Shelf. There you move a Place's Shelf: type a path, or choose
@@ -670,7 +719,7 @@ started with.
 The Tray is FirstMate's icon in the notification area. It wears the stopped
 mark while any Plugin is Stopped. A click on it brings the window up, and its
 menu opens the Index Page or any Plugin, restarts a Stopped one, opens the
-**Settings…** view, turns **Start at logon** on and off, and quits. Start at logon is off until you turn it on; the App it starts
+**Processes…** and **Settings…** views, turns **Start at logon** on and off, and quits. Start at logon is off until you turn it on; the App it starts
 begins in the Tray, with the window put away.
 
 A Notice shows as the system's own pop-up under FirstMate's name and mark, and
@@ -994,6 +1043,7 @@ process; no address on the Host changes it
 | `/plugins.json`      | The same list, for the App. Nothing is written.    |
 | `/shortcuts.json`    | Every Shortcut and the address it opens, for the App. Nothing is written. |
 | `/notices.json?after=<n>` | The Notices after `n`, for any reader. The App hears them with no poll. Nothing is written. |
+| `/processes.json`    | The Usage of FirstMate and of every Plugin, read now. The App and a terminal only. Nothing is written. |
 | `/p/<name>/`         | That Plugin's `web/` directory, byte for byte.     |
 | `POST /p/<name>/rpc` | That Plugin's tools. The body is an MCP request.   |
 | `POST /reload`       | Read the Registry and the settings again. A terminal only. |
@@ -1003,12 +1053,24 @@ A Plugin Page is a whole page: the Host links to it and the browser goes there,
 rather than framing it under chrome of its own
 ([ADR-0008](docs/adr/0008-a-plugin-page-is-a-whole-page.md)).
 
-`POST /reload` and `POST /restart/<name>` are the Host's own addresses, for the
-command line. Every Plugin Page shares the Host's origin and holds its cookie,
+`POST /reload`, `POST /restart/<name>` and `/processes.json` are the Host's own
+addresses, for the command line and the App. Every Plugin Page shares the Host's origin and holds its cookie,
 so the Host answers them only
 when the request carries no `Origin` and no `Sec-Fetch-Site`: what a browser
 always sends and a terminal never does
-([ADR-0018](docs/adr/0018-a-terminal-asks-the-host-to-reload.md)).
+([ADR-0018](docs/adr/0018-a-terminal-asks-the-host-to-reload.md)). No Plugin
+needs the PIDs and memory of the others, so `/processes.json` refuses a page
+too ([ADR-0032](docs/adr/0032-the-host-reads-usage-when-asked.md)).
+
+`/processes.json` answers `{ "firstmate": <row>, "plugins": [<row>, …] }`, the
+Plugins in the Plugin Order. A row has `name` (`FirstMate` for FirstMate's own),
+`state`, `place`, `pid` (the Plugin Server's own, or the Host's for
+FirstMate's row), `processes`, `cpuPercent`
+(against one core), `memoryBytes` (the fair share), and `startedAt` (an ISO
+time); `why` when it is Stopped; and `unmeasured`, a sentence, when the reading
+failed, with the figures `null`. A row with no Plugin Server running has no
+figures. With no reading younger than 5 seconds, the Host reads twice, half a
+second apart, so the first ask has a CPU figure too.
 
 ## Call a Plugin's tools
 

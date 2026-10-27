@@ -47,7 +47,7 @@ test('a new Conversation sends the primer, the Plugins and mate.md, then the que
   for (const word of ['App', 'Host', 'Plugin Page', 'Plugin Server', 'Place', 'Registry']) {
     assert.match(stdin, new RegExp(`^- ${word}: `, 'm'), `the primer says what ${word} is`);
   }
-  for (const command of ['list', 'status', 'logs', 'order', 'place', 'help']) {
+  for (const command of ['list', 'status', 'usage', 'logs', 'order', 'place', 'help']) {
     assert.match(stdin, new RegExp(`^- firstmate ${command}\\b`, 'm'), `it names ${command}`);
   }
   assert.ok(

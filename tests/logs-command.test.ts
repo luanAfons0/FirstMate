@@ -8,6 +8,7 @@ import { appendFile, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { bootHost, firstmate, firstmateRunning, makeHome, until } from './helpers/host.ts';
+import { untilTrue } from './helpers/processes.ts';
 
 /** The cap one log file keeps under. */
 const CAP = 2 * 1024 * 1024;
@@ -66,7 +67,7 @@ test('the log never grows past its cap, and keeps the older half', async (t) => 
   await until(host, /chatter: done/, 30_000);
   // The Host writes its log through a buffer, so the last line reaches the
   // file a little after it reaches the Host's output (ADR-0022).
-  await waitFor(async () => (await readLog(host.home)).includes('chatter: done'));
+  await untilTrue(async () => (await readLog(host.home)).includes('chatter: done'));
 
   const log = await stat(join(host.home, 'firstmate.log'));
   const old = await stat(join(host.home, 'firstmate.log.old'));
@@ -82,10 +83,10 @@ test('logs -f keeps printing new lines until it is stopped', async (t) => {
   await writeFile(join(home, 'firstmate.log'), 'FirstMate: the first line\n');
 
   const following = firstmateRunning(t, home, ['logs', '-f']);
-  await waitFor(() => following.output().includes('the first line'));
+  await untilTrue(() => following.output().includes('the first line'));
   await appendFile(join(home, 'firstmate.log'), 'FirstMate: a later line\n');
 
-  await waitFor(() => following.output().includes('a later line'));
+  await untilTrue(() => following.output().includes('a later line'));
   assert.equal(following.output(), 'FirstMate: the first line\nFirstMate: a later line\n');
 });
 
@@ -100,15 +101,6 @@ test('with no log yet, logs says where it will be', async (t) => {
     `firstmate: there is no log yet, at ${join(home, 'firstmate.log')}.\n`,
   );
 });
-
-/** Wait until this is true, or fail after a few seconds. */
-async function waitFor(done: () => boolean | Promise<boolean>): Promise<void> {
-  const deadline = Date.now() + 5_000;
-  while (!(await done())) {
-    if (Date.now() > deadline) throw new Error('waited five seconds, and it never came');
-    await new Promise((later) => setTimeout(later, 20));
-  }
-}
 
 /** The log as it is on disk now, or nothing when there is none yet. */
 async function readLog(home: string): Promise<string> {

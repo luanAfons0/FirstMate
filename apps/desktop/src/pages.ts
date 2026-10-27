@@ -1,7 +1,7 @@
 /**
  * The App's own pages: the strip and the switcher, and what every one of the
- * App's pages shares. The Settings View is `settings-view.ts`, and the Mate
- * panel `mate-view.ts`.
+ * App's pages shares. The Settings View is `settings-view.ts`, the Process
+ * View `process-view.ts`, and the Mate panel `mate-view.ts`.
  *
  * The strip is the window's title bar. It says where the window is as a
  * breadcrumb, the anchor and FirstMate and then what is open, and each part
@@ -9,8 +9,10 @@
  * which lists every Plugin in the Plugin Order. The space between them and
  * the gear is where the window is dragged from. When any Plugin is Stopped, a
  * pill says how many, and it opens the switcher too. The Mate button opens
- * and closes the Mate panel, as Ctrl+Shift+K does, and the gear opens the
- * Settings View. The window's own buttons are the system's, drawn beside it.
+ * and closes the Mate panel, as Ctrl+Shift+K does, the gauge opens the Process
+ * View, and the gear opens the Settings View. In a narrow window the
+ * breadcrumb keeps its marks and a Plugin Name, and drops its other words and
+ * the separator. The window's own buttons are the system's, drawn beside it.
  *
  * The switcher has a filter at its top, the rows below it, and a line that
  * says its keys. Typing narrows the rows, the arrows move, Enter opens and
@@ -56,11 +58,15 @@ export type Written = {
   readonly body: string;
 };
 
-/** Where the window is: the Index Page, one Plugin Page, or the Settings View. */
+/**
+ * Where the window is: the Index Page, one Plugin Page, the Settings View or
+ * the Process View.
+ */
 export type Here =
   | { readonly kind: 'list' }
   | { readonly kind: 'plugin'; readonly name: string }
-  | { readonly kind: 'settings' };
+  | { readonly kind: 'settings' }
+  | { readonly kind: 'processes' };
 
 /** Everything the strip says. */
 export type StripView = {
@@ -186,6 +192,8 @@ ${fault}
 ${pill}
 <a class="gear" href="#" data-ask="${ASK.mate}" title="Mate (Ctrl+Shift+K)" aria-label="Mate" \
 aria-pressed="${view.mate}">${icon('chat-circle-dots')}</a>
+<a class="gear" href="#" data-ask="${ASK.processes}" title="Processes" aria-label="Processes" \
+aria-pressed="${view.here.kind === 'processes'}">${icon('gauge')}</a>
 <a class="gear" href="#" data-ask="${ASK.settings}" title="Settings" aria-label="Settings" \
 aria-pressed="${view.here.kind === 'settings'}">${icon('gear-six')}</a>
 </nav>`,
@@ -201,6 +209,7 @@ const STRIP_ICONS: readonly IconName[] = [
   'caret-down',
   'warning-circle',
   'chat-circle-dots',
+  'gauge',
   'gear-six',
 ];
 
@@ -208,6 +217,7 @@ const STRIP_ICONS: readonly IconName[] = [
 function hereWords(here: Here, starting: boolean): string {
   if (here.kind === 'plugin') return `<b>${escaped(here.name)}</b>`;
   if (here.kind === 'settings') return '<span class="plain">Settings</span>';
+  if (here.kind === 'processes') return '<span class="plain">Processes</span>';
   return `<span class="plain">${starting ? 'Starting…' : 'Plugins'}</span>`;
 }
 
@@ -513,7 +523,9 @@ function stripStyles(): string {
   .gear:hover { background: var(--hover); color: var(--ink); }
   .gear:active, .gear[aria-pressed='true'] { background: var(--press); color: var(--ink); }
   @media (prefers-reduced-motion: reduce) { .crumb .caret { transition: none; } }
-  @media (max-width: 520px) { .crumb .lbl, .pill .w { display: none; } }`;
+  @media (max-width: 520px) {
+    .crumb .lbl, .crumb.here .plain, .pill .w, svg.sep { display: none; }
+  }`;
 }
 
 function switcherStyles(): string {

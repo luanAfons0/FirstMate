@@ -44,6 +44,7 @@ Run every command from the repository root.
 | `node apps/cli/src/cli.ts help [<topic>]`     | The help topics: exit-codes, environment, places. |
 | `node apps/cli/src/cli.ts list`               | Every Plugin in the Registry.                   |
 | `node apps/cli/src/cli.ts status`             | Whether the Host runs, and each Plugin's state. |
+| `node apps/cli/src/cli.ts usage [--json]`     | What FirstMate and each Plugin use: CPU, memory, processes. |
 | `node apps/cli/src/cli.ts restart <name>`     | Start one Plugin's Plugin Server again.         |
 | `node apps/cli/src/cli.ts logs [-f]`          | What the Host and its Plugin Servers said.      |
 | `node apps/cli/src/cli.ts place [add <name> <kind> \| remove <name>]` | Say every Place, or add or remove one. |
@@ -154,6 +155,8 @@ packages/core/src/  what the command line and the Host share. Imports nothing
                    terminal and the App alike.
   plugin-state.ts  what the Host says about a Plugin Server, in one set of
                    words for the Index Page, the App and the terminal.
+  usage.ts         Usage as /processes.json says it, and the words each
+                   figure is printed in: CPU, memory and uptime (ADR-0032).
   theme.ts         the one look of every page: the colours, dark and light,
                    the radii, the state shapes, and the icons as one sprite.
   logon.ts         the App's logon entry, which the App and setup both write.
@@ -179,17 +182,30 @@ packages/host/src/  the Host. Every file is one job.
                    supervise, listen; and stop it. The App calls it too.
   main.ts          the Host as a process: start it, and stop it on a signal.
   host.ts          the HTTP surface: /, /plugins.json, /shortcuts.json,
-                   /notices.json, POST /reload, POST /restart/<name>,
-                   /p/<name>/…, POST /p/<name>/rpc.
+                   /notices.json, /processes.json, POST /reload,
+                   POST /restart/<name>, /p/<name>/…, POST /p/<name>/rpc.
   security.ts      the check every request passes: Host, Origin, token, cookie.
   static-files.ts  a Plugin's web/ directory, byte for byte, never outside it.
   index-page.ts    the Index Page, one file with no assets of its own.
-  supervisor.ts    start every Plugin Server, hold the truth about each, and
+  supervisor.ts    start every Plugin Server, hold the truth about each and
+                   each run's facts (PID, start time, why it stopped), and
                    start or stop only what a reload added or removed. On
                    Windows it starts mcp.exe or mcp.cmd (ADR-0019). It
                    starts mcp.ts or mcp.js first, with its own Node
                    (ADR-0028).
   mcp.ts           one JSON-RPC connection to one Plugin Server, over stdio.
+  usage.ts         read Usage when asked: one reader per Place, the CPU
+                   between two readings, one row per Plugin (ADR-0032).
+  process-table.ts a Place's process table, as each reader gives it, and
+                   the one tree walk from a Plugin Server.
+  usage-linux.ts   the reader of /proc: CPU from stat, PSS from
+                   smaps_rollup (resident size from status where that is
+                   sealed), a Plugin's processes by FIRSTMATE_PLUGIN.
+  usage-wsl.ts     the reader of one distribution: its /proc printed by
+                   one wsl.exe call, read by usage-linux.ts's functions.
+  usage-windows.ts the reader of Win32_Process, through one PowerShell that
+                   stays open while readings keep coming: CPU, the private
+                   working set, and each process's parent.
   tool-call.ts     forward a Plugin Page's tool call to its Plugin Server.
   tool-bus.ts      carry a call from one Plugin to another, under a Grant.
   notices.ts       hold the Notices for the App, and refuse a bad one.
@@ -198,7 +214,7 @@ packages/host/src/  the Host. Every file is one job.
 apps/cli/           the npm package, @luan-afonso/firstmate: the command line
                     alone, with no Host and no window (ADR-0024).
   src/cli.ts       the terminal: desktop, setup, place, import, shelf, install,
-                   update, bind, unbind, order, logs, status, restart, and the
+                   update, bind, unbind, order, logs, status, usage, restart, and the
                    Registry: add, remove, list, grant, revoke.
   src/version.ts   the version of the command line, read from its own package.json:
                    `--version` says it, and `desktop` installs the App of it.
@@ -226,20 +242,27 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/main.ts      the main process: start the Host, hold the one-App lock,
                    wire the parts below together, stop the Host on Quit.
   src/window.ts    the window: the strip, the switcher, the Settings View,
-                   the Mate panel and Ctrl+Shift+K, and one view for the
-                   Index Page and each Plugin Page.
+                   the Process View, the Mate panel and Ctrl+Shift+K, and one
+                   view for the Index Page and each Plugin Page.
   src/pages.ts     the App's own pages, written as data addresses. The Host
                    never serves them (ADR-0008).
   src/preload.ts   the one preload, on the App's own views and never on a
                    Plugin Page. `ask.ts` reads what it sends.
   src/addresses.ts the Host's addresses, and which owner each belongs to.
-  src/host-lists.ts what /plugins.json says, as the App reads it.
+  src/host-lists.ts what /plugins.json and /processes.json say, as the App
+                   reads them.
   src/tray.ts      the Tray: the marks, the menu, and start at logon.
   src/logon.ts     start at logon: the Run entry setup writes too.
   src/settings.ts  what the Settings View shows, the Mate settings too, and
                    the changes it asks for, made through core in the main
                    process.
   src/settings-view.ts the Settings View, as a page the App writes.
+  src/process-view.ts the Process View, as a page the App writes: FirstMate's
+                   row, then every Plugin, with its Usage (ADR-0032), its
+                   sort by CPU or Memory, and the script that moves each
+                   figure to a new reading.
+  src/processes.ts the Process View's reading of /processes.json, every 2 s
+                   while the view shows in a visible window, and none after.
   src/mate.ts      the Mate panel: its state, its asks, its Conversation, and
                    the run of the Agent that answers it, in the main process.
   src/mate-view.ts the Mate panel and its Recents, as a page the App writes,
@@ -256,6 +279,8 @@ apps/desktop/       the App, @firstmate/desktop: one Electron program for
   src/update.ts    the App's own updates, with electron-updater: downloaded in
                    the background, said in one Notice, installed on Quit.
   src/marks.ts     where the running and stopped marks are.
+  src/own-processes.ts the App's own processes, which FirstMate's row of
+                   Usage counts: never a Plugin Page's (ADR-0032).
   resources/icons/ the marks, packed with the App.
   electron.vite.config.ts the build: the main process, with core and host
                    in, and the preload.
@@ -337,6 +362,10 @@ and drives it over HTTP, exactly as a browser does.
   lets the whole inside of the Host be rewritten without touching a test.
 - A test asserts on what a browser and the Tray can see: status codes, headers,
   response bytes, and the files the Host writes into its home directory.
+  The one exception: a test may also look at the system's process table, to
+  prove which processes run or end, as `processes.test.ts`,
+  `plugin-server-tree.test.ts` and `app.test.ts` do. It never looks at a
+  module of the Host.
 - Tests run the source. `tests/build.test.ts` alone builds the bundle, with the
   helper's `build`, and boots it through the same helper with `built`.
 - `tests/app.test.ts` alone packages the App, with the helper's `packageApp`,
@@ -344,7 +373,7 @@ and drives it over HTTP, exactly as a browser does.
   on Windows and on Linux, and takes about a minute. The App's window has no test.
 - A fixture Plugin is a directory under `tests/fixtures/`, such as `both`,
   `page-only`, `server-only`, `quitter`, `unrunnable`, `caller`, `notifier`,
-  and `node-form`, `node-js` and `node-first` for the Node form.
+  `namesake`, `spawner`, `sealed-child`, and `node-form`, `node-js` and `node-first` for the Node form.
   Add a fixture rather than a mock. A fixture with an `mcp` carries its
   Windows form, `mcp.cmd`, beside it (ADR-0019). A fixture with only an
   `mcp.ts` or `mcp.js` needs neither, because the Host runs it with its own
@@ -352,8 +381,12 @@ and drives it over HTTP, exactly as a browser does.
   file outside its own directory, so it proves what it holds and nothing more.
 - `tests/helpers/plugins.ts` asks a booted Host for one Plugin's state, and
   makes one tool call as a Plugin Page makes it, through `host.ts`.
+- `tests/helpers/processes.ts` says whether a process runs, and waits until
+  a check holds: the two questions a test asks the process table.
 - `tests/helpers/wsl.ts` fakes `wsl.exe` on `PATH`, and points a `wsl`
-  Place's root at a folder of the test's own. `tests/helpers/windows.ts` fakes
+  Place's root at a folder of the test's own. It runs each command as a
+  process of its own and notes its PID, as a real distribution does, and can
+  make one distribution fail or hang. `tests/helpers/windows.ts` fakes
   the Windows programs and a GitHub Release, for `firstmate desktop` and the
   logon question of `setup`. `tests/helpers/linux.ts` is a Linux desktop of
   the test's own, with a fake AppImage, and `tests/helpers/release.ts` is the

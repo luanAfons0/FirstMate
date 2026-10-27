@@ -1,6 +1,7 @@
 /**
  * What one of the App's own views asks the main process for: the strip, the
- * switcher, the Settings View, the Mate panel and the Mate box.
+ * switcher, the Settings View, the Process View, the Mate panel and the Mate
+ * box.
  *
  * Those views are pages the App writes, never pages the Host serves
  * (ADR-0008), and the one way they reach the main process is the preload that
@@ -24,6 +25,15 @@ export const ASK_CHANNEL = 'firstmate:ask';
  */
 export const SHOW_CHANNEL = 'firstmate:show';
 
+/** What the Process View can be sorted by: CPU or Memory, or the Plugin Order back. */
+const PROCESSES_SORTS = ['cpu', 'memory', 'plugin-order'] as const;
+
+/** One way to sort the Process View, as `PROCESSES_SORTS` names it. */
+export type ProcessesSort = (typeof PROCESSES_SORTS)[number];
+
+const isProcessesSort = (word: string): word is ProcessesSort =>
+  (PROCESSES_SORTS as readonly string[]).includes(word);
+
 /** What an App view asked for. */
 export type Asked =
   /** Show the Index Page. */
@@ -42,6 +52,10 @@ export type Asked =
   | { readonly kind: 'restart'; readonly name: string }
   /** Open the Settings View, or close it when it is open. */
   | { readonly kind: 'settings' }
+  /** Open the Process View, or close it when it is open. */
+  | { readonly kind: 'processes' }
+  /** Sort the Process View by CPU or Memory, largest first, or put it back in the Plugin Order. */
+  | { readonly kind: 'processes-sort'; readonly by: ProcessesSort }
   /** Turn start at logon on or off. */
   | { readonly kind: 'logon'; readonly on: boolean }
   /** Add a Place: a local one, or a `wsl` one in this distribution. */
@@ -102,6 +116,7 @@ export const ASK = {
   switcherKeys: 'switcher-keys',
   switcherClose: 'switcher-close',
   settings: 'settings',
+  processes: 'processes',
   mate: 'mate',
   mateClose: 'mate-close',
   mateNew: 'mate-new',
@@ -148,6 +163,11 @@ export function pluginSettingsAsk(name: string): string {
 /** The words that ask to start one Plugin's Plugin Server again. */
 export function restartAsk(name: string): string {
   return said('restart', name);
+}
+
+/** The words that ask to sort the Process View by a column, or to put it back in the Plugin Order. */
+export function processesSortAsk(by: ProcessesSort): string {
+  return said('processes-sort', by);
 }
 
 /** The words that ask to turn start at logon on or off. */
@@ -219,6 +239,7 @@ export function readAsked(said: unknown): Asked {
     if (kind === 'logon' && (first === 'on' || first === 'off'))
       return { kind, on: first === 'on' };
     if (kind === 'place-remove') return { kind, name: first };
+    if (kind === 'processes-sort' && isProcessesSort(first)) return { kind, by: first };
     if (kind === 'shelf-choose') return { kind, place: first };
     if (kind === 'mate-send' || kind === 'mate-ask') return { kind, text: first };
     if (kind === 'mate-link') return { kind, address: first };

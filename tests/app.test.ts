@@ -15,9 +15,10 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { gunzipSync } from 'node:zlib';
-import { bootHost, packageApp } from './helpers/host.ts';
+import { bootHost, packageApp, type Booted } from './helpers/host.ts';
 import { callTool } from './helpers/plugins.ts';
 
 /** What packaging makes on one system, and how the packaged App is started there. */
@@ -147,6 +148,128 @@ async function checkFeed(out: string, feed: string): Promise<void> {
   }
 }
 
+/** FirstMate's row of `/processes.json`, as far as this test reads it. */
+type OwnRow = {
+  readonly pid: number | null;
+  readonly processes: number | null;
+  readonly unmeasured?: string;
+};
+
+/**
+ * FirstMate's row counts the App: its main process, its GPU process and the
+ * renderers of its own views, and no Plugin Server. No Plugin Page is open,
+ * because the App opens the Index Page alone, so on Linux the row counts
+ * every process Electron started for the App and nothing else. A system that
+ * reads no Usage yet says so in the row, and has no figure to check.
+ */
+async function checkOwnRow(host: Booted): Promise<void> {
+  const ask = async (): Promise<OwnRow> => {
+    const answer = await host.fetch('/processes.json');
+    assert.equal(answer.status, 200, await answer.clone().text());
+    return ((await answer.json()) as { firstmate: OwnRow }).firstmate;
+  };
+  let row = await ask();
+  if (process.platform !== 'linux') {
+    if (row.unmeasured === undefined) {
+      assert.ok((row.processes ?? 0) > 1, `the row counts the App: ${row.processes}`);
+    }
+    return;
+  }
+  assert.equal(row.unmeasured, undefined, row.unmeasured);
+  assert.ok(row.pid !== null, 'the row names the main process');
+  assert.ok(
+    (row.processes ?? 0) > 1,
+    `the row counts more than the main process: ${row.processes}`,
+  );
+  // Electron starts and ends a helper now and then, and it names a process
+  // among the App's only once that process has connected to it. The GPU
+  // process shows in /proc as soon as it starts, but on a CI runner it draws
+  // in software under xvfb and may take seconds to connect, and until then the
+  // App cannot count it. So the two counts are compared again, for up to 20
+  // seconds, before the test calls them different.
+  let electron = await electronProcesses(row.pid);
+  for (let tries = 0; row.processes !== electron.length && tries < 40; tries += 1) {
+    await delay(500);
+    row = await ask();
+    electron = await electronProcesses(row.pid ?? 0);
+  }
+  assert.ok(
+    electron.some((one) => one.type === 'gpu-process'),
+    'the App has a GPU process to count',
+  );
+  if (row.processes !== electron.length) {
+    // `/processes.json` says how many processes the row counts, not which, so
+    // the message says what this test can see of each one it found, and what
+    // the App said, for a run that only fails on another machine.
+    assert.fail(
+      [
+        `the row counts ${row.processes} processes, and the App has ${electron.length}:`,
+        ...(await Promise.all(electron.map(seenOf))),
+        "the App's output, last lines:",
+        ...host.output().trimEnd().split('\n').slice(-30),
+      ].join('\n'),
+    );
+  }
+}
+
+/**
+ * What this test can see of one of the App's processes: whether its memory
+ * file and its environment can be read, and its state and its PIDs in each
+ * PID namespace, from its status, which any user may read.
+ */
+async function seenOf(one: { readonly pid: number; readonly type: string }): Promise<string> {
+  const at = join('/proc', String(one.pid));
+  const readable = (file: string): Promise<string> =>
+    readFile(join(at, file)).then(
+      () => `${file} readable`,
+      () => `${file} UNREADABLE`,
+    );
+  const status = await readFile(join(at, 'status'), 'utf8').catch(() => '');
+  const field = (name: string): string =>
+    new RegExp(`^${name}:\\s*(.*)$`, 'm').exec(status)?.[1] ?? '?';
+  return `  ${one.pid} ${one.type}: ${await readable('smaps_rollup')}, ${await readable('environ')}, state ${field('State')}, NSpid ${field('NSpid').replaceAll('\t', ' ')}`;
+}
+
+/** The types of process Electron starts and does not name among the App's. */
+const UNNAMED: ReadonlySet<string> = new Set(['zygote', 'broker']);
+
+/**
+ * The main process at this PID, and every process under it that Electron
+ * started as one of its own, which names its type on its command line. A
+ * Plugin Server is the App's executable run as Node, and names no type. A
+ * zygote, the template each renderer starts from on Linux, and a broker, which
+ * opens files for the sandboxed GPU process when it draws in software, are
+ * left out: Electron does not name them among the App's processes, so the row
+ * cannot.
+ */
+async function electronProcesses(
+  main: number,
+): Promise<readonly { readonly pid: number; readonly type: string }[]> {
+  const parents = new Map<number, number>();
+  for (const name of await readdir('/proc')) {
+    if (!/^\d+$/.test(name)) continue;
+    const stat = await readFile(join('/proc', name, 'stat'), 'utf8').catch(() => '');
+    const parent = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+    if (Number.isInteger(parent)) parents.set(Number(name), parent);
+  }
+  const under = (pid: number): boolean => {
+    for (let at = parents.get(pid); at !== undefined && at > 0; at = parents.get(at)) {
+      if (at === main) return true;
+    }
+    return false;
+  };
+  const found = [{ pid: main, type: 'browser' }];
+  for (const pid of parents.keys()) {
+    if (!under(pid)) continue;
+    const line = await readFile(join('/proc', String(pid), 'cmdline'), 'utf8').catch(() => '');
+    // Chromium writes its command line again as one line, words split by
+    // spaces, so a word ends at either.
+    const type = /(?:^|[\0 ])--type=([^\0 ]+)/.exec(line)?.[1];
+    if (type !== undefined && !UNNAMED.has(type)) found.push({ pid, type });
+  }
+  return found;
+}
+
 const packaged = PACKAGED[process.platform];
 
 /**
@@ -228,6 +351,8 @@ test(
       status: 200,
       text: 'pong from mcp.ts',
     });
+
+    await checkOwnRow(host);
 
     const runtime = await readFile(join(host.home, 'runtime.json'), 'utf8');
     const second = spawn(app, [], {

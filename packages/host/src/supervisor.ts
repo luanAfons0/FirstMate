@@ -89,11 +89,22 @@ const ON_WINDOWS = process.platform === 'win32';
 const NODE_VARIABLE = 'FIRSTMATE_NODE';
 
 /**
+ * The name of its own Plugin, which every Plugin Server is told and every
+ * process under it inherits. A Plugin Server learns its own name from it, and
+ * on Linux and in a `wsl` Place the Host finds every process of a Plugin by
+ * it, even a child that left its parent (ADR-0032).
+ */
+const PLUGIN_VARIABLE = 'FIRSTMATE_PLUGIN';
+
+/**
  * How long a Plugin Server the operator restarts has to end before the Host
  * kills it. The new one is not started beside the old: two of one Plugin would
  * share its files.
  */
 const STOP_GRACE_MS = 5_000;
+
+/** How often the Host looks whether a Plugin Server's group is empty, while it ends. */
+const GROUP_LOOK_MS = 50;
 
 /** The MCP version the Host asks for when it starts a Plugin Server. */
 const PROTOCOL_VERSION = '2025-06-18';
@@ -106,6 +117,11 @@ export type Supervisor = {
   serverOf(name: string): PluginServer | null;
   /** Whether the Plugin shipped a Plugin Page when the Host last looked. */
   hasPage(name: string): boolean;
+  /**
+   * What the Host knows of a Plugin's latest run, for reading its Usage
+   * (ADR-0032). Nothing when the Host holds no Plugin of that name.
+   */
+  runOf(name: string): RunFacts | undefined;
   /**
    * Hold this Registry from now on. A Plugin added is started, a Plugin
    * removed is stopped, and every other Plugin Server is left alone, Stopped
@@ -137,6 +153,28 @@ export type Waits = {
   readonly maxCallMs: number;
 };
 
+/**
+ * The facts of one Plugin's latest run, as the rest of the Host reads them.
+ * A restart is a new run, with a new process and a new start time. The Host
+ * keeps none of it past the run (ADR-0005).
+ */
+export type RunFacts = {
+  /** The Plugin as the Host holds it: its name, its Place, and how it starts. */
+  readonly plugin: HeldPlugin;
+  readonly state: PluginState;
+  /**
+   * The PID of the process the Host spawned, while it lives, and null
+   * otherwise. In a `wsl` Place it is wsl.exe's, on this machine: the
+   * Plugin Server's own PID is inside the distribution, found there by
+   * `FIRSTMATE_PLUGIN`.
+   */
+  readonly pid: number | null;
+  /** When the Host spawned the process, in ms since the epoch; null when none was. */
+  readonly startedAt: number | null;
+  /** Why the Plugin is Stopped, such as `exit 3.` or `SIGKILL.`, once it is. */
+  readonly why: string | null;
+};
+
 /** One start of one Plugin's Plugin Server, and what became of it. */
 type Run = {
   /** The Registry row it was started from. */
@@ -149,7 +187,14 @@ type Run = {
   hasPage: boolean;
   /** The process, once one was spawned. */
   child: ChildProcess | null;
-  /** Settles once the process has ended, and at once when none was spawned. */
+  /** When the process was spawned, in milliseconds since the epoch, once it was. */
+  startedAt: number | null;
+  /** Whether the process has ended, so its PID may already be another's. */
+  exited: boolean;
+  /**
+   * Settles once the process, and the rest of its process group, has ended,
+   * and at once when none was spawned.
+   */
   ended: Promise<void>;
   /** Why the Plugin is Stopped, once it is. */
   why: string | null;
@@ -291,6 +336,17 @@ export async function superviseAll(
     stateOf,
     serverOf,
     hasPage: (name) => runs.get(name)?.hasPage === true,
+    runOf: (name) => {
+      const run = runs.get(name);
+      if (run === undefined) return undefined;
+      return {
+        plugin: run.row,
+        state: stateOf(name),
+        pid: run.exited ? null : (run.child?.pid ?? null),
+        startedAt: run.startedAt,
+        why: run.why,
+      };
+    },
     hold,
     restart,
     async stopAll() {
@@ -316,16 +372,61 @@ function quit(run: Run): Promise<void> {
  */
 async function end(run: Run): Promise<void> {
   run.server?.stop();
-  if (!ON_WINDOWS) run.child?.kill('SIGTERM');
+  // The whole group is asked, so that a process the Plugin Server started may
+  // end as cleanly as the Plugin Server itself.
+  if (!ON_WINDOWS && run.child !== null) killTree(run.child, 'SIGTERM');
   if (!(await ended(run))) {
     killHard(run.child);
     await run.ended;
   }
 }
 
-/** Kill a process that would not end, and on Windows every process under it. */
+/** Kill a process that would not end, and every process under it. */
 function killHard(child: ChildProcess | null): void {
   if (child !== null) killTree(child, 'SIGKILL');
+}
+
+/**
+ * Once a Plugin Server has ended, asked to or on its own, end what is left of
+ * its process group, so that no process it started outlives it. The rest of
+ * the group gets the grace the Plugin Server got: SIGTERM, then SIGKILL for
+ * whatever is still there after it. Resolves once the group is empty, so a
+ * restart and a Host that stops wait for it too. Linux gives no new process
+ * the group's id while the group has a process in it.
+ */
+function endGroupOnExit(child: ChildProcess): Promise<void> {
+  if (ON_WINDOWS) return Promise.resolve();
+  return new Promise((done) => {
+    child.once('exit', () => {
+      const group = child.pid;
+      if (group === undefined || !signalGroup(group, 'SIGTERM')) {
+        done();
+        return;
+      }
+      const deadline = Date.now() + STOP_GRACE_MS;
+      const look = (): void => {
+        if (signalGroup(group, 0) && Date.now() < deadline) {
+          setTimeout(look, GROUP_LOOK_MS);
+          return;
+        }
+        signalGroup(group, 'SIGKILL');
+        done();
+      };
+      look();
+    });
+    child.once('error', () => done());
+  });
+}
+
+/** Send a signal to a process group: whether any process was in it to get it. */
+function signalGroup(group: number, signal: NodeJS.Signals | 0): boolean {
+  try {
+    process.kill(-group, signal);
+    return true;
+  } catch {
+    // No process is left in the group, which is what the Host wants.
+    return false;
+  }
 }
 
 /** Whether a run's process ends within the grace the Host gives it. */
@@ -346,6 +447,8 @@ async function startOne(
     shipsNone: false,
     hasPage: await shipsPage(plugin),
     child: null,
+    startedAt: null,
+    exited: false,
     ended: Promise.resolve(),
     why: null,
     quiet: false,
@@ -371,7 +474,9 @@ async function startOne(
     return run;
   }
 
+  run.startedAt = Date.now();
   const child = launch(file, plugin);
+  const groupEnded = endGroupOnExit(child);
   child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
   // The calling Plugin Name is this pipe's, closed over here and never taken
   // from anything the Plugin Server says.
@@ -379,10 +484,15 @@ async function startOne(
   child.once('error', (cause) => say(cause.message));
   child.once('exit', (code, signal) => say(signal ?? `exit ${code ?? 0}`));
   run.child = child;
-  // Heard after the two above, so a run that has ended has said why.
+  // Heard after the two above, so a run that has ended has said why. It ends
+  // once the rest of the Plugin Server's group has ended too.
   run.ended = new Promise((done) => {
-    child.once('exit', () => done());
-    child.once('error', () => done());
+    const over = (): void => {
+      run.exited = true;
+      void groupEnded.then(done);
+    };
+    child.once('exit', over);
+    child.once('error', over);
   });
   spawned(run);
 
@@ -506,6 +616,10 @@ async function isFile(path: string): Promise<boolean> {
  * stderr is the Plugin Server's own output, and the Host writes it as its
  * own, so it reaches the terminal and the log alike (log.ts). It is piped
  * rather than inherited because the App has no console to inherit.
+ *
+ * Away from Windows it leads a process group of its own, so that a Plugin
+ * Server that will not end is killed with every process it started: killTree
+ * ends a group, and ends a process that leads none alone.
  */
 function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
   const options = {
@@ -513,15 +627,20 @@ function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
     env: {
       ...process.env,
       [NODE_VARIABLE]: process.execPath,
+      [PLUGIN_VARIABLE]: plugin.name,
       // In the App, process.execPath is the App, which runs as Node only when told (ADR-0020).
       ...(process.versions.electron === undefined ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
+    detached: !ON_WINDOWS,
   } satisfies SpawnOptions;
   if (plugin.runner.kind === 'wsl') {
     // The distribution starts it in its own directory, by its own path, so
     // wsl.exe needs no working directory of the Host's. The Node the Host
     // names is a Windows program, and is not handed across (ADR-0021).
+    // Windows hands no variable across either, so the Plugin's name goes on
+    // the command line. env becomes ./mcp in the same process, so the PID
+    // inside the distribution is the Plugin Server's own (ADR-0032).
     return spawn(
       WSL_EXE,
       [
@@ -530,9 +649,11 @@ function launch(file: Runnable, plugin: HeldPlugin): ChildProcess {
         '--cd',
         plugin.directory,
         '--',
+        'env',
+        `${PLUGIN_VARIABLE}=${plugin.name}`,
         `./${EXECUTABLE_SERVER_FILE.name}`,
       ],
-      { ...options, cwd: undefined },
+      { ...options, cwd: undefined, env: { ...options.env, [PLUGIN_VARIABLE]: undefined } },
     );
   }
   switch (file.form) {

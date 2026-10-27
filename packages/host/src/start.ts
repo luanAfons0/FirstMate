@@ -12,7 +12,7 @@
  * no Plugin Server outlives either.
  */
 import { randomBytes } from 'node:crypto';
-import { BIND_ADDRESS, readConfig, type Config } from '@firstmate/core/config';
+import { BIND_ADDRESS, HOME_VARIABLE, readConfig, type Config } from '@firstmate/core/config';
 import { startHost } from './host.ts';
 import { keepLog } from './log.ts';
 import { openNotices, type Notice } from './notices.ts';
@@ -21,6 +21,7 @@ import { registryPath } from '@firstmate/core/registry';
 import { removeRuntimeFile, runtimePath, writeRuntimeFile } from '@firstmate/core/runtime';
 import { readSettings } from '@firstmate/core/settings';
 import { superviseAll } from './supervisor.ts';
+import { openUsage } from './usage.ts';
 
 /** A Host that runs, and the way to stop it. */
 export type RunningHost = {
@@ -56,6 +57,13 @@ export type HostHooks = {
    * says that a Plugin went Stopped.
    */
   readonly onChange?: () => void;
+  /**
+   * The PIDs of the holder's own processes, which FirstMate's row of Usage
+   * counts beside the Host's own. The App gives its main process, its GPU
+   * process and its own views, and never a Plugin Page, so the Host takes no
+   * Electron import (ADR-0032). Without it, the row counts the Host alone.
+   */
+  readonly ownPids?: () => readonly number[];
 };
 
 /** Start the Host for this Config, and resolve once it listens and has said so. */
@@ -101,6 +109,14 @@ export async function start(
     console.log(`FirstMate: reloaded ${now.length} Plugin(s) from ${registryPath(config.home)}`);
   };
 
+  // Read when the App or a terminal asks, and kept nowhere (ADR-0032).
+  const usage = openUsage({
+    runOf: (name) => supervisor.runOf(name),
+    ownPids: ownPidsOf(hooks),
+    // Each Plugin Server inherits the Host's environment, its home with it.
+    home: process.env[HOME_VARIABLE],
+  });
+
   const host = await startHost({
     port: config.port,
     plugins: () => supervisor.plugins(),
@@ -118,6 +134,7 @@ export async function start(
       tell(hooks.onChange);
       return restarted;
     },
+    usage: (plugins) => usage.read(plugins),
   }).catch(async (fault: unknown) => {
     await supervisor.stopAll();
     throw portTaken(fault, config.port) ?? fault;
@@ -128,7 +145,8 @@ export async function start(
     // The runtime file describes a run. This one is over, so it goes with it.
     stopped ??= (async () => {
       removeRuntimeFile(config.home);
-      await Promise.all([supervisor.stopAll(), host.close()]);
+      // No PowerShell that reads Usage outlives the Host.
+      await Promise.all([supervisor.stopAll(), host.close(), usage.close()]);
       // Every line a Plugin Server said on its way out is in the log before
       // stop resolves, because whoever stopped the Host may end the process next.
       await log.drained();
@@ -203,4 +221,27 @@ function safely<T>(read: () => T): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A reader of the Host's own PID, and every PID its holder names. The row counts the
+ * Host's own process even when a hook leaves it out or fails, because a hook
+ * that throws is the holder's fault and must not break the Host.
+ */
+function ownPidsOf(hooks: HostHooks): () => readonly number[] {
+  // The Process View asks every 2 seconds, so a hook that keeps failing is
+  // said once, and again only after it has worked (ADR-0022).
+  let said = false;
+  return () => {
+    try {
+      const pids = [...new Set([process.pid, ...(hooks.ownPids?.() ?? [])])];
+      said = false;
+      return pids;
+    } catch (fault: unknown) {
+      if (!said)
+        console.error('FirstMate: a hook of the program that holds the Host failed.', fault);
+      said = true;
+      return [process.pid];
+    }
+  };
 }

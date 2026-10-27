@@ -1,16 +1,26 @@
 /**
- * What the Host says about its Plugins and its Shortcuts, as the App reads it.
+ * What the Host says about its Plugins, their Usage and its Shortcuts, as the
+ * App reads it.
  *
- * The App asks `/plugins.json` and `/shortcuts.json` over loopback, the
- * addresses the 1.x Tray asked, rather than reaching into the Host it holds.
- * The Host then has one surface, and the strip, the switcher, the Tray and
- * the Shortcuts all see what a browser sees.
+ * The App asks `/plugins.json`, `/processes.json` and `/shortcuts.json` over
+ * loopback, the addresses the 1.x Tray asked, rather than reaching into the
+ * Host it holds. The Host then has one surface, and the strip, the switcher,
+ * the Process View, the Tray and the Shortcuts all see what a terminal sees.
  */
 import type { PluginState } from '@firstmate/core/plugin-state';
+import type { Processes, UsageRow } from '@firstmate/core/usage';
 import { admitted, type HostAt } from './addresses.ts';
 
 /** How long the App waits for the Host it holds to answer. */
 const ASK_TIMEOUT_MS = 5_000;
+
+/**
+ * How long the App waits for `/processes.json`. More than the other asks:
+ * the first reading on Windows starts a PowerShell and reads twice, and the
+ * Host gives each answer of that PowerShell up to 10 seconds of its own, so
+ * this is above what the Host waits (ADR-0032).
+ */
+const PROCESSES_TIMEOUT_MS = 25_000;
 
 /** How long the App waits for a Plugin Server to start again. */
 const RESTART_TIMEOUT_MS = 30_000;
@@ -73,6 +83,66 @@ export async function askToRestart(host: HostAt, name: string): Promise<string |
   }
 }
 
+/**
+ * What the Host said about Usage: FirstMate's row and one per Plugin, or the
+ * fact that it would not say.
+ */
+export type ProcessesAnswer =
+  { readonly kind: 'told'; readonly processes: Processes } | { readonly kind: 'untold' };
+
+/**
+ * The Usage of FirstMate and of every Plugin, in the Plugin Order, read from
+ * `/processes.json`. Node's fetch sends no Origin, as the Host wants of the
+ * App and a terminal (ADR-0032). A row that cannot be read is left out; a
+ * FirstMate row that cannot be read is a Host that would not say.
+ */
+export async function askForProcesses(host: HostAt): Promise<ProcessesAnswer> {
+  const said = await askFor(host, '/processes.json', PROCESSES_TIMEOUT_MS);
+  if (typeof said !== 'object' || said === null) return { kind: 'untold' };
+  const { firstmate, plugins } = said as Record<string, unknown>;
+  const [own] = usageRow(firstmate);
+  if (own === undefined || !Array.isArray(plugins)) return { kind: 'untold' };
+  return { kind: 'told', processes: { firstmate: own, plugins: plugins.flatMap(usageRow) } };
+}
+
+/** A figure, which is a number or null when there is none. */
+const isFigure = (value: unknown): value is number | null =>
+  value === null || (typeof value === 'number' && Number.isFinite(value));
+
+function usageRow(row: unknown): readonly UsageRow[] {
+  if (typeof row !== 'object' || row === null) return [];
+  const {
+    name,
+    state,
+    place,
+    pid,
+    processes,
+    cpuPercent,
+    memoryBytes,
+    startedAt,
+    why,
+    unmeasured,
+  } = row as Record<string, unknown>;
+  if (typeof name !== 'string' || typeof place !== 'string') return [];
+  if (typeof state !== 'string' || !STATES.has(state)) return [];
+  if (![pid, processes, cpuPercent, memoryBytes].every(isFigure)) return [];
+  if (startedAt !== null && typeof startedAt !== 'string') return [];
+  return [
+    {
+      name,
+      state: state as PluginState,
+      place,
+      pid: pid as number | null,
+      processes: processes as number | null,
+      cpuPercent: cpuPercent as number | null,
+      memoryBytes: memoryBytes as number | null,
+      startedAt,
+      ...(typeof why === 'string' ? { why } : {}),
+      ...(typeof unmeasured === 'string' ? { unmeasured } : {}),
+    },
+  ];
+}
+
 /** One Shortcut, as the Host says it: the keys, and the address they open. */
 type ShortcutSeen = {
   /** The keys, in core's normal form, such as `Ctrl+Alt+N`. */
@@ -110,10 +180,10 @@ function oneShortcut(row: unknown): readonly ShortcutSeen[] {
 }
 
 /** What the Host answers at one address, read as JSON, or undefined when it does not. */
-async function askFor(host: HostAt, path: string): Promise<unknown> {
+async function askFor(host: HostAt, path: string, timeoutMs = ASK_TIMEOUT_MS): Promise<unknown> {
   try {
     const answer = await fetch(admitted(host, path), {
-      signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!answer.ok) {
       // The Host says why in one sentence, such as a damaged settings file.
