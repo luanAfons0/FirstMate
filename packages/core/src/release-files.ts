@@ -14,12 +14,9 @@
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 import { refuse } from './refusal.ts';
-import type { TarEntry } from './tar.ts';
-
-/** The name of FirstMate's record of Release Files, in the Plugin's directory. */
-export const RELEASE_RECORD = '.firstmate-release.json';
+import { isLandable, RELEASE_RECORD, type TarEntry } from './tar.ts';
 
 /** FirstMate's record of the Release Files of one Plugin Release. */
 export type ReleaseRecord = {
@@ -29,11 +26,17 @@ export type ReleaseRecord = {
   readonly links?: Readonly<Record<string, string>>;
 };
 
-/** What an unpacked Plugin Release holds: its record, and the directories it made. */
+/** What an unpacked Plugin Release holds: its record, the directories it made, and its executable files. */
 export type Unpacked = {
   readonly record: ReleaseRecord;
   /** Every directory the archive names or a Release File needs, by its path in the Plugin. */
   readonly directories: readonly string[];
+  /**
+   * Every file the archive marks executable, by its path in the Plugin, in
+   * path order. A `wsl` Place gives them their bit back inside the
+   * distribution, as a file written from Windows carries none.
+   */
+  readonly executable: readonly string[];
 };
 
 /**
@@ -56,18 +59,18 @@ export async function unpackRelease(
   const files: Record<string, string> = {};
   const links: Record<string, string> = {};
   const directories = new Set<string>();
+  const executable: string[] = [];
   await mkdir(directory);
   for (const entry of entries) {
     const path = join(directory, entry.path);
     if (entry.kind === 'directory') {
       await mkdir(path, { recursive: true });
-      directories.add(entry.path.replace(/\/+$/, ''));
+      directories.add(entry.path);
       continue;
     }
     for (let up = parentOf(entry.path); up !== ''; up = parentOf(up)) directories.add(up);
     await mkdir(dirname(path), { recursive: true });
     if (entry.kind === 'link') {
-      await symlink(entry.target, path);
       links[entry.path] = entry.target;
       continue;
     }
@@ -75,11 +78,18 @@ export async function unpackRelease(
     // usual, so a Plugin Release cannot land a file anyone may write to.
     // `wx` makes every file new: the tar reader refuses an archive that
     // would write over an entry or through a link, and this keeps it so.
-    await writeFile(path, entry.bytes, {
-      mode: (entry.mode & 0o111) === 0 ? 0o644 : 0o755,
-      flag: 'wx',
-    });
+    const runs = (entry.mode & 0o111) !== 0;
+    await writeFile(path, entry.bytes, { mode: runs ? 0o755 : 0o644, flag: 'wx' });
+    if (runs) executable.push(entry.path);
     files[entry.path] = createHash('sha256').update(entry.bytes).digest('hex');
+  }
+  // Links last, once every file and directory is there: Windows makes a link
+  // to a directory or to a file, and Node can tell which only when the
+  // target is already there. A target the archive does not hold is a file
+  // link, as it is on Windows by default.
+  for (const [path, target] of Object.entries(links)) {
+    const to = posix.join(parentOf(path), target).replace(/\/+$/, '');
+    await symlink(target, join(directory, path), directories.has(to) ? 'dir' : 'file');
   }
   const record: ReleaseRecord =
     Object.keys(links).length === 0
@@ -88,7 +98,7 @@ export async function unpackRelease(
   await writeFile(join(directory, RELEASE_RECORD), `${JSON.stringify(record, null, 2)}\n`, {
     flag: 'wx',
   });
-  return { record, directories: [...directories].sort() };
+  return { record, directories: [...directories].sort(), executable: executable.sort() };
 }
 
 /**
@@ -112,6 +122,9 @@ export async function readReleaseRecord(directory: string): Promise<ReleaseRecor
   }
   const { files, links } = (read ?? {}) as Record<string, unknown>;
   if (!isTextMap(files) || (links !== undefined && !isTextMap(links))) throw notOurs();
+  // Update moves every path the record names, so a path the tar reader
+  // would not land, such as one that climbs out, is not FirstMate's.
+  if (!releaseFilesOf({ files, links }).every(isLandable)) throw notOurs();
   return links === undefined ? { files } : { files, links };
 }
 

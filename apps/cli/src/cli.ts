@@ -32,7 +32,6 @@
  *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
 import {
   addPlace,
   addPlugin,
@@ -1054,16 +1053,15 @@ async function install(config: Config, argv: readonly string[], place?: string):
     held = said;
   };
   const words = onTerminal() ? hold : 'shown';
-  const row = await whileWaiting(
+  const { row, fetched } = await whileWaiting(
     `fetching ${source}`,
-    (fetched) => `fetched ${fetched.name}`,
+    (done) => `fetched ${done.row.name}`,
     () => installPlugin(config, source, given, place, words),
   ).catch((fault: unknown) => {
     process.stderr.write(held);
     throw fault;
   });
-  // A source that is not a directory and gave no Plugin Release was cloned.
-  if (row.release === undefined && !isAbsolute(source)) {
+  if (fetched === 'clone') {
     console.log(`firstmate: ${row.name} has no Plugin Release; cloned it instead.`);
   }
   const version = row.release === undefined ? '' : `, Release Version ${row.release.version}`;
@@ -1199,7 +1197,10 @@ async function update(home: string, argv: readonly string[]): Promise<number> {
   } finally {
     // After the restart: on Windows the old Release Files can hold the
     // running mcp.exe, and it can be removed only once the Host stopped it.
-    await finishUpdate(moved);
+    // The update is done, so what stays is said, and the exit is not changed.
+    for (const warning of [...moved.warnings, ...(await finishUpdate(name, moved))]) {
+      console.error(`firstmate: ${warning}`);
+    }
   }
 }
 

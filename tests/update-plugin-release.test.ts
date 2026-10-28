@@ -223,13 +223,17 @@ test(
   { skip: process.platform === 'win32' && 'a symbolic link needs a privilege on Windows' },
   async (t) => {
     const github = await serveGitHub(t);
+    // `lib` comes before its target in the archive, and is still a link to
+    // a directory: on Windows, one made before its target is a file link.
     const { home, plugin } = await installed(t, github, {
-      link: { 'web/home.html': 'index.html', 'web/old.css': 'app.css' },
+      link: { lib: 'web/nested', 'web/home.html': 'index.html', 'web/old.css': 'app.css' },
     });
     assert.deepEqual((await recordOf(plugin))['links'], {
+      lib: 'web/nested',
       'web/home.html': 'index.html',
       'web/old.css': 'app.css',
     });
+    assert.deepEqual(await readdir(join(plugin, 'lib')), ['deep.txt']);
     github.publish(
       'someone/both',
       await releaseOf(t, '1.3.0', { link: { 'web/home.html': 'app.js' } }),
@@ -246,6 +250,76 @@ test(
     assert.deepEqual((await recordOf(plugin))['links'], { 'web/home.html': 'app.js' });
   },
 );
+
+test('a directory of old Release Files makes way for a new Release File at its path', async (t) => {
+  const github = await serveGitHub(t);
+  const { home, plugin } = await installed(t, github);
+  const folder = join(await makeHome(t), 'both');
+  await cp(fixture('both'), folder, { recursive: true });
+  await rm(join(folder, 'web', 'nested'), { recursive: true });
+  await writeFile(join(folder, 'web', 'nested'), 'a file now\n');
+  github.publish('someone/both', await pluginRelease(t, folder, 'both', '1.3.0'));
+
+  const updated = await firstmate(home, ['update', 'both'], github.env);
+
+  assert.equal(updated.code, 0, updated.stderr);
+  assert.equal(await readFile(join(plugin, 'web', 'nested'), 'utf8'), 'a file now\n');
+  assert.equal((await registry(home)).plugins[0]?.release?.version, '1.3.0');
+});
+
+test('a Release File whose name changes only in case is not taken for data', async (t) => {
+  const github = await serveGitHub(t);
+  const { home, plugin } = await installed(t, github);
+  github.publish(
+    'someone/both',
+    await releaseOf(t, '1.3.0', { drop: ['private.txt'], write: { 'Private.txt': 'cased\n' } }),
+  );
+
+  const updated = await firstmate(home, ['update', 'both'], github.env);
+
+  assert.equal(updated.code, 0, updated.stderr);
+  assert.equal(await readFile(join(plugin, 'Private.txt'), 'utf8'), 'cased\n');
+  assert.ok((await readdir(plugin)).includes('Private.txt'), 'the name has its new case');
+  assert.equal((await registry(home)).plugins[0]?.release?.version, '1.3.0');
+});
+
+test('old Release Files left by an update that ended are removed, and the next update runs', async (t) => {
+  const github = await serveGitHub(t);
+  const { home, plugin } = await installed(t, github);
+  // What a clean-up that failed leaves: the old Release Files and the old
+  // record, while the Plugin's directory holds the new record.
+  const previous = join(home, 'shelf', '.both.previous');
+  await cp(plugin, previous, { recursive: true });
+  github.publish(
+    'someone/both',
+    await releaseOf(t, '1.3.0', { write: { 'private.txt': 'new\n' } }),
+  );
+
+  const updated = await firstmate(home, ['update', 'both'], github.env);
+
+  assert.equal(updated.code, 0, updated.stderr);
+  assert.equal(existsSync(previous), false);
+  assert.equal(await readFile(join(plugin, 'private.txt'), 'utf8'), 'new\n');
+});
+
+test('a record that names a path outside the Plugin is refused, and nothing moves', async (t) => {
+  const github = await serveGitHub(t);
+  const { home, plugin } = await installed(t, github);
+  const other = join(home, 'shelf', 'other');
+  await mkdir(other);
+  await writeFile(join(other, 'mcp.js'), 'another Plugin\n');
+  const record = await recordOf(plugin);
+  const files = { ...(record['files'] as Record<string, string>) };
+  files['../other/mcp.js'] = sha256('another Plugin\n');
+  await writeFile(join(plugin, '.firstmate-release.json'), JSON.stringify({ files }));
+  github.publish('someone/both', await releaseOf(t, '1.3.0'));
+
+  const updated = await firstmate(home, ['update', 'both'], github.env);
+
+  assert.equal(updated.code, 3, updated.stdout);
+  assert.match(updated.stderr, /is not FirstMate's record of Release Files/);
+  assert.equal(await readFile(join(other, 'mcp.js'), 'utf8'), 'another Plugin\n');
+});
 
 test('old Release Files left by an update that did not end are refused, and kept', async (t) => {
   const github = await serveGitHub(t);

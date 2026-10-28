@@ -13,9 +13,8 @@ import { rm } from 'node:fs/promises';
 import { basename, isAbsolute, join, posix } from 'node:path';
 import type { MateWords } from './agents.ts';
 import type { Config } from './config.ts';
-import { fetchPlugin, isGitUrl, unpackPluginRelease, type GitWords } from './fetch-plugin.ts';
+import { fetchPlugin, fetchPluginRelease, isGitUrl, type GitWords } from './fetch-plugin.ts';
 import {
-  downloadPluginRelease,
   githubRepository,
   pluginReleases,
   thisMachine,
@@ -24,7 +23,6 @@ import {
 } from './plugin-release.ts';
 import { readPlugins } from './plugin-places.ts';
 import { refusalOf, refuse } from './refusal.ts';
-import { readTar } from './tar.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import {
   allPlaces,
@@ -50,9 +48,9 @@ import {
 } from './settings.ts';
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
-import { gitHere, isOwnClone, moveForward, type Moved } from './update-plugin.ts';
+import { cloneKind, gitHere, moveForward, type Moved } from './update-plugin.ts';
 import { updateRelease } from './update-release.ts';
-import { gitInside, homeIn, makeExecutable, targetIn } from './wsl.ts';
+import { gitInside, homeIn, makeExecutable } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
 export function notAPluginName(name: string): string {
@@ -273,9 +271,17 @@ function refuseTaken(rows: readonly PluginRow[], name: string): void {
   }
 }
 
+/** What `install` wrote, and how it fetched the Plugin (ADR-0033). */
+export type Installed = {
+  readonly row: PluginRow;
+  /** As a Plugin Release, as a git clone, or as a copy of a directory. */
+  readonly fetched: 'release' | 'clone' | 'copy';
+};
+
 /**
  * Fetch a Plugin into a Place's Shelf and register it in that Place, the
- * default Place unless another is named, and give back the row written. A
+ * default Place unless another is named, and give back the row written and
+ * how the Plugin was fetched. A
  * source is a git URL, an absolute directory, or the Plugin Name of an
  * Official Plugin, in that order (ADR-0015). A git URL, and an Official
  * Plugin's, is fetched as its newest Plugin Release when GitHub holds one,
@@ -294,7 +300,7 @@ export async function installPlugin(
   placeName = DEFAULT_PLACE,
   words: GitWords = 'shown',
   target: ArchiveTarget = thisMachine(),
-): Promise<PluginRow> {
+): Promise<Installed> {
   const official = isGitUrl(source) || isAbsolute(source) ? undefined : officialPlugin(source);
   const name = given ?? official?.name ?? nameOf(source);
   if (!isPluginName(name)) {
@@ -327,36 +333,27 @@ export async function installPlugin(
   // today.
   const shelf = checkShelf(filesOf(place, chosen), config.home);
   const release = await newestPluginRelease(from);
-  // What the archive marks executable, for the distribution to be told.
-  const executable: string[] = [];
+  const wsl =
+    place.kind === 'wsl' ? { distribution: place.distribution, shelf: chosen } : undefined;
   const landed =
     release === undefined
-      ? await fetchPlugin(from, shelf, name, words, place.kind === 'wsl')
-      : await unpackPluginRelease(
-          async () => {
-            // The distribution's own arch, not the arch of the Windows around it.
-            const where = place.kind === 'wsl' ? await targetIn(place.distribution) : target;
-            const entries = readTar(
-              await downloadPluginRelease(release, where),
-              release.repository,
-            );
-            for (const entry of entries) {
-              if (entry.kind === 'file' && (entry.mode & 0o111) !== 0) executable.push(entry.path);
-            }
-            return entries;
-          },
-          shelf,
-          name,
-        );
-  // A `wsl` Plugin is registered by the distribution's own path, and the
-  // files written from Windows lost the executable bit on their way in.
-  const directory = place.kind === 'wsl' ? posix.join(chosen, name) : landed;
-  if (place.kind === 'wsl') {
-    if (release !== undefined) {
-      await makeExecutable(place.distribution, directory, executable);
-    } else if (statSync(join(landed, 'mcp'), { throwIfNoEntry: false })?.isFile()) {
-      await makeExecutable(place.distribution, directory);
-    }
+      ? await fetchPlugin(from, shelf, name, words, wsl !== undefined)
+      : await fetchPluginRelease(release, shelf, name, target, wsl);
+  // A `wsl` Plugin is registered by the distribution's own path.
+  const directory = wsl === undefined ? landed : posix.join(chosen, name);
+  // A clone or a copy written from Windows lost the executable bit of `mcp`
+  // on its way in. It has no staging of its own to give it back in, as a
+  // Plugin Release has, so a chmod that fails takes it away, and the name
+  // is free again.
+  if (
+    wsl !== undefined &&
+    release === undefined &&
+    statSync(join(landed, 'mcp'), { throwIfNoEntry: false })?.isFile()
+  ) {
+    await makeExecutable(wsl.distribution, directory).catch(async (fault: unknown) => {
+      await rm(landed, { recursive: true, force: true });
+      throw fault;
+    });
   }
 
   // Read again, because a clone can take minutes, and a row another command
@@ -380,7 +377,7 @@ export async function installPlugin(
       : { release: { repository: release.repository, version: release.version } }),
   };
   writeRegistry(config.home, [...now, row]);
-  return row;
+  return { row, fetched: release !== undefined ? 'release' : isGitUrl(from) ? 'clone' : 'copy' };
 }
 
 /**
@@ -397,12 +394,15 @@ async function newestPluginRelease(source: string): Promise<PluginRelease | unde
 /**
  * What an update did: the commits, or the Release Versions, it moved between,
  * whether the Plugin ships a Plugin Server after it, so a terminal with no
- * Host to ask can say what the new code changes, and what in the Shelf the
- * caller hands to `finishUpdate` once the Plugin Server is restarted.
+ * Host to ask can say what the new code changes, what in the Shelf the
+ * caller hands to `finishUpdate` once the Plugin Server is restarted, and
+ * what it could not tidy once it was done, each a sentence that says what to
+ * do.
  */
 export type Updated = Moved & {
   readonly shipsPluginServer: boolean;
   readonly leftBehind: readonly string[];
+  readonly warnings: readonly string[];
 };
 
 /** What `updatePlugin` found: what it moved, if anything, and a newer MAJOR it left alone. */
@@ -424,8 +424,9 @@ const PLUGIN_SERVER_FILES = ['mcp', 'mcp.ts', 'mcp.js', 'mcp.exe', 'mcp.cmd'];
  * nothing to move. A Plugin installed from a Plugin Release takes the
  * newest Plugin Release in its MAJOR, and its Registry row then names it
  * (ADR-0033), unless `major` lets it take a newer MAJOR, and when a newer
- * MAJOR is left alone, the outcome says it is ready. Any other Plugin is a git clone moved forward to its upstream,
- * or a copy, which is refused (ADR-0030). The name is checked as `restart`
+ * MAJOR is left alone, the outcome says it is ready. Any other Plugin is a
+ * git clone moved forward to its upstream, or a copy, which is refused
+ * (ADR-0030). The name is checked as `restart`
  * checks it. `target` picks a Plugin Release's archive, as it does for
  * install. Restarting the Plugin Server is the caller's, because only a
  * terminal reaches the Host, and so is `finishUpdate` after it.
@@ -456,7 +457,10 @@ export async function updatePlugin(
         'leave --major out to update it.',
     );
   }
-  let moved: Moved & { readonly leftBehind: readonly string[] };
+  let moved: Moved & {
+    readonly leftBehind: readonly string[];
+    readonly warnings: readonly string[];
+  };
   let ready: string | undefined;
   if (plugin.release === undefined) {
     // A wsl Place's clone is moved by the distribution's own git, in the path
@@ -467,19 +471,12 @@ export async function updatePlugin(
         : gitHere(plugin.files);
     const forward = await moveForward(git, name, plugin.directory);
     if (forward === undefined) return {};
-    moved = { ...forward, leftBehind: [] };
+    moved = { ...forward, leftBehind: [], warnings: [] };
   } else {
     const found = await updateRelease(plugin, plugin.release, target, major);
     const taken = found.moved;
     if (taken === undefined) return { ready: found.ready };
     ready = found.ready;
-    // The files written from Windows lost the executable bit on their way in.
-    if (
-      plugin.runner.kind === 'wsl' &&
-      statSync(join(plugin.files, 'mcp'), { throwIfNoEntry: false })?.isFile()
-    ) {
-      await makeExecutable(plugin.runner.distribution, plugin.directory);
-    }
     // Read again, so a row another command wrote in the meantime is kept.
     writeRegistry(
       home,
@@ -493,21 +490,39 @@ export async function updatePlugin(
     (file) => statSync(join(plugin.files, file), { throwIfNoEntry: false })?.isFile() === true,
   );
   return {
-    updated: { from: moved.from, to: moved.to, shipsPluginServer, leftBehind: moved.leftBehind },
+    updated: {
+      from: moved.from,
+      to: moved.to,
+      shipsPluginServer,
+      leftBehind: moved.leftBehind,
+      warnings: moved.warnings,
+    },
     ready,
   };
 }
 
 /**
  * Remove what an update left in the Shelf: the old Release Files, and the
- * directory the new ones were unpacked in. It is called once the Plugin
- * Server is restarted, because on Windows a running `mcp.exe` among the old
- * Release Files can be moved but not removed.
+ * directory the new ones were unpacked in, and give back a warning for each
+ * one it could not remove. It is called once the Plugin Server is restarted,
+ * because on Windows a running `mcp.exe` among the old Release Files can be
+ * moved but not removed. The update is done by then, so a directory that
+ * stays is a warning, not a failure, and the next update removes it.
  */
-export async function finishUpdate(updated: Updated): Promise<void> {
+export async function finishUpdate(name: string, updated: Updated): Promise<string[]> {
+  const warnings: string[] = [];
   for (const directory of updated.leftBehind) {
-    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(
+      (fault: unknown) => {
+        const why = fault instanceof Error ? fault.message : String(fault);
+        warnings.push(
+          `${directory} could not be removed (${why}): remove it once ${name} is stopped, ` +
+            'or the next update removes it.',
+        );
+      },
+    );
   }
+  return warnings;
 }
 
 /**
@@ -535,7 +550,10 @@ export async function updatesBy(home: string): Promise<Map<string, string>> {
           plugin.runner.kind === 'wsl'
             ? gitInside(plugin.runner.distribution, plugin.directory)
             : gitHere(plugin.files);
-        how.set(plugin.name, (await isOwnClone(git)) ? 'clone' : 'copy');
+        how.set(
+          plugin.name,
+          (await cloneKind(git, plugin.directory)) === 'clone' ? 'clone' : 'copy',
+        );
       } catch {
         how.set(plugin.name, 'unknown');
       }

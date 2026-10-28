@@ -59,14 +59,21 @@ export function gitHere(directory: string): GitRunner {
 }
 
 /**
- * Whether the directory this runner works in is the top of a git work tree of
- * its own, the one thing `update` needs to call a Plugin a clone. Anything
- * else, git's "not a git repository" included, is a copy.
+ * What a Plugin's directory is to git, as `update` reads it: the top of a
+ * git work tree of its own, a `clone`; no git work tree at all, `none`; or a
+ * directory inside a larger work tree that is not its top, `inside`, which
+ * `update` will not move. A git that fails in any other way is a thrown
+ * sentence. `directory` is the Plugin's directory, for that sentence.
  */
-export async function isOwnClone(git: GitRunner): Promise<boolean> {
+export async function cloneKind(
+  git: GitRunner,
+  directory: string,
+): Promise<'clone' | 'none' | 'inside'> {
   const top = await git([...RUNS_NOTHING, 'rev-parse', '--is-inside-work-tree', '--show-prefix']);
+  if (top.code !== 0 && !/not a git repository/.test(top.stderr)) throw failed(top, directory);
   const [inside, prefix = ''] = top.stdout.split(/\r?\n/);
-  return top.code === 0 && inside === 'true' && prefix === '';
+  if (top.code !== 0 || inside !== 'true') return 'none';
+  return prefix === '' ? 'clone' : 'inside';
 }
 
 /**
@@ -82,10 +89,8 @@ export async function moveForward(
 ): Promise<Moved | undefined> {
   const run = (...argv: string[]): Promise<GitAnswer> => git([...RUNS_NOTHING, ...argv]);
 
-  const top = await run('rev-parse', '--is-inside-work-tree', '--show-prefix');
-  if (top.code !== 0 && !/not a git repository/.test(top.stderr)) throw failed(top, directory);
-  const [inside, prefix = ''] = top.stdout.split(/\r?\n/);
-  if (top.code !== 0 || inside !== 'true') {
+  const kind = await cloneKind(git, directory);
+  if (kind === 'none') {
     throw refuse(
       'invalid',
       `${name} at ${directory} is not a git clone of its own, so update cannot move it: ` +
@@ -93,7 +98,7 @@ export async function moveForward(
         'and install it again.',
     );
   }
-  if (prefix !== '') {
+  if (kind === 'inside') {
     throw refuse(
       'invalid',
       `${directory} is inside a larger git repository and is not its top, ` +

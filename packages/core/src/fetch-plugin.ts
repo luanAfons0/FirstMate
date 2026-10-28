@@ -2,9 +2,9 @@
  * Fetching a Plugin: put its files in the Shelf, and say where they landed.
  *
  * It runs nothing the Plugin ships. A directory is copied, a git URL is
- * cloned, and a Plugin Release is unpacked, and that is the whole of it; the Plugin's own executable runs later,
- * when the Host starts it. Fetching a Plugin and running a Plugin stay two
- * separate decisions. ADR-0021 says that installing a Plugin runs nothing it
+ * cloned, and a Plugin Release is unpacked, and that is the whole of it; the
+ * Plugin's own executable runs later, when the Host starts it. Fetching a
+ * Plugin and running a Plugin stay two separate decisions. ADR-0021 says that installing a Plugin runs nothing it
  * ships, and git clones with the settings `git.ts` keeps, which turn off
  * hooks, fsmonitor and the `ext::` transport.
  *
@@ -28,11 +28,13 @@
 import { spawn } from 'node:child_process';
 import { lstatSync } from 'node:fs';
 import { cp, realpath, rename, rm } from 'node:fs/promises';
-import { isAbsolute, join, relative } from 'node:path';
+import { basename, isAbsolute, join, posix, relative } from 'node:path';
 import { askingNothing, RUNS_NOTHING } from './git.ts';
+import { downloadPluginRelease, type ArchiveTarget, type PluginRelease } from './plugin-release.ts';
 import { refuse } from './refusal.ts';
-import { unpackRelease } from './release-files.ts';
-import type { TarEntry } from './tar.ts';
+import { unpackRelease, type Unpacked } from './release-files.ts';
+import { readTar } from './tar.ts';
+import { makeExecutable, targetIn } from './wsl.ts';
 
 /**
  * Where git's words go while it clones: straight to this process's own
@@ -72,19 +74,68 @@ export async function fetchPlugin(
 }
 
 /**
- * Put a Plugin Release into the Shelf under this Plugin Name, and give back
- * the directory it landed in, as `fetchPlugin` does. The entries are asked
- * for only once the name is known to be free in the Shelf, so a name in the
- * way costs no download. The Release Files land first, then the record of
- * them, which lists files and links and no directories.
+ * Where a Plugin Release is staged: the directory, as this machine writes
+ * it, and for a `wsl` Place the distribution and the same directory as the
+ * distribution names it.
  */
-export async function unpackPluginRelease(
-  entries: () => Promise<readonly TarEntry[]>,
+export type Staging = {
+  readonly path: string;
+  readonly wsl?: { readonly distribution: string; readonly path: string };
+};
+
+/**
+ * Download, check and unpack a Plugin Release into a staging directory, and
+ * give back what it holds. Install and update both stage this way, so a
+ * Plugin updated to a Plugin Release holds what one installed from it holds.
+ * The archive is the one for `target`, or for a `wsl` Place the one for the
+ * distribution's own arch. A staging directory left by a fetch that failed
+ * holds nothing but a copy of a Plugin Release, so it is taken away first,
+ * and a stage that fails leaves none.
+ */
+export async function stageRelease(
+  release: PluginRelease,
+  staging: Staging,
+  target: ArchiveTarget,
+): Promise<Unpacked> {
+  const { path, wsl } = staging;
+  await rm(path, { recursive: true, force: true });
+  try {
+    const where = wsl === undefined ? target : await targetIn(wsl.distribution);
+    const entries = readTar(await downloadPluginRelease(release, where), release.repository);
+    const unpacked = await unpackRelease(entries, path);
+    // A file written from Windows into a distribution carries no executable
+    // bit. It gets it back here, before anything moves into place, so a
+    // chmod that fails changes nothing.
+    if (wsl !== undefined) {
+      await makeExecutable(wsl.distribution, wsl.path, unpacked.executable);
+    }
+    return unpacked;
+  } catch (fault) {
+    await rm(path, { recursive: true, force: true });
+    throw fault;
+  }
+}
+
+/**
+ * Put a Plugin Release into the Shelf under this Plugin Name, and give back
+ * the directory it landed in, as `fetchPlugin` does. Nothing is downloaded
+ * until the name is known to be free in the Shelf, so a name in the way costs
+ * no download. `inside` is the Shelf as a `wsl` Place's distribution names
+ * it.
+ */
+export async function fetchPluginRelease(
+  release: PluginRelease,
   shelf: string,
   name: string,
+  target: ArchiveTarget,
+  inside?: { readonly distribution: string; readonly shelf: string },
 ): Promise<string> {
   return land(shelf, name, async (staging) => {
-    await unpackRelease(await entries(), staging);
+    const wsl =
+      inside === undefined
+        ? undefined
+        : { distribution: inside.distribution, path: posix.join(inside.shelf, basename(staging)) };
+    await stageRelease(release, { path: staging, ...(wsl === undefined ? {} : { wsl }) }, target);
   });
 }
 
