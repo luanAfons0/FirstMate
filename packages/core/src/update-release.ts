@@ -10,8 +10,12 @@
  * 3. `planMoves` writes down, as data, every rename the update is made of:
  *    each old Release File, and the old record, into `.<name>.previous`, then
  *    each new Release File into place, then the new record last.
- * 4. `applyMoves` does the renames in that order, and the directories a dropped
- *    Release File leaves empty go.
+ * 4. `checkReleaseFiles` and `checkNothingInTheWay` refuse, before any change,
+ *    an old Release File that changed or is gone, and the Plugin's data where a
+ *    new Release File goes.
+ * 5. `applyOrRollBack` does the renames in that order, and when one fails it
+ *    undoes those done, newest first. The directories a dropped Release File
+ *    leaves empty go then.
  *
  * Every file the old record does not name is the Plugin's data, and no step
  * touches it. Writing the Registry row, restarting the Plugin Server and
@@ -20,11 +24,12 @@
  * running `mcp.exe` moved into `.<name>.previous` can be removed only once
  * the Host has stopped it.
  *
- * The moves are a list so that what is checked before any change and what is
- * undone after a failed one read the same list: a check reads where each move
- * goes, and a roll-back does the moves done so far backwards.
+ * The moves are a list so that a roll-back reads the same list the update
+ * did: it does the moves done so far backwards. The checks read the two
+ * records, as a Release File that is gone has no move.
  */
-import { lstatSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readlinkSync, type Stats } from 'node:fs';
 import { mkdir, rename, rm, rmdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { HeldPlugin } from './plugin-places.ts';
@@ -109,7 +114,9 @@ export async function updateRelease(
   const unpacked = await stage(next, target, pending);
   try {
     const moves = planMoves(old, unpacked.record, { plugin: plugin.files, pending, previous });
-    await applyMoves(moves);
+    checkReleaseFiles(plugin.files, old, release.version);
+    checkNothingInTheWay(plugin.files, old, unpacked.record, next.version);
+    await applyOrRollBack(moves, previous, plugin.name, release.version);
     await removeEmptied(plugin.files, old, unpacked);
   } catch (fault) {
     await rm(pending, { recursive: true, force: true });
@@ -203,11 +210,134 @@ function planMoves(
   return [...out, ...into];
 }
 
-/** Do the renames in order, each into a directory made for it if it is not there. */
-async function applyMoves(moves: readonly Move[]): Promise<void> {
+/**
+ * Refuse, before any change, an old Release File that is not as FirstMate put
+ * it there: a file with another SHA-256, a symbolic link to another target,
+ * or one that is gone. The old Release Files are what a failed update goes
+ * back to, and a changed one is the operator's work, which the update would
+ * move away and delete.
+ */
+function checkReleaseFiles(plugin: string, old: ReleaseRecord, version: string): void {
+  const putBack = `put back the file of Plugin Release ${version}, then run update again.`;
+  const kept = (path: string, as: (found: Stats) => boolean): void => {
+    const where = join(plugin, path);
+    const found = lstatSync(where, { throwIfNoEntry: false });
+    if (found === undefined) {
+      throw refuse(
+        'invalid',
+        `${where} is gone, but it is a Release File, and update needs it to go back to ` +
+          `when a move fails: ${putBack}`,
+      );
+    }
+    if (!as(found)) {
+      throw refuse(
+        'invalid',
+        `${where} has changed since FirstMate put it there, and update would delete the change: ` +
+          `keep a copy of the change outside the Plugin's directory, ${putBack}`,
+      );
+    }
+  };
+  for (const [path, sha256] of Object.entries(old.files)) {
+    kept(path, (found) => found.isFile() && hashOf(join(plugin, path)) === sha256);
+  }
+  for (const [path, target] of Object.entries(old.links ?? {})) {
+    kept(path, (found) => found.isSymbolicLink() && readlinkSync(join(plugin, path)) === target);
+  }
+}
+
+/** A file's SHA-256, as the record of Release Files writes it. */
+function hashOf(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+/**
+ * Refuse, before any change, the Plugin's data where a new Release File goes:
+ * at its path, or at a directory above it, as a file or a symbolic link. A
+ * path an old Release File holds is free, as that file moves out first.
+ */
+function checkNothingInTheWay(
+  plugin: string,
+  old: ReleaseRecord,
+  now: ReleaseRecord,
+  version: string,
+): void {
+  const leaving = new Set(releaseFilesOf(old));
+  for (const path of releaseFilesOf(now)) {
+    const parts = path.split('/');
+    for (let depth = 1; depth <= parts.length; depth += 1) {
+      const at = parts.slice(0, depth).join('/');
+      // What an old Release File holds is free once it moves out, and so is
+      // all below it.
+      if (leaving.has(at)) break;
+      const found = lstatSync(join(plugin, at), { throwIfNoEntry: false });
+      if (found === undefined) break;
+      if (depth < parts.length && found.isDirectory()) continue;
+      throw refuse(
+        'invalid',
+        `${join(plugin, at)} is the Plugin's data, and Plugin Release ${version} ships ` +
+          `${path} there: move it out of the Plugin's directory, then run update again.`,
+      );
+    }
+  }
+}
+
+/**
+ * Do the moves, and when one fails, undo the ones done, newest first, so the
+ * old Release Files are back where they were, the new ones are back in
+ * `.<name>.pending`, and the old record still names them. Directories the
+ * moves made go too, then `.<name>.previous`, which holds nothing then. When
+ * the undo fails as well, `.<name>.previous` is kept, as it holds the only
+ * copy of what it could not put back.
+ */
+async function applyOrRollBack(
+  moves: readonly Move[],
+  previous: string,
+  name: string,
+  version: string,
+): Promise<void> {
+  const done: Move[] = [];
+  const made: string[] = [];
+  try {
+    await applyMoves(moves, done, made);
+  } catch (fault) {
+    const failed = moves[done.length];
+    try {
+      for (const move of done.reverse()) await rename(move.to, move.from);
+      for (const directory of made.reverse()) await rm(directory, { recursive: true });
+      await rm(previous, { recursive: true, force: true });
+    } catch (undo) {
+      throw new Error(
+        `moving ${failed?.from} to ${failed?.to} failed, and so did putting the old ` +
+          `Release Files of ${name} back (${messageOf(undo)}): ${previous} holds the ones ` +
+          `still missing, so move them back into the Plugin's directory.`,
+        { cause: fault },
+      );
+    }
+    throw new Error(
+      `moving ${failed?.from} to ${failed?.to} failed (${messageOf(fault)}), so update put the ` +
+        `old Release Files of ${name} back, and ${name} is still on ${version}: ` +
+        'fix what stopped the move, then run update again.',
+      { cause: fault },
+    );
+  }
+}
+
+/** What a fault says, without the stack. */
+function messageOf(fault: unknown): string {
+  return fault instanceof Error ? fault.message : String(fault);
+}
+
+/**
+ * Do the renames in order, each into a directory made for it if it is not
+ * there. Each move done goes on `done`, and each directory made on `made`,
+ * so a roll-back knows what to undo.
+ */
+async function applyMoves(moves: readonly Move[], done: Move[], made: string[]): Promise<void> {
   for (const move of moves) {
-    await mkdir(dirname(move.to), { recursive: true });
+    const first = await mkdir(dirname(move.to), { recursive: true });
+    if (first !== undefined) made.push(first);
     await rename(move.from, move.to);
+    done.push(move);
   }
 }
 
