@@ -49,7 +49,7 @@ import {
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 import { cloneKind, gitHere, moveForward, type Moved } from './update-plugin.ts';
-import { updateRelease } from './update-release.ts';
+import { removeLeftBehind, updateRelease } from './update-release.ts';
 import { gitInside, homeIn, makeExecutable } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
@@ -512,15 +512,13 @@ export async function updatePlugin(
 export async function finishUpdate(name: string, updated: Updated): Promise<string[]> {
   const warnings: string[] = [];
   for (const directory of updated.leftBehind) {
-    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(
-      (fault: unknown) => {
-        const why = fault instanceof Error ? fault.message : String(fault);
-        warnings.push(
-          `${directory} could not be removed (${why}): remove it once ${name} is stopped, ` +
-            'or the next update removes it.',
-        );
-      },
-    );
+    await removeLeftBehind(directory).catch((fault: unknown) => {
+      const why = fault instanceof Error ? fault.message : String(fault);
+      warnings.push(
+        `${directory} could not be removed (${why}): remove it once ${name} is stopped, ` +
+          'or the next update removes it.',
+      );
+    });
   }
   return warnings;
 }

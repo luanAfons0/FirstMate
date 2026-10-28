@@ -36,7 +36,7 @@
  */
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync, readlinkSync, type Stats } from 'node:fs';
-import { mkdir, rename, rm, rmdir } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, rmdir } from 'node:fs/promises';
 import { basename, dirname, join, posix, relative } from 'node:path';
 import { stageRelease, type Staging } from './fetch-plugin.ts';
 import type { HeldPlugin } from './plugin-places.ts';
@@ -162,7 +162,7 @@ async function clearPrevious(plugin: HeldPlugin, previous: string): Promise<void
     );
   }
   try {
-    await rm(previous, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await removeLeftBehind(previous);
   } catch (fault) {
     throw refuse(
       'invalid',
@@ -448,6 +448,25 @@ function said(step: Step | undefined): string {
   if ('unmake' in step) return `removing the emptied directory ${step.unmake}`;
   if ('make' in step) return `making the directory ${step.make}`;
   return `moving ${step.from} to ${step.to}`;
+}
+
+/**
+ * Remove a directory an update left in the Shelf, with its record last. A
+ * removal that fails part way, such as on a running `mcp.exe` on Windows,
+ * keeps the record, so the next update can still tell that the update
+ * ended. Each removal is tried again for a while, as a Plugin Server that was
+ * just stopped can hold its file a moment longer.
+ */
+export async function removeLeftBehind(directory: string): Promise<void> {
+  const again = { recursive: true, force: true, maxRetries: 10, retryDelay: 100 } as const;
+  const entries = await readdir(directory).catch((fault: NodeJS.ErrnoException) => {
+    if (fault.code === 'ENOENT') return [];
+    throw fault;
+  });
+  for (const entry of entries) {
+    if (entry !== RELEASE_RECORD) await rm(join(directory, entry), again);
+  }
+  await rm(directory, again);
 }
 
 /** What a fault says, without the stack. */

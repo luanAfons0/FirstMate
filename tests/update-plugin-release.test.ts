@@ -270,10 +270,13 @@ test('a directory of old Release Files makes way for a new Release File at its p
 test('a Release File whose name changes only in case is not taken for data', async (t) => {
   const github = await serveGitHub(t);
   const { home, plugin } = await installed(t, github);
-  github.publish(
-    'someone/both',
-    await releaseOf(t, '1.3.0', { drop: ['private.txt'], write: { 'Private.txt': 'cased\n' } }),
-  );
+  // Dropped before it is written: on Windows and macOS, a write of
+  // `Private.txt` would write into `private.txt`.
+  const folder = join(await makeHome(t), 'both');
+  await cp(fixture('both'), folder, { recursive: true });
+  await rm(join(folder, 'private.txt'));
+  await writeFile(join(folder, 'Private.txt'), 'cased\n');
+  github.publish('someone/both', await pluginRelease(t, folder, 'both', '1.3.0'));
 
   const updated = await firstmate(home, ['update', 'both'], github.env);
 
