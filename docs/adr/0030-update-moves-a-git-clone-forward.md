@@ -46,3 +46,7 @@ A Plugin's author ships a fix by pushing a commit, and an operator takes it with
 A Plugin should keep its data in files git ignores; the Plugin guide says so.
 
 No `npm install` or other step runs after an update. A Plugin brings what it needs (ADR-0028).
+
+## Amended: a Plugin Release is updated too (ADR-0033)
+
+ADR-0033 amends this ADR: a Plugin installed from a Plugin Release is updated to the newest Plugin Release with the same MAJOR. Its Release Files tell its code from its data, so `update` replaces them and keeps everything else. A clone is still moved forward as above, and a copy is still refused.
