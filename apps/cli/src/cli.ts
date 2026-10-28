@@ -47,6 +47,7 @@ import {
   pluginOrder,
   removePlace,
   shelfOf,
+  finishUpdate,
   takePermission,
   updatePlugin,
   withoutInOrder,
@@ -157,9 +158,9 @@ const COMMANDS: readonly Command[] = [
   {
     name: 'update',
     group: 'Plugins',
-    short: 'move a Plugin that is a git clone forward',
+    short: 'move a Plugin to its newest Plugin Release, or its clone forward',
     takes: '<name>',
-    does: 'move a Plugin that is a git clone forward, and restart it.',
+    does: 'move a Plugin to its newest Plugin Release in its MAJOR, or its clone forward, and restart it.',
     run: (argv) => update(home(), argv),
   },
   {
@@ -411,14 +412,16 @@ first. With -f it keeps printing new lines until you stop it with Ctrl-C.`,
   },
   {
     about: ['update'],
-    text: `update fetches a Plugin that is a git clone and moves its branch forward to its
-upstream, with no merge, then restarts its Plugin Server through the running
-Host. It says nothing when there is nothing to move. The files git ignores,
-where a Plugin keeps its data, stay as they are, and nothing the Plugin ships
-runs. It refuses, and changes nothing, a Plugin that is no git clone of its
-own, has local changes to tracked files, follows no upstream, or has diverged
-from it. With no Host running, a Plugin Server's new code starts with the
-Host.`,
+    text: `update takes the newest Plugin Release in the same MAJOR for a Plugin installed
+from a Plugin Release, and puts its Release Files where the old ones were.
+Every other file in the Plugin's directory is its data, and stays as it is. A
+Plugin that is a git clone is fetched, and its branch moves forward to its
+upstream, with no merge; the files git ignores, where it keeps its data, stay
+as they are. Then update restarts the Plugin Server through the running Host.
+It says nothing when there is nothing to move, and nothing the Plugin ships
+runs. It refuses, and changes nothing, a copied Plugin, and a clone that has
+local changes to tracked files, follows no upstream, or has diverged from it.
+With no Host running, a Plugin Server's new code starts with the Host.`,
   },
   {
     about: ['restart'],
@@ -1143,12 +1146,26 @@ async function update(home: string, argv: readonly string[]): Promise<number> {
   );
   if (moved === undefined) return 0;
   console.log(`firstmate: updated ${name} from ${moved.from} to ${moved.to}`);
+  try {
+    return await restartUpdated(home, name, moved.shipsPluginServer);
+  } finally {
+    // After the restart: on Windows the old Release Files can hold the
+    // running mcp.exe, and it can be removed only once the Host stopped it.
+    await finishUpdate(moved);
+  }
+}
 
+/** Restart a Plugin that was just updated, and say so, in the words of restart. */
+async function restartUpdated(
+  home: string,
+  name: string,
+  shipsPluginServer: boolean,
+): Promise<number> {
   // The Host serves a Plugin Page's bytes from disk, so they changed already.
   const pageChanged = ' Its Plugin Page has changed.';
   const restarted = await restartPlugin(home, name);
   if (restarted === undefined) {
-    if (!moved.shipsPluginServer) {
+    if (!shipsPluginServer) {
       return sayRestarted(name, { state: 'no-plugin-server' }, pageChanged);
     }
     console.log(`firstmate: no Host runs, so ${name}'s new code starts with the Host.`);

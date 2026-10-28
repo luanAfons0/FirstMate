@@ -9,6 +9,7 @@
  * the sentence that says why it did none of it. Nothing here prints.
  */
 import { mkdirSync, statSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { basename, isAbsolute, join, posix } from 'node:path';
 import type { MateWords } from './agents.ts';
 import type { Config } from './config.ts';
@@ -48,6 +49,7 @@ import {
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 import { gitHere, moveForward, type Moved } from './update-plugin.ts';
+import { updateRelease } from './update-release.ts';
 import { gitInside, homeIn, makeExecutable } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
@@ -372,11 +374,15 @@ async function newestPluginRelease(source: string): Promise<PluginRelease | unde
 }
 
 /**
- * What an update did: the commits it moved between, and whether the Plugin
- * ships a Plugin Server after it, so a terminal with no Host to ask can say
- * what the new code changes.
+ * What an update did: the commits, or the Release Versions, it moved between,
+ * whether the Plugin ships a Plugin Server after it, so a terminal with no
+ * Host to ask can say what the new code changes, and what in the Shelf the
+ * caller hands to `finishUpdate` once the Plugin Server is restarted.
  */
-export type Updated = Moved & { readonly shipsPluginServer: boolean };
+export type Updated = Moved & {
+  readonly shipsPluginServer: boolean;
+  readonly leftBehind: readonly string[];
+};
 
 /**
  * Every file a Plugin can ship its Plugin Server as, on any system (ADR-0019,
@@ -385,10 +391,13 @@ export type Updated = Moved & { readonly shipsPluginServer: boolean };
 const PLUGIN_SERVER_FILES = ['mcp', 'mcp.ts', 'mcp.js', 'mcp.exe', 'mcp.cmd'];
 
 /**
- * Move a Plugin that is a git clone forward to its upstream, and say from
- * which commit to which, or give back nothing when there was nothing to move
- * (ADR-0030). The name is checked as `restart` checks it. Restarting the
- * Plugin Server is the caller's, because only a terminal reaches the Host.
+ * Update a Plugin, and say from what to what, or give back nothing when there
+ * was nothing to move. A Plugin installed from a Plugin Release takes the
+ * newest Plugin Release in its MAJOR, and its Registry row then names it
+ * (ADR-0033). Any other Plugin is a git clone moved forward to its upstream,
+ * or a copy, which is refused (ADR-0030). The name is checked as `restart`
+ * checks it. Restarting the Plugin Server is the caller's, because only a
+ * terminal reaches the Host, and so is `finishUpdate` after it.
  */
 export async function updatePlugin(home: string, name: string): Promise<Updated | undefined> {
   if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
@@ -404,18 +413,52 @@ export async function updatePlugin(home: string, name: string): Promise<Updated 
         `or take it out with firstmate remove ${name}.`,
     );
   }
-  // A wsl Place's clone is moved by the distribution's own git, in the path
-  // the distribution knows it by, as its Plugin Server runs there.
-  const git =
-    plugin.runner.kind === 'wsl'
-      ? gitInside(plugin.runner.distribution, plugin.directory)
-      : gitHere(plugin.files);
-  const moved = await moveForward(git, name, plugin.directory);
-  if (moved === undefined) return undefined;
+  let moved: Moved & { readonly leftBehind: readonly string[] };
+  if (plugin.release === undefined) {
+    // A wsl Place's clone is moved by the distribution's own git, in the path
+    // the distribution knows it by, as its Plugin Server runs there.
+    const git =
+      plugin.runner.kind === 'wsl'
+        ? gitInside(plugin.runner.distribution, plugin.directory)
+        : gitHere(plugin.files);
+    const forward = await moveForward(git, name, plugin.directory);
+    if (forward === undefined) return undefined;
+    moved = { ...forward, leftBehind: [] };
+  } else {
+    const taken = await updateRelease(plugin, plugin.release);
+    if (taken === undefined) return undefined;
+    // The files written from Windows lost the executable bit on their way in.
+    if (
+      plugin.runner.kind === 'wsl' &&
+      statSync(join(plugin.files, 'mcp'), { throwIfNoEntry: false })?.isFile()
+    ) {
+      await makeExecutable(plugin.runner.distribution, plugin.directory);
+    }
+    // Read again, so a row another command wrote in the meantime is kept.
+    writeRegistry(
+      home,
+      readRegistry(home).map((row) =>
+        row.name === name ? { ...row, release: taken.release } : row,
+      ),
+    );
+    moved = taken;
+  }
   const shipsPluginServer = PLUGIN_SERVER_FILES.some(
     (file) => statSync(join(plugin.files, file), { throwIfNoEntry: false })?.isFile() === true,
   );
-  return { ...moved, shipsPluginServer };
+  return { from: moved.from, to: moved.to, shipsPluginServer, leftBehind: moved.leftBehind };
+}
+
+/**
+ * Remove what an update left in the Shelf: the old Release Files, and the
+ * directory the new ones were unpacked in. It is called once the Plugin
+ * Server is restarted, because on Windows a running `mcp.exe` among the old
+ * Release Files can be moved but not removed.
+ */
+export async function finishUpdate(updated: Updated): Promise<void> {
+  for (const directory of updated.leftBehind) {
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
 }
 
 /**
