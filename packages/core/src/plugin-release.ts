@@ -47,7 +47,8 @@ export function githubRepository(url: string): string | undefined {
 /**
  * The Plugin Releases of a repository, newest first, or nothing when GitHub
  * does not know the repository. A repository GitHub knows with no Plugin
- * Release gives an empty list. GitHub lists the newest hundred Releases on
+ * Release gives an empty list, and so does one whose Releases hold no
+ * `.tar.gz` at all. GitHub lists the newest hundred Releases on
  * one page, and that is enough to find the newest Plugin Release.
  */
 export async function pluginReleases(repository: string): Promise<PluginRelease[] | undefined> {
@@ -92,12 +93,13 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
     const tag = String(release.tag_name);
     const version = tag.slice(1);
     if (!tag.startsWith('v') || !RELEASE_VERSION.test(version)) continue;
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    releases.push({
-      repository,
-      version,
-      assets: assets.map((asset) => String(asset?.name)),
-    });
+    const assets = (Array.isArray(release.assets) ? release.assets : []).map((asset) =>
+      String(asset?.name),
+    );
+    // A Release with no archive at all is a repository's notes, not an
+    // archive of the Plugin, so a repository with only those is cloned.
+    if (!assets.some((name) => name.endsWith('.tar.gz'))) continue;
+    releases.push({ repository, version, assets });
   }
   return releases.sort((one, other) => compareVersions(other.version, one.version));
 }

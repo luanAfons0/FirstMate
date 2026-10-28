@@ -209,8 +209,9 @@ Registry untouched and the Shelf clean.
 ### Install a Plugin Release
 
 A Plugin Release is a GitHub Release of the Plugin's repository, tagged
-`vMAJOR.MINOR.PATCH`, that is neither a draft nor a prerelease. Its Release
-Version is the tag without the `v`. `install` asks GitHub for the repository's
+`vMAJOR.MINOR.PATCH`, that is neither a draft nor a prerelease, and that holds
+at least one `.tar.gz`. Its Release Version is the tag without the `v`. A
+Release with no `.tar.gz` at all is not a Plugin Release. `install` asks GitHub for the repository's
 Plugin Releases, takes the newest, and downloads its archive:
 `<repo>-<version>-<platform>-<arch>.tar.gz` for this machine when the Plugin
 Release holds one, else `<repo>-<version>.tar.gz`, which is for every platform.
