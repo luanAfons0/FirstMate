@@ -1,0 +1,96 @@
+# Publish a Plugin Release from a tag of a Plugin's repository (ADR-0033).
+#
+# This workflow is not run here: a Plugin's own workflow calls it on a push of
+# a tag `vMAJOR.MINOR.PATCH`, and the Plugin guide shows that file. It takes
+# two optional inputs, `test` and `build`, each a command for bash.
+#
+# Its work is one script, scripts/plugin-release.ts of this repository: it
+# refuses a tag that is not `vMAJOR.MINOR.PATCH` before anything runs, runs
+# `test`, runs `build`, and makes each archive and its `.sha256` with the
+# archive script the tests make their Plugin Releases with. So the suite runs
+# the same script, and what this workflow publishes is what `install` is
+# tested to read. This file adds only the checkouts and the upload.
+#
+# A called workflow cannot ask which ref of its own repository it was called
+# at, so the scripts are checked out from `main`. Call this workflow at
+# `@main` too, and the two never differ.
+name: Plugin Release
+
+on:
+  workflow_call:
+    inputs:
+      test:
+        description: A command for bash that tests the Plugin. A failure stops the release.
+        type: string
+        default: ''
+      build:
+        description: >-
+          A command for bash that writes the files to ship into release/, or into one
+          release/<platform>-<arch>/ folder for each platform. With none, the tag is
+          archived with git archive.
+        type: string
+        default: ''
+
+jobs:
+  release:
+    name: Publish the Plugin Release
+    runs-on: ubuntu-latest
+    # The caller's workflow must grant this: a called workflow can only
+    # narrow the permissions it is given.
+    permissions:
+      contents: write
+
+    steps:
+      # The Plugin at the tag. The token is not kept in the checkout, so the
+      # author's commands never hold it: only the upload has it.
+      - uses: actions/checkout@v7
+        with:
+          path: plugin
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: luanAfons0/FirstMate
+          ref: main
+          path: firstmate
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      # Node 24 runs the scripts' TypeScript as it is, and the author's
+      # commands may use it.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # The commands come in through the environment, never pasted into the
+      # script, so no quote in them can change what bash reads.
+      - name: Check the tag, test, build, and make the archives
+        working-directory: plugin
+        env:
+          TAG: ${{ github.ref_name }}
+          NAME: ${{ github.event.repository.name }}
+          TEST: ${{ inputs.test }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          node ../firstmate/scripts/plugin-release.ts "$TAG" "$NAME" "$RUNNER_TEMP/plugin-release" \
+            --test "$TEST" --build "$BUILD"
+          ls -l "$RUNNER_TEMP/plugin-release"
+
+      # A Release made by hand for this tag before the tag was pushed keeps its
+      # notes: the files are added to it, and it is published. A Plugin Release
+      # is never a draft or a prerelease, or `install` would not see it.
+      - name: Publish the Release
+        working-directory: ${{ runner.temp }}/plugin-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          NAME: ${{ github.event.repository.name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" ./* --clobber
+            gh release edit "$TAG" --draft=false --prerelease=false
+          else
+            gh release create "$TAG" ./* --verify-tag --generate-notes \
+              --title "$NAME ${TAG#v}"
+          fi
