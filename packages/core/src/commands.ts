@@ -47,7 +47,7 @@ import {
 } from './settings.ts';
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
-import { gitHere, moveForward, type Moved } from './update-plugin.ts';
+import { gitHere, isOwnClone, moveForward, type Moved } from './update-plugin.ts';
 import { gitInside, homeIn, makeExecutable } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
@@ -416,6 +416,40 @@ export async function updatePlugin(home: string, name: string): Promise<Updated 
     (file) => statSync(join(plugin.files, file), { throwIfNoEntry: false })?.isFile() === true,
   );
   return { ...moved, shipsPluginServer };
+}
+
+/**
+ * How `update` will treat each Plugin, by name: its Release Version, `clone`
+ * when its directory is the top of a git work tree of its own, else `copy`
+ * (ADR-0033). It reads the Registry row and the directory, never the Plugin's
+ * own files, and it writes nothing: a Registry from before Plugin Releases is
+ * read the same way. A directory that cannot be asked, because its Place is
+ * gone or the distribution has no git, is `unknown`, so `list` still lists.
+ */
+export async function updatesBy(home: string): Promise<Map<string, string>> {
+  const how = new Map<string, string>();
+  await Promise.all(
+    readPlugins(home).map(async (plugin) => {
+      if (plugin.release !== undefined) {
+        how.set(plugin.name, plugin.release.version);
+        return;
+      }
+      if (plugin.runner.kind === 'nowhere') {
+        how.set(plugin.name, 'unknown');
+        return;
+      }
+      try {
+        const git =
+          plugin.runner.kind === 'wsl'
+            ? gitInside(plugin.runner.distribution, plugin.directory)
+            : gitHere(plugin.files);
+        how.set(plugin.name, (await isOwnClone(git)) ? 'clone' : 'copy');
+      } catch {
+        how.set(plugin.name, 'unknown');
+      }
+    }),
+  );
+  return how;
 }
 
 /**

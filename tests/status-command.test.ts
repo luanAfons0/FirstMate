@@ -57,9 +57,9 @@ test('status with a Host shows each Plugin and its state, in the Plugin Order', 
   assert.equal(
     said.stdout,
     `firstmate: the Host runs at http://127.0.0.1:${host.port}/\n` +
-      'quitter\tStopped\n' +
-      'both\tRunning\n' +
-      'page-only\tno Plugin Server\n',
+      'quitter\tStopped\tcopy\n' +
+      'both\tRunning\tcopy\n' +
+      'page-only\tno Plugin Server\tcopy\n',
   );
   assert.ok(!said.stdout.includes(host.token), 'the token is never printed');
 });
