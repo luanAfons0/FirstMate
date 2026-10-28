@@ -9,3 +9,7 @@ A one-field `firstmate.json`, and reusing MCP's own `mcpServers` JSON shape. The
 ## Amended: mcp.ts and mcp.js (ADR-0028)
 
 ADR-0028 amends this ADR: the convention names two more files, `mcp.ts` and `mcp.js`, which the Host runs with its own Node before it looks for `mcp`.
+
+## Amended: the record of Release Files (ADR-0033)
+
+ADR-0033 amends this ADR: FirstMate keeps one file of its own, `.firstmate-release.json`, in the directory of a Plugin installed from a Plugin Release. The Plugin's author never writes it, so a Plugin is still a convention and not a manifest.

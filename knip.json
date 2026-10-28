@@ -1,11 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "includeEntryExports": true,
+  // Windows ships icacls, and a test runs it to make a directory refuse writes.
+  "ignoreBinaries": ["icacls"],
   "workspaces": {
     ".": {
       // A fixture's mcp.ts is started by the Host, not imported (ADR-0028).
-      "entry": ["tests/**/*.test.ts", "tests/fixtures/*/mcp.ts"],
-      "project": ["tests/**/*.ts"]
+      // The release scripts are run by the release workflow and the tests, not imported.
+      "entry": ["tests/**/*.test.ts", "tests/fixtures/*/mcp.ts", "scripts/*.ts"],
+      "project": ["tests/**/*.ts", "scripts/**/*.ts"]
     },
     "apps/cli": {
       "project": ["src/**/*.ts"]

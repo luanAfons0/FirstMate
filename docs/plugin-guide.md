@@ -341,16 +341,20 @@ One Stopped Plugin leaves every other Plugin serving.
 None of this is enforced. All of it is what the first Plugin learned.
 
 - **Write a Node 24 Plugin with an `mcp.ts`.** It is the one form that runs
-  on every system the App runs on, with no build step and no Node of the
-  operator's own: the Host runs it with its own Node (ADR-0028). Other
+  on every system the App runs on, with no Node of the operator's own: the
+  Host runs it with its own Node (ADR-0028). From the repository it needs no
+  build step; a Plugin Release ships it as `mcp.js`, built when you publish. Other
   languages stay welcome. Ship `mcp`, with `mcp.exe` or `mcp.cmd` beside it
   for Windows, as above, and expect to do the work below by hand.
 - **Write relative paths and nothing else.** The Host rewrites nothing, so
   relative paths are the ones that survive. Anything absolute assumes an
   address you do not own.
-- **Vendor your assets.** There is no build step, no bundler and no
-  watcher, and there is not going to be one. Put the file in `web/` and
-  link to it.
+- **Vendor your assets.** The Host has no bundler and no watcher, and there
+  is not going to be one: it serves `web/` as it finds it. Put the file in
+  `web/` and link to it. If you build your Plugin, the build runs in your
+  repository when you publish a Plugin Release (see
+  [Publish a Plugin Release](#publish-a-plugin-release)), never on the
+  operator's machine, so what it writes to `release/web/` is served as it is.
 - **One tool-call address, not an endpoint per action.** Nexus began with a
   REST call per endpoint and replaced them all with `rpc` and an MCP
   request in the body. Your tools are already the list of things your
@@ -456,6 +460,98 @@ The running Host picks it up with no restart. After you fix a Stopped Plugin,
 
 Open the Index Page. If it says `Stopped`, the reason is in
 `firstmate logs`.
+
+## Publish a Plugin Release
+
+A Plugin Release is a numbered, published archive of your Plugin's files,
+made from one tag of its GitHub repository
+([ADR-0033](adr/0033-a-git-url-is-fetched-as-a-plugin-release.md)).
+`firstmate install <your git URL>` fetches the newest one, checks it against
+its `.sha256`, and lands its files in the Shelf. A repository with no Plugin
+Release is cloned instead, and `install` says so.
+
+FirstMate ships one workflow that makes a Plugin Release for you. Copy this
+file into your repository as `.github/workflows/release.yml`:
+
+```yaml
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    uses: luanAfons0/FirstMate/.github/workflows/plugin-release.yml@main
+    # The workflow creates the GitHub Release, so it needs this, and nothing more.
+    permissions:
+      contents: write
+    with:
+      test: node --test
+      build: node build.ts
+```
+
+Then push a tag: `git tag v1.2.0 && git push origin v1.2.0`.
+
+- **The tag is `vMAJOR.MINOR.PATCH`.** Its number is the Release Version:
+  `v1.2.0` is `1.2.0`. The workflow refuses any other tag, such as `v1.2` or
+  `v1.2.0-beta.1`, before anything runs. Raise MAJOR when a new Plugin
+  Release changes your data or your tools in a way an operator must choose:
+  `firstmate update` stays inside one MAJOR, and says when a new one is
+  ready; the operator takes it with `firstmate update <name> --major`.
+- **Two inputs, both optional.** Each is a command for bash. It runs in your
+  repository at the tag, on `ubuntu-latest`, with Node 24 and git. A command
+  installs what else it needs, such as `npm ci && npm test`.
+  - `test` runs first. When it fails, there is no Plugin Release.
+  - `build` writes the files to ship into `release/`. When it fails, or
+    writes no `release/`, there is no Plugin Release.
+- **With a build, `release/` is what ships, and nothing else.** Its files are
+  at the top of the archive: `release/mcp.js` lands as `mcp.js` in the Plugin
+  directory. Put `release/` in your `.gitignore`.
+- **With no build, the tag is what ships.** The workflow archives the tag
+  with `git archive`, so a Python or Ruby Plugin needs no build step. Keep
+  out what an operator does not run with `export-ignore` in
+  `.gitattributes`:
+
+  ```gitattributes
+  .gitattributes export-ignore
+  .github/ export-ignore
+  tests/ export-ignore
+  docs/ export-ignore
+  ```
+
+- **A native program gets one archive per platform.** Have the build write
+  one folder for each platform and arch, in Node's names
+  (`process.platform`, `process.arch`): `release/linux-x64/`,
+  `release/win32-x64/`, `release/darwin-arm64/`. Each folder is an archive of
+  its own, `<name>-<version>-<platform>-<arch>.tar.gz`, where `<name>` is the
+  repository's name. `install` takes the archive for its own platform and
+  arch first, then `<name>-<version>.tar.gz`, the archive for every
+  platform. A `wsl` Place takes `linux` and the distribution's arch.
+  `release/` holds platform folders or none: the workflow refuses a mix.
+- **Every archive has its `.sha256` beside it.** The workflow writes it.
+  `install` refuses an archive with no `.sha256`, or one whose hash does not
+  match. If you publish a Plugin Release by hand, write it in the form
+  `sha256sum` writes.
+- **A TypeScript Plugin ships `mcp.js`, and never `mcp.ts`.** The Host takes
+  `mcp.ts` before `mcp.js`
+  ([ADR-0028](adr/0028-a-plugin-server-can-be-mcp-ts-run-by-the-hosts-node.md)),
+  so an archive with both runs your source. Let the build bundle `mcp.ts`
+  into one `release/mcp.js`, with a bundler such as `tsdown`, not minified,
+  so that a stack trace stays readable. Copy `web/` beside it, and an `mcp`
+  that runs `mcp.js` if your Plugin may live in a `wsl` Place. Your
+  repository still runs from source; only the Plugin Release is built.
+- **A Python or Ruby Plugin puts its dependencies in the archive.** Install
+  them into `release/` in the build, for example with `pip install --target`.
+  Nothing runs at `install`, so the operator runs no `pip` and no `bundle`.
+- **Keep your data out of the Release Files.** The Release Files are the
+  files a Plugin Release put in the Plugin directory, and every other file
+  there is your Plugin's own data. Write your data to a file that no Plugin
+  Release ships. `firstmate update` replaces the Release Files and keeps the
+  rest. It refuses, and changes nothing, when you edited a Release File, when
+  a Release File is gone, or when your data sits at a path that the new
+  Plugin Release ships. If a move fails half way, it puts the old files back.
 
 ## Three worked examples
 

@@ -195,14 +195,66 @@ firstmate order [<name> <position>]
 `add` and `install` take `--place <name>` to put the Plugin in a Place other
 than the default one. See [Places](#places).
 
-`install` is `add` for a Plugin you do not have yet. A directory is copied and
-a git URL is cloned; either way the files land in the Shelf and `install`
-registers what it put there, under the last segment of the source, without its
-`.git` suffix, or under the name you give. It runs nothing the Plugin ships —
-the Plugin's own executable runs later, when the Host starts it. It refuses a
-name already in the Registry and a directory already in the Shelf, and a fetch
-that fails leaves the Registry untouched and the Shelf clean. Cloning needs the
-`git` binary; nothing else does.
+`install` is `add` for a Plugin you do not have yet. A directory is copied; a
+git URL, and an Official Plugin, is fetched as its newest Plugin Release when
+GitHub holds one, and cloned when it does not
+([ADR-0033](docs/adr/0033-a-git-url-is-fetched-as-a-plugin-release.md)). Either
+way the files land in the Shelf and `install` registers what it put there,
+under the last segment of the source, without its `.git` suffix, or under the
+name you give. It runs nothing the Plugin ships — the Plugin's own executable
+runs later, when the Host starts it. It refuses a name already in the Registry
+and a directory already in the Shelf, and a fetch that fails leaves the
+Registry untouched and the Shelf clean.
+
+### Install a Plugin Release
+
+A Plugin Release is a GitHub Release of the Plugin's repository, tagged
+`vMAJOR.MINOR.PATCH`, that is neither a draft nor a prerelease, and that holds
+at least one `.tar.gz`. Its Release Version is the tag without the `v`. A
+Release with no `.tar.gz` at all is not a Plugin Release. `install` asks
+GitHub for the repository's Plugin Releases, takes the newest, and downloads
+its archive:
+`<repo>-<version>-<platform>-<arch>.tar.gz` for this machine when the Plugin
+Release holds one, else `<repo>-<version>.tar.gz`, which is for every platform.
+In a `wsl` Place the platform and arch are the distribution's own, as
+`uname -m` says them. The archive is checked against the SHA-256 in the `.sha256` file beside it, as `desktop`
+checks the App, before anything is written. Unpacking needs no `git`, and runs
+nothing the archive holds. In a `wsl` Place the files are written through the
+Place's root, and one `chmod +x` inside the distribution gives each file the
+archive marks executable its bit back, before the files move into place: a
+`chmod` that fails leaves nothing in the Shelf.
+
+On success `install` says
+`installed <name> at <directory>, Release Version <version>`, and the
+Registry row remembers the Release Version.
+
+With no Plugin Release, `install` clones the repository as it did before, and
+says `<name> has no Plugin Release; cloned it instead.` The same happens for a
+URL that is not on GitHub, and for a repository GitHub does not show, such as
+a private one: FirstMate holds no token, and the clone uses your own git login.
+Cloning needs the `git` binary; nothing else does.
+
+`install` refuses, and writes nothing, in one sentence that says what to do:
+
+- the Plugin Release holds no archive for this platform and arch, and none for
+  every platform (exit code `4`);
+- the archive's SHA-256 does not match, or the `.sha256` file holds no hash
+  (exit code `3`), or the Plugin Release does not publish the archive or the
+  `.sha256` file at all (exit code `4`);
+- GitHub is limiting how often releases are asked for (exit code `3`). Try
+  again in the minutes it says. `install` does not clone then, because a clone
+  is not what the author published;
+- the archive is not a gzipped tar, or holds a path that could leave the
+  Plugin's directory, a link that could, a duplicate path, or a file type
+  FirstMate does not read. The whole archive is refused before any file is
+  written (exit code `3`);
+- the archive is larger than 1 GiB, as it downloads or as it unpacks
+  (exit code `3`).
+
+Any other failure, such as GitHub not answering, ends with exit code `1`.
+
+A Plugin's author publishes a Plugin Release with one workflow:
+[Publish a Plugin Release](docs/plugin-guide.md#publish-a-plugin-release).
 
 Adding neither copies nor symlinks the directory: the Registry holds the path,
 so a Plugin stays in its own repository wherever it already lives. `grant` lets
@@ -222,18 +274,76 @@ With no Host running, the command writes the files and says nothing more.
 firstmate update <name>
 ```
 
-A Plugin's version is its commit, so `update` updates a Plugin that is a git
-clone: one you installed from a git URL, or an Official Plugin you installed
-by name ([ADR-0030](docs/adr/0030-update-moves-a-git-clone-forward.md)). It
+`update` moves a Plugin forward by the way it was installed.
+
+**A Plugin Release.** `update <name>` takes the newest Plugin Release with the
+same MAJOR as the one installed, when it is newer, and puts its Release Files
+where the old ones were. The Release Files are the files the Plugin Release
+put there; FirstMate lists them, with a SHA-256 each, in
+`.firstmate-release.json` in the Plugin's directory. Every other file in the
+directory is the Plugin's data, and `update` never touches it. So a Plugin
+should keep its data in files it does not ship: a file that the archive also
+holds is a Release File, and `update` replaces it. The archive is checked as
+`install` checks it. Then `update` restarts the Plugin Server through the
+running Host, and says `updated <name> from <version> to <version>`, then what
+`restart` says. A Plugin with no Plugin Server is not restarted: the Host
+serves its Plugin Page from disk, so the page has changed already, and
+`update` says so with or without a Host. With no Host running, the update is
+done, and a Plugin Server's new code starts with the Host. When the Plugin is
+on the newest Release Version already, it says nothing and restarts nothing.
+
+In a `wsl` Place, `update` of a Plugin Release works as `install` does there.
+It takes the archive for the distribution's own platform and arch, writes the
+new Release Files through the Place's root into `.<name>.pending`, and gives
+each one the archive marks executable its bit back with one `chmod +x` inside
+the distribution, before any file moves. A `chmod` that fails changes nothing
+in the Plugin. The distribution needs `uname` and `chmod` for it, and no `git`.
+
+A new MAJOR may break the Plugin, so `update` never takes it alone. Before
+anything else it says, whether or not it moved a Plugin:
+`<name> has a new MAJOR, <version>, ready: run firstmate update <name> --major
+to take it.` `firstmate update <name> --major` takes the newest Plugin Release
+of all. `--major` is for a Plugin installed from a Plugin Release; for a clone
+or a copy it is refused, with exit code `3`, before git runs.
+
+`update` refuses in one sentence, with exit code `3`, and changes nothing, when:
+
+- a Release File was changed since FirstMate put it there, or is gone, because
+  `update` would delete the change, or has nothing to go back to. Keep a copy
+  of your change outside the Plugin's directory, put back the file of the
+  Release Version installed, and run `update` again;
+- the Plugin's data sits where a new Release File or directory goes, at its
+  path or at a directory above it. Move the data out of the Plugin's
+  directory. A directory that holds only old Release Files is not data, and
+  neither is an old Release File whose name changes only in case;
+- `.<name>.previous` is still in the Shelf, left by an update that did not end.
+  Put back what it holds, or take it away. A `.<name>.previous` left by an
+  update that ended, whose clean-up failed, holds only old Release Files, and
+  `update` removes it itself;
+- the archive is refused as in `install`, or its SHA-256 does not match, or
+  GitHub is limiting how often releases are asked for. A SHA-256 or an archive
+  the Plugin Release does not publish, and a repository GitHub no longer shows,
+  end with exit code `4`.
+
+If a move fails half way, such as a file another program holds, `update` puts
+the old Release Files back, says so, ends with exit code `1`, and the Plugin
+stays on its Release Version. If putting them back fails too, it says so and
+keeps `.<name>.previous` in the Shelf, which holds the files still missing.
+On Windows, `update` removes the old Release Files once the Plugin Server has
+stopped, because a running `mcp.exe` can be moved but not deleted. Once the
+new record is in place the update is done: a clean-up that fails after it,
+such as an old `mcp.exe` that still runs, is a line that says what to remove,
+and the exit code stays `0`. The next `update` removes what is left.
+
+**A clone.** A Plugin installed from a git URL that had no Plugin Release, or
+an Official Plugin cloned the same way, has a version that is its commit
+([ADR-0030](docs/adr/0030-update-moves-a-git-clone-forward.md)). `update`
 fetches the clone's upstream and moves its branch forward, with no merge, then
 restarts the Plugin Server through the running Host. It says
-`updated <name> from <commit> to <commit>`, then what `restart` says. A Plugin
-with no Plugin Server is not restarted: the Host serves its Plugin Page from
-disk, so the page has changed already, and `update` says so with or without
-a Host. With no Host running, the update is done, and a Plugin Server's new
-code starts with the Host. When there is nothing to fetch,
-or the clone is ahead with commits of your own, it says nothing and restarts
-nothing.
+`updated <name> from <commit> to <commit>`, then what `restart` says, and
+treats a Plugin with no Plugin Server and a Host that is not running as above.
+When there is nothing to fetch, or the clone is ahead with commits of your own,
+it says nothing and restarts nothing.
 
 The files git ignores, where a Plugin keeps its data, stay as they are, and
 nothing the Plugin ships runs: git runs with hooks, fsmonitor and the `ext::`
@@ -248,11 +358,19 @@ on the PATH, or a fetch that fails, ends with exit code `1` and git's reason.
 In a `wsl` Place git runs inside the distribution (see [Places](#places)), and
 git not installed there ends with exit code `1` too.
 
-A copied Plugin, one installed from a directory or registered with `add`, is
+**A copy.** A Plugin installed from a directory, or registered with `add`, is
 not a clone of its own, and `update` never copies over it: that would risk its
 data. Update it by hand: move its data out, run `firstmate remove <name>`,
 then `firstmate install` it again, and put its data back. A Plugin you
 registered with `add` inside your own repository is yours to pull.
+
+`list` and `status` show which of the three each Plugin is, in the `UPDATES`
+column: its Release Version, `clone`, `copy`, or `unknown` when its Place is
+gone or its distribution has no git. `list --json` and `status --json` give
+each Plugin the same value as `updates`, and `list --json` has the row's
+`release`, `{ "repository", "version" }`, for a Plugin Release, and no
+`release` for the others. From a pipe, a `list` row is the line it was before
+this column, with the value as its last field.
 
 `firstmate update` updates Plugins only. The App updates itself
 ([The App](#the-app)), and the command line updates with npm.
@@ -272,8 +390,9 @@ where they are, so `install` takes their Plugin Name in place of a source
 | `scribe`        | Records a call in the FirstMate window, and makes its Minutes. |
 
 `install` reads a source as a git URL, then as an absolute directory, then as
-the name of an Official Plugin. An Official Plugin is cloned from
-`https://github.com/luanAfons0/<name>` and is then a Plugin like any other.
+the name of an Official Plugin. An Official Plugin is fetched from
+`https://github.com/luanAfons0/<name>` as its newest Plugin Release, or cloned
+from there when it has none, and is then a Plugin like any other.
 `scheduler` and `scribe` call other Plugins, so each needs a Grant for each one
 it calls. `scribe` calls `worklog`, to send it a Call's Topics.
 
@@ -310,7 +429,8 @@ and reads its files, its Plugin Page among them, through
 distribution's own. A Plugin whose distribution is missing or will not start is
 Stopped with one sentence, and nothing retries it. Its default Shelf is
 `~/.firstmate/shelf` inside the distribution, and `install` makes the fetched
-`mcp` executable there again. `update` runs git inside the distribution, as
+`mcp` executable there again: for a Plugin Release, each file its archive marks
+executable. `update` runs git inside the distribution, as
 `wsl.exe -d <distribution> --cd <directory> --exec env … git …`, with the same
 steps, refusals and restart as in a `local` Place, so the distribution needs
 git of its own. `FIRSTMATE_NODE` is not handed across, because it
@@ -886,10 +1006,13 @@ What the command line sends, it sends when you run a command:
 
 - `firstmate desktop` downloads the App and its checksum from the same GitHub
   Release, or from `FIRSTMATE_RELEASES_URL`.
-- `firstmate install` clones a Plugin with `git` from the address you give, or
-  from the address of the Official Plugin you name.
-- `firstmate update` fetches a Plugin's clone from its upstream, the address
-  it was cloned from.
+- `firstmate install` asks GitHub for the Plugin Releases of the repository you
+  name, or of the Official Plugin you name, and downloads the newest archive
+  and its checksum. With no Plugin Release it clones the Plugin with `git`
+  from the address you give instead.
+- `firstmate update` asks GitHub for the Plugin Releases of a Plugin installed
+  from one, and downloads the archive it takes. It fetches a Plugin's clone from its
+  upstream, the address it was cloned from.
 - `npx` and `npm` download the command line from npm.
 
 Nothing else leaves the machine. FirstMate has no telemetry, no crash reports
@@ -941,6 +1064,8 @@ too. Remove the command line with `npm uninstall -g @luan-afonso/firstmate`.
 | `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for `/notices.json`. |
 | `FIRSTMATE_SHELF`       | `$FIRSTMATE_HOME/shelf` | The Shelf: where a fetched Plugin lands. With the default home, `~/.firstmate/shelf`, or `%APPDATA%\FirstMate\shelf` on Windows. |
 | `FIRSTMATE_RELEASES_URL`| `https://github.com/luanAfons0/FirstMate/releases/download` | Where `firstmate desktop` downloads the App from: `<url>/v<version>/FirstMate-Setup-<version>.exe`, or `FirstMate-<version>.AppImage` on Linux, and its `.sha256`. |
+| `FIRSTMATE_GITHUB_API_URL` | `https://api.github.com` | Where `install` asks for a Plugin's Plugin Releases: `<url>/repos/<owner>/<repo>/releases`. |
+| `FIRSTMATE_GITHUB_URL` | `https://github.com` | Where `install` downloads a Plugin Release from: `<url>/<owner>/<repo>/releases/download/v<version>/<archive>`, and its `.sha256`. |
 
 A `_MS` variable is a whole number of milliseconds, from 1 to 2147483647 (about
 24 days, the longest wait a Node timer holds). The Host refuses to start on any
@@ -1023,7 +1148,8 @@ process; no address on the Host changes it
 ## The home directory
 
 - `registry.json` — the Registry: one row per Plugin, holding its Plugin Name,
-  the absolute path of its directory, and its Grants.
+  the absolute path of its directory, and its Grants. A Plugin installed from a
+  Plugin Release also holds its repository and Release Version, as `release`.
 - `runtime.json` — the port the Host listened on and the token it minted. It is
   rewritten at every start and removed when the Host stops.
 - `settings.json` — the settings FirstMate remembers: the Shelf, the Places,

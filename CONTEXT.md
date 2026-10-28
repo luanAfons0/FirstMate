@@ -81,6 +81,21 @@ address before it is fetched. It is not in the Registry until it is installed,
 and once installed it is a Plugin like any other.
 _Avoid_: catalogue, marketplace, store, featured, recommended
 
+**Plugin Release**:
+A numbered, published archive of one Plugin's files, made from one tag of the
+Plugin's GitHub repository. A Plugin given by its git URL is fetched as one.
+_Avoid_: package, build, artifact, bundle, version
+
+**Release Version**:
+The number of a Plugin Release, `MAJOR.MINOR.PATCH`, read from its tag. It says
+which of two Plugin Releases is newer.
+_Avoid_: tag, revision, build number
+
+**Release Files**:
+The files a Plugin Release put in its Plugin's directory. Every other file there
+is the Plugin's own data.
+_Avoid_: payload, contents, code files
+
 **Plugin Name**:
 The name a Plugin is given when it enters the Registry. It is unique across every Place and identifies the Plugin in every address.
 _Avoid_: id, slug, key

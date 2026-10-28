@@ -47,8 +47,10 @@ import {
   pluginOrder,
   removePlace,
   shelfOf,
+  finishUpdate,
   takePermission,
   updatePlugin,
+  updatesBy,
   withoutInOrder,
   withShortcuts,
 } from '@firstmate/core/commands';
@@ -157,9 +159,9 @@ const COMMANDS: readonly Command[] = [
   {
     name: 'update',
     group: 'Plugins',
-    short: 'move a Plugin that is a git clone forward',
-    takes: '<name>',
-    does: 'move a Plugin that is a git clone forward, and restart it.',
+    short: 'move a Plugin to its newest Plugin Release, or its clone forward',
+    takes: '<name> [--major]',
+    does: 'move a Plugin to its newest Plugin Release in its MAJOR, or its clone forward, and restart it.',
     run: (argv) => update(home(), argv),
   },
   {
@@ -340,6 +342,18 @@ name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.`,
   },
+  {
+    about: ['install'],
+    text: `A git URL on GitHub, or an Official Plugin, is fetched as its newest Plugin
+Release: the archive of a release tagged vMAJOR.MINOR.PATCH, checked against
+its published SHA-256 before anything is written. A Plugin Release that holds
+no archive for this platform, or whose checksum is missing or wrong, is
+refused, and so is a GitHub rate limit; nothing is cloned in its place. A
+repository with no Plugin Release, or a URL that is not on GitHub, is cloned,
+and install says "<name> has no Plugin Release; cloned it instead." A directory
+is copied. FIRSTMATE_GITHUB_API_URL and FIRSTMATE_GITHUB_URL move where GitHub
+is asked.`,
+  },
   { about: ['place', 'add', 'install', 'shelf', 'update'], text: PLACES_HELP },
   {
     about: ['import'],
@@ -394,6 +408,15 @@ JSON. status and usage read the running Host, and end with exit code 6 when none
 answers.`,
   },
   {
+    about: ['list'],
+    text: `The UPDATES column says how update treats each Plugin: its Release Version,
+for a Plugin installed from a Plugin Release; clone, for a git clone of its
+own; copy, for a copied or added directory, which update refuses; or unknown,
+when its Place is gone or its distribution has no git. status shows the same
+column, and with --json each Plugin has it as updates. From a pipe, it is
+the last field of a row.`,
+  },
+  {
     about: ['usage'],
     text: `usage prints FirstMate's own row first, then every Plugin in the Plugin Order:
 its state, CPU, memory, uptime, PID and process count, and its Place when
@@ -411,14 +434,32 @@ first. With -f it keeps printing new lines until you stop it with Ctrl-C.`,
   },
   {
     about: ['update'],
-    text: `update fetches a Plugin that is a git clone and moves its branch forward to its
-upstream, with no merge, then restarts its Plugin Server through the running
-Host. It says nothing when there is nothing to move. The files git ignores,
-where a Plugin keeps its data, stay as they are, and nothing the Plugin ships
-runs. It refuses, and changes nothing, a Plugin that is no git clone of its
-own, has local changes to tracked files, follows no upstream, or has diverged
-from it. With no Host running, a Plugin Server's new code starts with the
-Host.`,
+    text: `update takes the newest Plugin Release in the same MAJOR for a Plugin installed
+from a Plugin Release, and puts its Release Files where the old ones were.
+Every other file in the Plugin's directory is its data, and stays as it is.
+The archive is checked against its SHA-256 first, and refused whole, before
+anything is written, when a path in it could land outside the Plugin. A Plugin
+that is a git clone is fetched, and its branch moves forward to its upstream,
+with no merge; the files git ignores, where it keeps its data, stay as they
+are. Then update restarts the Plugin Server through the running Host.
+With --major it takes the newest Plugin Release of all, a new MAJOR too;
+without it, a new MAJOR is never taken, and update says in one line "<name>
+has a new MAJOR, X, ready" when one is. --major is refused for a clone and for
+a copy. update says nothing else when there is nothing to move, and nothing
+the Plugin ships runs.
+It refuses with exit code 3, and changes nothing, when a Release File was
+changed or is gone, when the Plugin's data sits where a new Release File goes,
+when a .<name>.previous left by an update that did not end is in the Shelf
+(one left by an update that ended is removed), when the archive does
+not match its SHA-256, and when GitHub limits the asking; with exit code 4,
+when the archive or its SHA-256 is not published. It refuses a
+copied Plugin, and a clone that has local changes to tracked files, follows no
+upstream, or has diverged from it. When a move fails half way, update puts the
+old Release Files back and ends with exit code 1, and the Plugin stays on its
+Release Version. A clean-up that fails after the update is done is a line
+that says what to remove, with exit code 0. In a wsl Place, update takes the
+archive for the distribution's arch and makes its executable files executable
+there. With no Host running, a Plugin Server's new code starts with the Host.`,
   },
   {
     about: ['restart'],
@@ -495,6 +536,12 @@ Default: $FIRSTMATE_HOME/shelf, or the directory firstmate shelf moved it to.
 
 FIRSTMATE_RELEASES_URL moves where desktop downloads the App from.
 Default: https://github.com/luanAfons0/FirstMate/releases/download
+
+FIRSTMATE_GITHUB_API_URL moves where install asks for a Plugin Release.
+Default: https://api.github.com
+
+FIRSTMATE_GITHUB_URL moves where install downloads a Plugin Release from.
+Default: https://github.com
 
 The Host reads FIRSTMATE_PORT and the FIRSTMATE_..._MS variables, and the
 README says what they move.`;
@@ -603,6 +650,9 @@ function typedWrong(name: string, sentence: string): number {
 
 /** The word that asks a reading command for one JSON value, wherever it is typed. */
 const JSON_WORD = '--json';
+
+/** The word that lets `update` take a new MAJOR of a Plugin Release. */
+const MAJOR_WORD = '--major';
 
 /** Say one value as JSON, and nothing else, for a script to read. */
 function printJson(value: unknown): void {
@@ -1007,15 +1057,21 @@ async function install(config: Config, argv: readonly string[], place?: string):
     held = said;
   };
   const words = onTerminal() ? hold : 'shown';
-  const row = await whileWaiting(
+  const { row, fetched } = await whileWaiting(
     `fetching ${source}`,
-    (fetched) => `fetched ${fetched.name}`,
+    (done) => `fetched ${done.row.name}`,
     () => installPlugin(config, source, given, place, words),
   ).catch((fault: unknown) => {
     process.stderr.write(held);
     throw fault;
   });
-  console.log(`firstmate: installed ${row.name} at ${row.directory}${inPlace(row.place)}`);
+  if (fetched === 'clone') {
+    console.log(`firstmate: ${row.name} has no Plugin Release; cloned it instead.`);
+  }
+  const version = row.release === undefined ? '' : `, Release Version ${row.release.version}`;
+  console.log(
+    `firstmate: installed ${row.name} at ${row.directory}${inPlace(row.place)}${version}`,
+  );
   await reloadHost(config.home);
   return 0;
 }
@@ -1119,27 +1175,50 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
  * Host, and a Plugin with none has its new Plugin Page already.
  */
 async function update(home: string, argv: readonly string[]): Promise<number> {
-  const [name] = argv;
-  if (name === undefined || argv.length > 1) {
+  const major = argv.includes(MAJOR_WORD);
+  const [name, ...rest] = argv.filter((word) => word !== MAJOR_WORD);
+  if (name === undefined || rest.length > 0) {
     return typedWrong('update', 'update takes one Plugin Name: name the Plugin to update.');
   }
 
   // git's words are held, and said in the sentence of a failure, so a
   // spinner can turn while it fetches (ADR-0025). Nothing moved, so the
   // spinner goes with no line.
-  const moved = await whileWaiting(
+  const { updated: moved, ready } = await whileWaiting(
     `updating ${name}`,
-    (done) => (done === undefined ? undefined : `fetched ${name}`),
-    () => updatePlugin(home, name),
+    (done) => (done?.updated === undefined ? undefined : `fetched ${name}`),
+    () => updatePlugin(home, name, undefined, major),
   );
+  if (ready !== undefined) {
+    console.log(
+      `firstmate: ${name} has a new MAJOR, ${ready}, ready: run firstmate update ${name} --major to take it.`,
+    );
+  }
   if (moved === undefined) return 0;
   console.log(`firstmate: updated ${name} from ${moved.from} to ${moved.to}`);
+  try {
+    return await restartUpdated(home, name, moved.shipsPluginServer);
+  } finally {
+    // After the restart: on Windows the old Release Files can hold the
+    // running mcp.exe, and it can be removed only once the Host stopped it.
+    // The update is done, so what stays is said, and the exit is not changed.
+    for (const warning of [...moved.warnings, ...(await finishUpdate(name, moved))]) {
+      console.error(`firstmate: ${warning}`);
+    }
+  }
+}
 
+/** Restart a Plugin that was just updated, and say so, in the words of restart. */
+async function restartUpdated(
+  home: string,
+  name: string,
+  shipsPluginServer: boolean,
+): Promise<number> {
   // The Host serves a Plugin Page's bytes from disk, so they changed already.
   const pageChanged = ' Its Plugin Page has changed.';
   const restarted = await restartPlugin(home, name);
   if (restarted === undefined) {
-    if (!moved.shipsPluginServer) {
+    if (!shipsPluginServer) {
       return sayRestarted(name, { state: 'no-plugin-server' }, pageChanged);
     }
     console.log(`firstmate: no Host runs, so ${name}'s new code starts with the Host.`);
@@ -1212,15 +1291,16 @@ function logs(home: string, argv: readonly string[]): number | undefined {
 /** How often logs -f looks for new lines. */
 const FOLLOW_MS = 200;
 
-function list(home: string, argv: readonly string[], json: boolean): number {
+async function list(home: string, argv: readonly string[], json: boolean): Promise<number> {
   if (argv.length > 0) {
     return typedWrong('list', 'list takes nothing.');
   }
   const rows = readRegistry(home);
+  const updates = await updatesBy(home);
   const shortcuts = readSettings(home).shortcuts ?? [];
   if (json) {
     printJson({
-      plugins: rows,
+      plugins: rows.map((row) => ({ ...row, updates: updates.get(row.name) ?? 'unknown' })),
       shortcuts: shortcuts.map((shortcut) => ({
         ...shortcut,
         address: shortcutAddress(shortcut),
@@ -1230,10 +1310,16 @@ function list(home: string, argv: readonly string[], json: boolean): number {
   }
   // An empty Registry says nothing, as an empty directory listing says nothing.
   printRows(
-    ['NAME', 'PLACE', 'DIRECTORY', 'GRANTS'],
+    ['NAME', 'PLACE', 'DIRECTORY', 'GRANTS', 'UPDATES'],
     rows.map((row) => ({
-      cells: [row.name, row.place, row.directory, row.grants.join(', ')],
-      plain: describe(row),
+      cells: [
+        row.name,
+        row.place,
+        row.directory,
+        row.grants.join(', '),
+        updates.get(row.name) ?? '',
+      ],
+      plain: describe(row, updates.get(row.name)),
     })),
   );
   printRows(
@@ -1261,14 +1347,24 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
     else console.log(`firstmate: ${await noHost()}`);
     return exit('no-host');
   }
+  const updates = await updatesBy(home);
   if (json) {
-    printJson({ running: true, address: seen.address, plugins: seen.plugins });
+    printJson({
+      running: true,
+      address: seen.address,
+      plugins: seen.plugins.map((plugin) => ({
+        ...plugin,
+        updates: updates.get(plugin.name) ?? 'unknown',
+      })),
+    });
     return 0;
   }
   console.log(`firstmate: the Host runs at ${seen.address}`);
   printRows(
-    ['PLUGIN', 'STATE'],
-    seen.plugins.map((plugin) => ({ cells: [plugin.name, stateWord(plugin.state)] })),
+    ['PLUGIN', 'STATE', 'UPDATES'],
+    seen.plugins.map((plugin) => ({
+      cells: [plugin.name, stateWord(plugin.state), updates.get(plugin.name) ?? ''],
+    })),
   );
   return 0;
 }
@@ -1340,9 +1436,14 @@ function stateWord(state: PluginState): string {
   return state === 'stopped' ? bad(word) : word;
 }
 
-function describe(row: PluginRow): string {
+/**
+ * A row of `list` for a pipe: the line it was before the UPDATES column, and
+ * that value last, so a script that reads the fields by place reads the same
+ * ones.
+ */
+function describe(row: PluginRow, updates: string | undefined): string {
   const grants = row.grants.length === 0 ? '' : `  grants: ${row.grants.join(', ')}`;
-  return `${row.name}\t${row.place}\t${row.directory}${grants}`;
+  return `${row.name}\t${row.place}\t${row.directory}${grants}\t${updates ?? ''}`;
 }
 
 try {

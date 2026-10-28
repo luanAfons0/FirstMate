@@ -71,10 +71,13 @@ fetched Plugin lands in). Tests use all six. The Shelf is the one setting that d
 from the environment alone: the variable beats the settings file, which beats
 the default (ADR-0012).
 
-One more moves the command line alone: `FIRSTMATE_RELEASES_URL` (default
+Three more move the command line alone: `FIRSTMATE_RELEASES_URL` (default
 `https://github.com/luanAfons0/FirstMate/releases/download`), where
-`firstmate desktop` downloads the App from. Its tests point it at a server of
-their own.
+`firstmate desktop` downloads the App from, and `FIRSTMATE_GITHUB_API_URL`
+(default `https://api.github.com`) and `FIRSTMATE_GITHUB_URL` (default
+`https://github.com`), where `install` asks for a Plugin Release and downloads
+it from. Their tests point them at a server of their own; every other test
+points the last two at a port nothing listens on, so no test reaches GitHub.
 
 `pnpm check` must pass before you call work done: types, lint, format,
 knip and every test.
@@ -162,9 +165,20 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   logon.ts         the App's logon entry, which the App and setup both write.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
-                   a git URL, and run none of what lands.
+                   a git URL, stage a Plugin Release (install and update
+                   both), and run none of what lands.
+  release-files.ts unpack a Plugin Release, and FirstMate's record of its
+                   Release Files, by which update tells them from data.
+  release-download.ts download a file of a GitHub Release, checked against
+                   the SHA-256 beside it: the App's and a Plugin Release's.
+  plugin-release.ts a repository's Plugin Releases on GitHub, newest first,
+                   and the checked archive of one (ADR-0033).
+  tar.ts           read a gzipped tar into its entries, with zlib alone, and
+                   refuse a path that could land outside the Plugin.
   update-plugin.ts move a Plugin that is a git clone forward, with no merge,
                    through a runner of one git command (ADR-0030).
+  update-release.ts update a Plugin Release: the steps as data, checks that
+                   refuse before any change, and a roll-back (ADR-0033).
   agents.ts        the Agents, as data: names, efforts, models, and what the
                    Mate runs one with (ADR-0031).
   agent-run.ts     run the operator's own Agent: the question on stdin, the

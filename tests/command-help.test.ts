@@ -27,7 +27,7 @@ const COMMANDS: readonly [string, string][] = [
   ['revoke', ' <from> <to>'],
   ['shelf', ' [directory] [--place <name>]'],
   ['install', ' <source> [name] [--place <name>]'],
-  ['update', ' <name>'],
+  ['update', ' <name> [--major]'],
   ['bind', ' <keys> <plugin> [path]'],
   ['unbind', ' <keys>'],
   ['order', ' [<name> <position>]'],
@@ -189,6 +189,8 @@ test('help environment names every variable the command line reads, with its def
     ['FIRSTMATE_HOME', '~/.firstmate'],
     ['FIRSTMATE_SHELF', '$FIRSTMATE_HOME/shelf'],
     ['FIRSTMATE_RELEASES_URL', 'https://github.com/luanAfons0/FirstMate/releases/download'],
+    ['FIRSTMATE_GITHUB_API_URL', 'https://api.github.com'],
+    ['FIRSTMATE_GITHUB_URL', 'https://github.com'],
   ] as const) {
     const at = helped.stdout.indexOf(variable);
     assert.ok(at >= 0, `names ${variable}`);
@@ -342,4 +344,43 @@ test('help says --version once, in the short help it starts with', async (t) => 
   const helped = await firstmate(home, ['help']);
 
   assert.equal(helped.stdout.match(/--version/g)?.length, 1);
+});
+
+test('install --help says it takes a Plugin Release, and falls back to a clone', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['install', '--help']);
+  const text = helped.stdout.replace(/\s+/g, ' ');
+
+  assert.equal(helped.code, 0, helped.stderr);
+  assert.match(text, /newest Plugin Release/);
+  assert.match(text, /SHA-256/);
+  assert.match(text, /has no Plugin Release; cloned it instead/);
+  assert.match(text, /FIRSTMATE_GITHUB_API_URL/);
+});
+
+test('update --help says what a refusal leaves, and what --major takes', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['update', '--help']);
+  const text = helped.stdout.replace(/\s+/g, ' ');
+
+  assert.equal(helped.code, 0, helped.stderr);
+  assert.match(text, /Release Files/);
+  assert.match(text, /has a new MAJOR, X, ready/);
+  assert.match(text, /puts the old Release Files back/);
+  assert.match(text, /exit code 3/);
+});
+
+test('list --help names the UPDATES column and its four words', async (t) => {
+  const home = await makeHome(t);
+
+  const helped = await firstmate(home, ['list', '--help']);
+  const text = helped.stdout.replace(/\s+/g, ' ');
+
+  assert.equal(helped.code, 0, helped.stderr);
+  assert.match(text, /UPDATES/);
+  for (const word of ['Release Version', 'clone', 'copy', 'unknown']) {
+    assert.ok(text.includes(word), `names ${word}`);
+  }
 });

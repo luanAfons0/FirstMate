@@ -182,7 +182,7 @@ test('list prints the Shortcuts after the Plugins', async (t) => {
   assert.equal(listed.code, 0, listed.stderr);
   assert.equal(
     listed.stdout,
-    `both\t${DEFAULT_PLACE}\t${fixture('both')}\n` +
+    `both\t${DEFAULT_PLACE}\t${fixture('both')}\tcopy\n` +
       'Ctrl+Alt+N\topens /p/both/new.html\n' +
       'Ctrl+Alt+M\topens /p/both/\n',
   );

@@ -191,7 +191,7 @@ test('a Registry row written before Places is in the default Place', async (t) =
   const listed = await firstmate(home, ['list', '--json']);
 
   assert.deepEqual(JSON.parse(listed.stdout).plugins, [
-    { name: 'both', place: DEFAULT_PLACE, directory: fixture('both'), grants: [] },
+    { name: 'both', place: DEFAULT_PLACE, directory: fixture('both'), grants: [], updates: 'copy' },
   ]);
 });
 

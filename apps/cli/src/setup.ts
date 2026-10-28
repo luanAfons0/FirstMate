@@ -199,7 +199,7 @@ async function askPlugins(prompt: Prompt, changes: Changes): Promise<void> {
     try {
       // The config is read again for each one, because the Shelf step can
       // have just moved the Shelf.
-      const row = await installPlugin(readConfig(), plugin.name, undefined, place);
+      const { row } = await installPlugin(readConfig(), plugin.name, undefined, place);
       console.log(`firstmate: installed ${row.name} at ${row.directory}, in ${row.place}`);
       changes.done.push(`installed ${row.name}`);
     } catch (fault) {
