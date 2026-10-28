@@ -189,6 +189,8 @@ test('help environment names every variable the command line reads, with its def
     ['FIRSTMATE_HOME', '~/.firstmate'],
     ['FIRSTMATE_SHELF', '$FIRSTMATE_HOME/shelf'],
     ['FIRSTMATE_RELEASES_URL', 'https://github.com/luanAfons0/FirstMate/releases/download'],
+    ['FIRSTMATE_GITHUB_API_URL', 'https://api.github.com'],
+    ['FIRSTMATE_GITHUB_URL', 'https://github.com'],
   ] as const) {
     const at = helped.stdout.indexOf(variable);
     assert.ok(at >= 0, `names ${variable}`);

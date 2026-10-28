@@ -20,6 +20,7 @@
     "apps/*/scripts/**/*.ts",
     "apps/*/*.config.ts",
     "packages/*/src/**/*.ts",
+    "scripts/**/*.ts",
     "tests/**/*.ts"
   ]
 }
