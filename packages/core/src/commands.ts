@@ -405,6 +405,14 @@ export type Updated = Moved & {
   readonly leftBehind: readonly string[];
 };
 
+/** What `updatePlugin` found: what it moved, if anything, and a newer MAJOR it left alone. */
+export type UpdateOutcome = {
+  /** What moved, or nothing when there was nothing to move. */
+  readonly updated?: Updated;
+  /** The Release Version of a newer MAJOR that is ready, and that only `--major` takes. */
+  readonly ready?: string;
+};
+
 /**
  * Every file a Plugin can ship its Plugin Server as, on any system (ADR-0019,
  * ADR-0028). Whether one can run here is the Host's to say, not this list's.
@@ -412,10 +420,11 @@ export type Updated = Moved & {
 const PLUGIN_SERVER_FILES = ['mcp', 'mcp.ts', 'mcp.js', 'mcp.exe', 'mcp.cmd'];
 
 /**
- * Update a Plugin, and say from what to what, or give back nothing when there
- * was nothing to move. A Plugin installed from a Plugin Release takes the
+ * Update a Plugin, and say from what to what, or move nothing when there was
+ * nothing to move. A Plugin installed from a Plugin Release takes the
  * newest Plugin Release in its MAJOR, and its Registry row then names it
- * (ADR-0033). Any other Plugin is a git clone moved forward to its upstream,
+ * (ADR-0033), unless `major` lets it take a newer MAJOR, and when a newer
+ * MAJOR is left alone, the outcome says it is ready. Any other Plugin is a git clone moved forward to its upstream,
  * or a copy, which is refused (ADR-0030). The name is checked as `restart`
  * checks it. `target` picks a Plugin Release's archive, as it does for
  * install. Restarting the Plugin Server is the caller's, because only a
@@ -425,7 +434,8 @@ export async function updatePlugin(
   home: string,
   name: string,
   target: ArchiveTarget = thisMachine(),
-): Promise<Updated | undefined> {
+  major = false,
+): Promise<UpdateOutcome> {
   if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
   const plugin = readPlugins(home).find((row) => row.name === name);
   if (plugin === undefined) throw refuse('missing', `no Plugin named ${name} is registered.`);
@@ -439,7 +449,15 @@ export async function updatePlugin(
         `or take it out with firstmate remove ${name}.`,
     );
   }
+  if (major && plugin.release === undefined) {
+    throw refuse(
+      'invalid',
+      `--major is for a Plugin installed from a Plugin Release, and ${name} is a clone or a copy: ` +
+        'leave --major out to update it.',
+    );
+  }
   let moved: Moved & { readonly leftBehind: readonly string[] };
+  let ready: string | undefined;
   if (plugin.release === undefined) {
     // A wsl Place's clone is moved by the distribution's own git, in the path
     // the distribution knows it by, as its Plugin Server runs there.
@@ -448,11 +466,13 @@ export async function updatePlugin(
         ? gitInside(plugin.runner.distribution, plugin.directory)
         : gitHere(plugin.files);
     const forward = await moveForward(git, name, plugin.directory);
-    if (forward === undefined) return undefined;
+    if (forward === undefined) return {};
     moved = { ...forward, leftBehind: [] };
   } else {
-    const taken = await updateRelease(plugin, plugin.release, target);
-    if (taken === undefined) return undefined;
+    const found = await updateRelease(plugin, plugin.release, target, major);
+    const taken = found.moved;
+    if (taken === undefined) return { ready: found.ready };
+    ready = found.ready;
     // The files written from Windows lost the executable bit on their way in.
     if (
       plugin.runner.kind === 'wsl' &&
@@ -472,7 +492,10 @@ export async function updatePlugin(
   const shipsPluginServer = PLUGIN_SERVER_FILES.some(
     (file) => statSync(join(plugin.files, file), { throwIfNoEntry: false })?.isFile() === true,
   );
-  return { from: moved.from, to: moved.to, shipsPluginServer, leftBehind: moved.leftBehind };
+  return {
+    updated: { from: moved.from, to: moved.to, shipsPluginServer, leftBehind: moved.leftBehind },
+    ready,
+  };
 }
 
 /**
