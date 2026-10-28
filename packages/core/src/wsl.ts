@@ -9,6 +9,7 @@
  * whatever that program writes. Both are read here as the text they are.
  */
 import { spawn } from 'node:child_process';
+import type { ArchiveTarget } from './plugin-release.ts';
 import { refuse } from './refusal.ts';
 import { gitEnvironmentWords, type GitRunner } from './git.ts';
 
@@ -139,17 +140,67 @@ export async function findInside(distribution: string, program: string): Promise
 }
 
 /**
- * Give a fetched Plugin's `mcp` file back its executable bit, inside the
- * distribution. A file written from Windows into a distribution carries none,
- * and a Plugin Server that cannot be executed leaves its Plugin Stopped. This
- * runs nothing the Plugin ships.
+ * Give fetched files their executable bit back, inside the distribution, in
+ * one command. A file written from Windows into a distribution carries none,
+ * and a Plugin Server that cannot be executed leaves its Plugin Stopped.
+ * `files` are paths below `directory`, `mcp` unless the archive of a Plugin
+ * Release names the ones it marks executable. This runs nothing the Plugin
+ * ships.
  */
-export async function makeExecutable(distribution: string, directory: string): Promise<void> {
-  const answer = await ask(['-d', distribution, '--cd', directory, '--exec', 'chmod', '+x', 'mcp']);
+export async function makeExecutable(
+  distribution: string,
+  directory: string,
+  files: readonly string[] = ['mcp'],
+): Promise<void> {
+  if (files.length === 0) return;
+  // `--` only where a file name starts with a dash, so that it is a file and not an option.
+  const dashed = files.some((file) => file.startsWith('-'));
+  const answer = await ask([
+    '-d',
+    distribution,
+    '--cd',
+    directory,
+    '--exec',
+    'chmod',
+    '+x',
+    ...(dashed ? ['--'] : []),
+    ...files,
+  ]);
   if (answer.code !== 0) {
-    throw new Error(`${directory}/mcp could not be made executable: ${why(answer)}.`);
+    throw new Error(`${directory}/${files[0]} could not be made executable: ${why(answer)}.`);
   }
 }
+
+/**
+ * The platform and arch of a distribution, in Node's names. The platform is
+ * always `linux`; the arch is the distribution's own, which is not the arch
+ * of the Windows that runs it. It asks `uname -m`, which every distribution
+ * has, and refuses an arch it has no archive name for.
+ */
+export async function targetIn(distribution: string): Promise<ArchiveTarget> {
+  const answer = await ask(['-d', distribution, '--exec', 'uname', '-m']);
+  if (answer.code !== 0) {
+    throw refuse('invalid', `the distribution ${distribution} did not answer: ${why(answer)}.`);
+  }
+  const machine = answer.stdout.trim();
+  const arch = ARCHES[machine];
+  if (arch === undefined) {
+    throw refuse(
+      'invalid',
+      `the distribution ${distribution} reports the arch ${machine}, which no Plugin Release ` +
+        `is built for.`,
+    );
+  }
+  return { platform: 'linux', arch };
+}
+
+/** What `uname -m` says, by the name Node gives the same arch. */
+const ARCHES: Readonly<Record<string, string | undefined>> = {
+  x86_64: 'x64',
+  amd64: 'x64',
+  aarch64: 'arm64',
+  arm64: 'arm64',
+};
 
 /**
  * The git runner of a `wsl` Place: the distribution's own git, in the
