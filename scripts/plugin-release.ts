@@ -119,7 +119,15 @@ async function releaseFolders(): Promise<{ folder: string; platform?: string }[]
 
 /** Unpack the files of the tag, as `git archive` gives them, into this folder. */
 function unpackTag(tag: string, folder: string): void {
-  const tar = spawnSync('git', ['archive', '--format=tar', tag], { maxBuffer: 1 << 30 });
+  // The runner's own git config must not touch the bytes: on Windows,
+  // `core.autocrlf=true` would turn every LF of the tag into CRLF, and the
+  // Plugin Release would not hold the files as committed. A `.gitattributes`
+  // `eol` of the author's own still applies, and that is the author's choice.
+  const tar = spawnSync(
+    'git',
+    ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'archive', '--format=tar', tag],
+    { maxBuffer: 1 << 30 },
+  );
   if (tar.error !== undefined) throw tar.error;
   if (tar.status !== 0) {
     throw new Error(`git archive ${tag} failed: ${tar.stderr.toString().trim()}`);
