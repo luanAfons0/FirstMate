@@ -343,6 +343,18 @@ name you give.
 ${SHELF_VARIABLE} moves the Shelf for one run; firstmate shelf <directory>
 moves it for good, and that directory has to be there already.`,
   },
+  {
+    about: ['install'],
+    text: `A git URL on GitHub, or an Official Plugin, is fetched as its newest Plugin
+Release: the archive of a release tagged vMAJOR.MINOR.PATCH, checked against
+its published SHA-256 before anything is written. A Plugin Release that holds
+no archive for this platform, or whose checksum is missing or wrong, is
+refused, and so is a GitHub rate limit; nothing is cloned in its place. A
+repository with no Plugin Release, or a URL that is not on GitHub, is cloned,
+and install says "<name> has no Plugin Release; cloned it instead." A directory
+is copied. FIRSTMATE_GITHUB_API_URL and FIRSTMATE_GITHUB_URL move where GitHub
+is asked.`,
+  },
   { about: ['place', 'add', 'install', 'shelf', 'update'], text: PLACES_HELP },
   {
     about: ['import'],
@@ -397,6 +409,14 @@ JSON. status and usage read the running Host, and end with exit code 6 when none
 answers.`,
   },
   {
+    about: ['list'],
+    text: `The UPDATES column says how update treats each Plugin: its Release Version,
+for a Plugin installed from a Plugin Release; clone, for a git clone of its
+own; copy, for a copied or added directory, which update refuses; or unknown,
+when its Place is gone or its distribution has no git. status shows the same
+column.`,
+  },
+  {
     about: ['usage'],
     text: `usage prints FirstMate's own row first, then every Plugin in the Plugin Order:
 its state, CPU, memory, uptime, PID and process count, and its Place when
@@ -416,16 +436,27 @@ first. With -f it keeps printing new lines until you stop it with Ctrl-C.`,
     about: ['update'],
     text: `update takes the newest Plugin Release in the same MAJOR for a Plugin installed
 from a Plugin Release, and puts its Release Files where the old ones were.
-Every other file in the Plugin's directory is its data, and stays as it is. A
-Plugin that is a git clone is fetched, and its branch moves forward to its
-upstream, with no merge; the files git ignores, where it keeps its data, stay
-as they are. Then update restarts the Plugin Server through the running Host.
-With --major it takes the newest Plugin Release of all, a new MAJOR too; without
-it, a new MAJOR is never taken, and update says in one line when one is ready.
---major is refused for a clone and for a copy. It says nothing else when there
-is nothing to move, and nothing the Plugin ships runs. It refuses, and changes nothing, a copied Plugin, and a clone that has
-local changes to tracked files, follows no upstream, or has diverged from it.
-With no Host running, a Plugin Server's new code starts with the Host.`,
+Every other file in the Plugin's directory is its data, and stays as it is.
+The archive is checked against its SHA-256 first, and refused whole, before
+anything is written, when a path in it could land outside the Plugin. A Plugin
+that is a git clone is fetched, and its branch moves forward to its upstream,
+with no merge; the files git ignores, where it keeps its data, stay as they
+are. Then update restarts the Plugin Server through the running Host.
+With --major it takes the newest Plugin Release of all, a new MAJOR too;
+without it, a new MAJOR is never taken, and update says in one line "<name>
+has a new MAJOR, X, ready" when one is. --major is refused for a clone and for
+a copy. update says nothing else when there is nothing to move, and nothing
+the Plugin ships runs.
+It refuses with exit code 3, and changes nothing, when a Release File was
+changed or is gone, when the Plugin's data sits where a new Release File goes,
+when a left-over .<name>.previous is in the Shelf, when the archive does
+not match its SHA-256, and when GitHub limits the asking; with exit code 4,
+when the archive or its SHA-256 is not published. It refuses a
+copied Plugin, and a clone that has local changes to tracked files, follows no
+upstream, or has diverged from it. When a move fails half way, update puts the
+old Release Files back and ends with exit code 1, and the Plugin stays on its
+Release Version. With no Host running, a Plugin Server's new code starts with
+the Host.`,
   },
   {
     about: ['restart'],
