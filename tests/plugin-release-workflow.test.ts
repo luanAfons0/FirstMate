@@ -10,6 +10,13 @@
  * was called with. The files it writes are published, unchanged, to the fake
  * GitHub of `helpers/github.ts`, and `firstmate install` fetches them from
  * there. No test reaches GitHub, makes a tag on it or publishes a Release.
+ *
+ * The last test reads the workflow file itself, with a small read of its two
+ * steps, for there is no YAML parser here. It proves the `test` and `build`
+ * inputs reach the script's step through `env` and `run`, and that the
+ * Release is made for the same tag and name, from the same folder. It cannot
+ * prove that GitHub fills `${{ ... }}` as written, or that the `gh` calls
+ * work; only a run on GitHub shows that.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -188,6 +195,32 @@ test(
       'private.txt',
       'web',
     ]);
+  },
+);
+
+test(
+  'the archive holds the bytes as committed, though the runner converts line endings',
+  {
+    skip: NO_GIT,
+  },
+  async (t) => {
+    const repository = await pluginRepository(t, 'both', { 'lines.txt': 'one\ntwo\n' });
+    // Git for Windows sets this on a runner; the archive must not feel it.
+    await gitIn(repository, ['config', 'core.autocrlf', 'true']);
+
+    const ran = await release(t, repository, 'v1.0.0');
+
+    assert.equal(ran.code, 0, ran.stderr);
+    const github = await serveGitHub(t);
+    github.publish('someone/both', githubRelease('v1.0.0', ran));
+    const home = await makeHome(t);
+    const installed = await firstmate(
+      home,
+      ['install', 'https://github.com/someone/both'],
+      github.env,
+    );
+    assert.equal(installed.code, 0, installed.stderr);
+    assert.equal(await readFile(join(home, 'shelf', 'both', 'lines.txt'), 'utf8'), 'one\ntwo\n');
   },
 );
 
@@ -379,15 +412,84 @@ test(
   },
 );
 
-test('the workflow runs the release script with its test and build inputs, and publishes what it writes', async () => {
+/** One step of the workflow, as far as these tests read it. */
+type Step = {
+  readonly env: Readonly<Record<string, string>>;
+  readonly run: string;
+  readonly workingDirectory: string | undefined;
+};
+
+/** A GitHub Actions expression, as the workflow writes it. */
+const expression = (inner: string): string => `$\u007B{ ${inner} }}`;
+
+/** The leading spaces of a line. */
+const indentOf = (line: string): number => line.length - line.trimStart().length;
+
+/**
+ * The step of the workflow with this `name:`. There is no YAML parser in the
+ * repository, so this reads only what the workflow's steps use: a `- name:`
+ * line, scalar lines, an `env:` block of `KEY: value`, and a `run: |` block.
+ */
+function stepNamed(workflow: string, name: string): Step {
+  const lines = workflow.split('\n');
+  const first = lines.findIndex((line) => line.trim() === `- name: ${name}`);
+  assert.notEqual(first, -1, `the workflow has a step named "${name}"`);
+  const dash = indentOf(lines[first] ?? '');
+  const block: string[] = [];
+  for (const line of lines.slice(first + 1)) {
+    if (line.trim() !== '' && indentOf(line) <= dash) break;
+    block.push(line);
+  }
+  const env: Record<string, string> = {};
+  let run = '';
+  let workingDirectory: string | undefined;
+  for (let at = 0; at < block.length; at += 1) {
+    const line = block[at] ?? '';
+    const key = line.trim();
+    const owner = indentOf(line);
+    if (key === 'env:') {
+      for (const entry of block.slice(at + 1)) {
+        if (entry.trim() === '' || indentOf(entry) <= owner) break;
+        const [name, ...value] = entry.trim().split(': ');
+        env[name ?? ''] = value.join(': ');
+      }
+    } else if (key === 'run: |') {
+      const body: string[] = [];
+      for (const entry of block.slice(at + 1)) {
+        if (entry.trim() !== '' && indentOf(entry) <= owner) break;
+        body.push(entry.trim());
+      }
+      run = body.join('\n');
+    } else if (key.startsWith('working-directory: ')) {
+      workingDirectory = key.slice('working-directory: '.length);
+    }
+  }
+  return { env, run, workingDirectory };
+}
+
+test('the workflow hands its inputs to the release script, and publishes under the tag and name the script used', async () => {
   const workflow = await readFile(
     join(REPOSITORY, '.github', 'workflows', 'plugin-release.yml'),
     'utf8',
   );
-
   assert.ok(workflow.includes('workflow_call:'), 'other workflows call it');
-  assert.ok(workflow.includes('scripts/plugin-release.ts'), 'it runs the release script');
-  assert.ok(/\$\{\{ inputs\.test \}\}/.test(workflow), 'it hands the script the test input');
-  assert.ok(/\$\{\{ inputs\.build \}\}/.test(workflow), 'it hands the script the build input');
-  assert.ok(workflow.includes('gh release create'), 'it makes the GitHub Release');
+  const made = stepNamed(workflow, 'Check the tag, test, build, and make the archives');
+  const published = stepNamed(workflow, 'Publish the Release');
+
+  // The inputs reach the script: into the step's environment, and from there
+  // to the script's two options.
+  assert.equal(made.env['TEST'], expression('inputs.test'));
+  assert.equal(made.env['BUILD'], expression('inputs.build'));
+  assert.match(made.run, /node \.\.\/firstmate\/scripts\/plugin-release\.ts "\$TAG" "\$NAME" /);
+  assert.match(made.run, /--test "\$TEST"/);
+  assert.match(made.run, /--build "\$BUILD"/);
+
+  // The Release is made for the tag, and under the name, the script used,
+  // from the folder the script wrote into.
+  assert.equal(published.env['TAG'], made.env['TAG']);
+  assert.equal(published.env['NAME'], made.env['NAME']);
+  assert.match(made.run, /"\$RUNNER_TEMP\/plugin-release"/);
+  assert.equal(published.workingDirectory, `${expression('runner.temp')}/plugin-release`);
+  assert.match(published.run, /gh release create "\$TAG" \.\/\* /);
+  assert.match(published.run, /--title "\$NAME \$\{TAG#v\}"/);
 });
