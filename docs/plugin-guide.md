@@ -494,7 +494,8 @@ Then push a tag: `git tag v1.2.0 && git push origin v1.2.0`.
   `v1.2.0` is `1.2.0`. The workflow refuses any other tag, such as `v1.2` or
   `v1.2.0-beta.1`, before anything runs. Raise MAJOR when a new Plugin
   Release changes your data or your tools in a way an operator must choose:
-  `firstmate update` stays inside one MAJOR unless the operator asks for more.
+  `firstmate update` stays inside one MAJOR, and says when a new one is
+  ready; the operator takes it with `firstmate update <name> --major`.
 - **Two inputs, both optional.** Each is a command for bash. It runs in your
   repository at the tag, on `ubuntu-latest`, with Node 24 and git. A command
   installs what else it needs, such as `npm ci && npm test`.
@@ -544,7 +545,9 @@ Then push a tag: `git tag v1.2.0 && git push origin v1.2.0`.
   files a Plugin Release put in the Plugin directory, and every other file
   there is your Plugin's own data. Write your data to a file that no Plugin
   Release ships. `firstmate update` replaces the Release Files and keeps the
-  rest.
+  rest. It refuses, and changes nothing, when you edited a Release File, when
+  a Release File is gone, or when your data sits at a path that the new
+  Plugin Release ships. If a move fails half way, it puts the old files back.
 
 ## Three worked examples
 
