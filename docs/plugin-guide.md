@@ -341,16 +341,20 @@ One Stopped Plugin leaves every other Plugin serving.
 None of this is enforced. All of it is what the first Plugin learned.
 
 - **Write a Node 24 Plugin with an `mcp.ts`.** It is the one form that runs
-  on every system the App runs on, with no build step and no Node of the
-  operator's own: the Host runs it with its own Node (ADR-0028). Other
+  on every system the App runs on, with no Node of the operator's own: the
+  Host runs it with its own Node (ADR-0028). From the repository it needs no
+  build step; a Plugin Release ships it as `mcp.js`, built when you publish. Other
   languages stay welcome. Ship `mcp`, with `mcp.exe` or `mcp.cmd` beside it
   for Windows, as above, and expect to do the work below by hand.
 - **Write relative paths and nothing else.** The Host rewrites nothing, so
   relative paths are the ones that survive. Anything absolute assumes an
   address you do not own.
-- **Vendor your assets.** There is no build step, no bundler and no
-  watcher, and there is not going to be one. Put the file in `web/` and
-  link to it.
+- **Vendor your assets.** The Host has no bundler and no watcher, and there
+  is not going to be one: it serves `web/` as it finds it. Put the file in
+  `web/` and link to it. If you build your Plugin, the build runs in your
+  repository when you publish a Plugin Release (see
+  [Publish a Plugin Release](#publish-a-plugin-release)), never on the
+  operator's machine, so what it writes to `release/web/` is served as it is.
 - **One tool-call address, not an endpoint per action.** Nexus began with a
   REST call per endpoint and replaced them all with `rpc` and an MCP
   request in the body. Your tools are already the list of things your
