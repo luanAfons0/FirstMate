@@ -141,8 +141,8 @@ type GitHubRelease = {
   readonly assets?: readonly { readonly name?: unknown }[];
 } | null;
 
-/** Which of two Release Versions is newer: above zero when the first is. */
-function compareVersions(one: string, other: string): number {
+/** Which of two Release Versions is newer: above zero when the first is, zero for the same. */
+export function compareVersions(one: string, other: string): number {
   const a = one.split('.').map(Number);
   const b = other.split('.').map(Number);
   for (let index = 0; index < 3; index += 1) {
