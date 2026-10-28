@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { TestContext } from 'node:test';
+import { serveGitHub } from './github.ts';
 import { fixture, makeHome } from './host.ts';
 
 /** Where every Official Plugin lives, and so the prefix a test rewrites. */
@@ -135,15 +136,22 @@ export async function addCommitTo(
 /**
  * The environment under which each Official Plugin named here is cloned from
  * a local bare repository holding the `both` fixture. A name left out has no
- * repository, so cloning it fails as a missing network would.
+ * repository, so cloning it fails as a missing network would. GitHub is a
+ * fake that knows each repository named here and holds no Plugin Release in
+ * it, so `install` clones, as it does for a Plugin that never published one.
  */
 export async function officialSources(
   t: TestContext,
   names: readonly string[] = OFFICIAL_NAMES,
 ): Promise<NodeJS.ProcessEnv> {
   const scratch = await makeHome(t);
-  for (const name of names) await bareRepositoryOf(t, 'both', name, scratch);
+  const github = await serveGitHub(t);
+  for (const name of names) {
+    await bareRepositoryOf(t, 'both', name, scratch);
+    github.publish(`luanAfons0/${name}`);
+  }
   return {
+    ...github.env,
     ...NO_GIT_CONFIGURATION,
     GIT_CONFIG_COUNT: '1',
     GIT_CONFIG_KEY_0: `url.file://${scratch}/.insteadOf`,

@@ -12,9 +12,16 @@ import { mkdirSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, posix } from 'node:path';
 import type { MateWords } from './agents.ts';
 import type { Config } from './config.ts';
-import { fetchPlugin, isGitUrl, type GitWords } from './fetch-plugin.ts';
+import { fetchPlugin, isGitUrl, unpackPluginRelease, type GitWords } from './fetch-plugin.ts';
+import {
+  downloadPluginRelease,
+  githubRepository,
+  pluginReleases,
+  type PluginRelease,
+} from './plugin-release.ts';
 import { readPlugins } from './plugin-places.ts';
 import { refusalOf, refuse } from './refusal.ts';
+import { readTar } from './tar.ts';
 import { OFFICIAL_PLUGINS, officialPlugin } from './official-plugins.ts';
 import {
   allPlaces,
@@ -266,7 +273,9 @@ function refuseTaken(rows: readonly PluginRow[], name: string): void {
  * Fetch a Plugin into a Place's Shelf and register it in that Place, the
  * default Place unless another is named, and give back the row written. A
  * source is a git URL, an absolute directory, or the Plugin Name of an
- * Official Plugin, in that order (ADR-0015).
+ * Official Plugin, in that order (ADR-0015). A git URL, and an Official
+ * Plugin's, is fetched as its newest Plugin Release when GitHub holds one,
+ * and cloned when it does not (ADR-0033).
  *
  * It follows `add` step for step once the files have landed, because a Plugin
  * that was fetched is a Plugin like any other. Nothing the Plugin ships runs
@@ -311,7 +320,15 @@ export async function installPlugin(
   // checked, because a path that was a directory yesterday can be a symlink
   // today.
   const shelf = checkShelf(filesOf(place, chosen), config.home);
-  const landed = await fetchPlugin(from, shelf, name, words, place.kind === 'wsl');
+  const release = await newestPluginRelease(from);
+  const landed =
+    release === undefined
+      ? await fetchPlugin(from, shelf, name, words, place.kind === 'wsl')
+      : await unpackPluginRelease(
+          async () => readTar(await downloadPluginRelease(release), release.repository),
+          shelf,
+          name,
+        );
   // A `wsl` Plugin is registered by the distribution's own path, and the
   // files written from Windows lost the executable bit on their way in.
   const directory = place.kind === 'wsl' ? posix.join(chosen, name) : landed;
@@ -330,9 +347,28 @@ export async function installPlugin(
         `The files are at ${directory}; take them away, or add them under another name.`,
     );
   }
-  const row: PluginRow = { name, place: place.name, directory, grants: [] };
+  const row: PluginRow = {
+    name,
+    place: place.name,
+    directory,
+    grants: [],
+    ...(release === undefined
+      ? {}
+      : { release: { repository: release.repository, version: release.version } }),
+  };
   writeRegistry(config.home, [...now, row]);
   return row;
+}
+
+/**
+ * The newest Plugin Release a source has, or nothing when it is to be cloned
+ * or copied: a directory, a git URL that is not on GitHub, and a repository
+ * GitHub does not show or holds no Plugin Release in.
+ */
+async function newestPluginRelease(source: string): Promise<PluginRelease | undefined> {
+  const repository = isGitUrl(source) ? githubRepository(source) : undefined;
+  if (repository === undefined) return undefined;
+  return (await pluginReleases(repository))?.[0];
 }
 
 /**

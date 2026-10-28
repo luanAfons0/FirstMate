@@ -1,8 +1,8 @@
 /**
  * Fetching a Plugin: put its files in the Shelf, and say where they landed.
  *
- * It runs nothing the Plugin ships. A directory is copied and a git URL is
- * cloned, and that is the whole of it; the Plugin's own executable runs later,
+ * It runs nothing the Plugin ships. A directory is copied, a git URL is
+ * cloned, and a Plugin Release is unpacked, and that is the whole of it; the Plugin's own executable runs later,
  * when the Host starts it. Fetching a Plugin and running a Plugin stay two
  * separate decisions. ADR-0021 says that installing a Plugin runs nothing it
  * ships, and git clones with the settings `git.ts` keeps, which turn off
@@ -26,11 +26,20 @@
  * in the Shelf and says nothing.
  */
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { lstatSync } from 'node:fs';
-import { cp, realpath, rename, rm } from 'node:fs/promises';
-import { isAbsolute, join, relative } from 'node:path';
+import { cp, mkdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { askingNothing, RUNS_NOTHING } from './git.ts';
 import { refuse } from './refusal.ts';
+import type { TarEntry } from './tar.ts';
+
+/**
+ * FirstMate's record of a Plugin Release's Release Files, in the Plugin's
+ * directory: each file's path and its SHA-256. FirstMate alone writes it, so
+ * `update` can tell the Release Files from the Plugin's own data (ADR-0033).
+ */
+const RELEASE_RECORD = '.firstmate-release.json';
 
 /**
  * Where git's words go while it clones: straight to this process's own
@@ -62,6 +71,62 @@ export async function fetchPlugin(
   words: GitWords = 'shown',
   keepLineEndings = false,
 ): Promise<string> {
+  return land(shelf, name, (staging) =>
+    isGitUrl(source)
+      ? clone(source, staging, words, keepLineEndings)
+      : copyDirectory(source, staging, shelf),
+  );
+}
+
+/**
+ * Put a Plugin Release into the Shelf under this Plugin Name, and give back
+ * the directory it landed in, as `fetchPlugin` does. The entries are asked
+ * for only once the name is known to be free in the Shelf, so a name in the
+ * way costs no download. The Release Files land first, then the record of
+ * them, which lists files and no directories.
+ */
+export async function unpackPluginRelease(
+  entries: () => Promise<readonly TarEntry[]>,
+  shelf: string,
+  name: string,
+): Promise<string> {
+  return land(shelf, name, async (staging) => {
+    const files: Record<string, string> = {};
+    await mkdir(staging);
+    for (const entry of await entries()) {
+      const path = join(staging, entry.path);
+      if (entry.kind === 'directory') {
+        await mkdir(path, { recursive: true });
+        continue;
+      }
+      await mkdir(dirname(path), { recursive: true });
+      if (entry.kind === 'link') {
+        await symlink(entry.target, path);
+        continue;
+      }
+      // Only the executable bit is the archive's to give. The rest is the
+      // usual, so a Plugin Release cannot land a file anyone may write to.
+      await writeFile(path, entry.bytes, { mode: (entry.mode & 0o111) === 0 ? 0o644 : 0o755 });
+      files[entry.path] = createHash('sha256').update(entry.bytes).digest('hex');
+    }
+    const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)));
+    await writeFile(
+      join(staging, RELEASE_RECORD),
+      `${JSON.stringify({ files: sorted }, null, 2)}\n`,
+    );
+  });
+}
+
+/**
+ * Fill a staging directory in the Shelf, then rename it into place under this
+ * Plugin Name. A fill that fails leaves nothing behind, so a caller can write
+ * a Registry row knowing the files are there.
+ */
+async function land(
+  shelf: string,
+  name: string,
+  fill: (staging: string) => Promise<void>,
+): Promise<string> {
   const target = join(shelf, name);
   // lstat, not exists: a symlink there that points nowhere is still in the way.
   if (lstatSync(target, { throwIfNoEntry: false }) !== undefined) {
@@ -74,8 +139,7 @@ export async function fetchPlugin(
   const staging = join(shelf, `.${name}.pending`);
   await rm(staging, { recursive: true, force: true });
   try {
-    if (isGitUrl(source)) await clone(source, staging, words, keepLineEndings);
-    else await copyDirectory(source, staging, shelf);
+    await fill(staging);
     await rename(staging, target);
   } catch (cause) {
     await rm(staging, { recursive: true, force: true });

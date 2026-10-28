@@ -496,6 +496,12 @@ Default: $FIRSTMATE_HOME/shelf, or the directory firstmate shelf moved it to.
 FIRSTMATE_RELEASES_URL moves where desktop downloads the App from.
 Default: https://github.com/luanAfons0/FirstMate/releases/download
 
+FIRSTMATE_GITHUB_API_URL moves where install asks for a Plugin Release.
+Default: https://api.github.com
+
+FIRSTMATE_GITHUB_URL moves where install downloads a Plugin Release from.
+Default: https://github.com
+
 The Host reads FIRSTMATE_PORT and the FIRSTMATE_..._MS variables, and the
 README says what they move.`;
 
@@ -1015,7 +1021,10 @@ async function install(config: Config, argv: readonly string[], place?: string):
     process.stderr.write(held);
     throw fault;
   });
-  console.log(`firstmate: installed ${row.name} at ${row.directory}${inPlace(row.place)}`);
+  const version = row.release === undefined ? '' : `, Release Version ${row.release.version}`;
+  console.log(
+    `firstmate: installed ${row.name} at ${row.directory}${inPlace(row.place)}${version}`,
+  );
   await reloadHost(config.home);
   return 0;
 }

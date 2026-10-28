@@ -36,6 +36,17 @@ const APP_BOOT_TIMEOUT_MS = 60_000;
  */
 const NO_COLOUR_GIVEN = { FORCE_COLOR: undefined, NO_COLOR: undefined };
 
+/**
+ * GitHub, moved to a port on this machine that nothing listens on, so that no
+ * command a test runs asks the real GitHub for a Plugin Release. A test that
+ * wants GitHub to answer serves the fake in `github.ts` and passes its
+ * environment, which comes after this one.
+ */
+const NO_GITHUB = {
+  FIRSTMATE_GITHUB_API_URL: 'http://127.0.0.1:9',
+  FIRSTMATE_GITHUB_URL: 'http://127.0.0.1:9',
+};
+
 export type Row = {
   readonly name: string;
   /** A directory under tests/fixtures, or an absolute path of its own. */
@@ -397,6 +408,7 @@ function run(
         ...process.env,
         ...NO_COLOUR_GIVEN,
         WSL_DISTRO_NAME: '',
+        ...NO_GITHUB,
         FIRSTMATE_HOME: home,
         ...env,
       },
@@ -444,6 +456,7 @@ export function firstmateRunning(
         ...process.env,
         ...NO_COLOUR_GIVEN,
         WSL_DISTRO_NAME: '',
+        ...NO_GITHUB,
         FIRSTMATE_HOME: home,
         ...env,
       },

@@ -941,6 +941,8 @@ too. Remove the command line with `npm uninstall -g @luan-afonso/firstmate`.
 | `FIRSTMATE_NOTICE_MS`   | `60000`        | How long the Host holds a Notice for `/notices.json`. |
 | `FIRSTMATE_SHELF`       | `$FIRSTMATE_HOME/shelf` | The Shelf: where a fetched Plugin lands. With the default home, `~/.firstmate/shelf`, or `%APPDATA%\FirstMate\shelf` on Windows. |
 | `FIRSTMATE_RELEASES_URL`| `https://github.com/luanAfons0/FirstMate/releases/download` | Where `firstmate desktop` downloads the App from: `<url>/v<version>/FirstMate-Setup-<version>.exe`, or `FirstMate-<version>.AppImage` on Linux, and its `.sha256`. |
+| `FIRSTMATE_GITHUB_API_URL` | `https://api.github.com` | Where `install` asks for a Plugin's Plugin Releases: `<url>/repos/<owner>/<repo>/releases`. |
+| `FIRSTMATE_GITHUB_URL` | `https://github.com` | Where `install` downloads a Plugin Release from: `<url>/<owner>/<repo>/releases/download/v<version>/<archive>`, and its `.sha256`. |
 
 A `_MS` variable is a whole number of milliseconds, from 1 to 2147483647 (about
 24 days, the longest wait a Node timer holds). The Host refuses to start on any

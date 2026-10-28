@@ -36,7 +36,26 @@ export type PluginRow = {
    * call only when the target is named here (ADR-0009).
    */
   readonly grants: readonly string[];
+  /**
+   * The Plugin Release the Plugin was installed from: its repository,
+   * `owner/repo`, and its Release Version. A row without it is a clone or a
+   * copy, so every Registry written before Plugin Releases reads the same
+   * (ADR-0033).
+   */
+  readonly release?: PluginReleaseOf;
 };
+
+/** Which Plugin Release a Plugin is: the repository it is from, and its Release Version. */
+type PluginReleaseOf = {
+  /** The GitHub repository, `owner/repo`. */
+  readonly repository: string;
+  /** The Release Version, `MAJOR.MINOR.PATCH`. */
+  readonly version: string;
+};
+
+/** A repository as a row holds it, and a Release Version. */
+const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 
 /** The path of the Registry file in this home directory. */
 export function registryPath(home: string): string {
@@ -79,6 +98,11 @@ export function writeRegistry(home: string, rows: readonly PluginRow[]): void {
     // A Grant is the operator's to give and to take back, so it is kept
     // untouched through every add and every remove.
     grants: [...row.grants],
+    // Left out, not written empty, so a row with no Plugin Release is written
+    // as it was before there were any.
+    ...(row.release === undefined
+      ? {}
+      : { release: { repository: row.release.repository, version: row.release.version } }),
   }));
   writeFileSync(pending, `${JSON.stringify({ plugins }, null, 2)}\n`, { mode: 0o600 });
   renameSync(pending, path);
@@ -114,6 +138,7 @@ function parseRow(row: unknown, index: number, path: string): PluginRow {
   const directory = record?.['directory'];
   const place = record?.['place'] ?? DEFAULT_PLACE;
   const grants = record?.['grants'] ?? [];
+  const release = record?.['release'];
   if (typeof name !== 'string' || !isPluginName(name)) {
     throw new Error(`${where} needs a Plugin Name of lower-case letters, digits and hyphens.`);
   }
@@ -129,5 +154,17 @@ function parseRow(row: unknown, index: number, path: string): PluginRow {
   ) {
     throw new Error(`${where} needs its Grants as an array of Plugin Names.`);
   }
-  return { name, place, directory, grants: grants as string[] };
+  if (release === undefined) return { name, place, directory, grants: grants as string[] };
+  const { repository, version } = (release ?? {}) as Record<string, unknown>;
+  if (
+    typeof repository !== 'string' ||
+    !REPOSITORY.test(repository) ||
+    typeof version !== 'string' ||
+    !VERSION.test(version)
+  ) {
+    throw new Error(
+      `${where} needs its release as a repository, owner/repo, and a version, MAJOR.MINOR.PATCH.`,
+    );
+  }
+  return { name, place, directory, grants: grants as string[], release: { repository, version } };
 }
