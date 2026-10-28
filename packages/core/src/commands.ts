@@ -50,7 +50,7 @@ import {
 import { checkShelf, defaultShelf, shelfInEnvironment } from './shelf.ts';
 import { isPluginPath, readKeys, shortcutAddress, type Shortcut } from './shortcut.ts';
 import { gitHere, moveForward, type Moved } from './update-plugin.ts';
-import { gitInside, homeIn, makeExecutable } from './wsl.ts';
+import { gitInside, homeIn, makeExecutable, targetIn } from './wsl.ts';
 
 /** The sentence for a name that is not a Plugin Name, in every command's words. */
 export function notAPluginName(name: string): string {
@@ -325,19 +325,36 @@ export async function installPlugin(
   // today.
   const shelf = checkShelf(filesOf(place, chosen), config.home);
   const release = await newestPluginRelease(from);
+  // What the archive marks executable, for the distribution to be told.
+  const executable: string[] = [];
   const landed =
     release === undefined
       ? await fetchPlugin(from, shelf, name, words, place.kind === 'wsl')
       : await unpackPluginRelease(
-          async () => readTar(await downloadPluginRelease(release, target), release.repository),
+          async () => {
+            // The distribution's own arch, not the arch of the Windows around it.
+            const where = place.kind === 'wsl' ? await targetIn(place.distribution) : target;
+            const entries = readTar(
+              await downloadPluginRelease(release, where),
+              release.repository,
+            );
+            for (const entry of entries) {
+              if (entry.kind === 'file' && (entry.mode & 0o111) !== 0) executable.push(entry.path);
+            }
+            return entries;
+          },
           shelf,
           name,
         );
   // A `wsl` Plugin is registered by the distribution's own path, and the
   // files written from Windows lost the executable bit on their way in.
   const directory = place.kind === 'wsl' ? posix.join(chosen, name) : landed;
-  if (place.kind === 'wsl' && statSync(join(landed, 'mcp'), { throwIfNoEntry: false })?.isFile()) {
-    await makeExecutable(place.distribution, directory);
+  if (place.kind === 'wsl') {
+    if (release !== undefined) {
+      await makeExecutable(place.distribution, directory, executable);
+    } else if (statSync(join(landed, 'mcp'), { throwIfNoEntry: false })?.isFile()) {
+      await makeExecutable(place.distribution, directory);
+    }
   }
 
   // Read again, because a clone can take minutes, and a row another command
