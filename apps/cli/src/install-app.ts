@@ -47,13 +47,12 @@
  * no App to install.
  */
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { AT_LOGON, LOGON_NAME, RUN_KEY } from '@firstmate/core/logon';
-import { refuse } from '@firstmate/core/refusal';
+import { fetchChecked } from '@firstmate/core/release-download';
 import { isInsideWsl } from '@firstmate/core/wsl';
 import { startWait, whileWaiting } from './progress.ts';
 import { ownVersion } from './version.ts';
@@ -159,7 +158,7 @@ export async function installApp(env: NodeJS.ProcessEnv = process.env): Promise<
   }
 
   const name = `FirstMate-Setup-${version}.exe`;
-  const bytes = await fetchChecked(env, version, name, 'installer');
+  const bytes = await fetchApp(env, version, name, 'installer');
   const installer = join(windows.temp.here, name);
   await writeFile(installer, bytes, { mode: 0o755 });
   try {
@@ -209,7 +208,7 @@ async function installAppImage(env: NodeJS.ProcessEnv): Promise<number> {
     return 0;
   }
 
-  const bytes = await fetchChecked(env, version, `FirstMate-${version}.AppImage`, 'AppImage');
+  const bytes = await fetchApp(env, version, `FirstMate-${version}.AppImage`, 'AppImage');
   await mkdir(dirname(program), { recursive: true });
   const part = `${program}.${process.pid}.part`;
   try {
@@ -254,29 +253,26 @@ async function appImageVersion(program: string): Promise<string | undefined> {
 
 /**
  * One file of the Release of this version, downloaded whole and checked
- * against the SHA-256 published beside it. A file that does not match is
- * refused here, before it is written anywhere, so nothing runs.
+ * against the SHA-256 published beside it (the rule is core's). A file that
+ * does not match is refused before it is written anywhere, so nothing runs.
  */
-async function fetchChecked(
+function fetchApp(
   env: NodeJS.ProcessEnv,
   version: string,
   name: string,
   what: string,
 ): Promise<Buffer> {
   const url = `${(env[RELEASES_VARIABLE] || RELEASES_URL).replace(/\/+$/, '')}/v${version}/${name}`;
-  const expected = await publishedChecksum(`${url}.sha256`, version);
-  console.log(`firstmate: downloading FirstMate ${version} from ${url}`);
-  const bytes = await download(url, version, `downloading FirstMate ${version}`);
-  const check = await startWait('checking the SHA-256');
-  if (createHash('sha256').update(bytes).digest('hex') !== expected) {
-    check.failed();
-    throw refuse(
-      'invalid',
-      `the ${what} from ${url} does not match its published SHA-256, so it was not run.`,
-    );
-  }
-  check.done('the SHA-256 matches');
-  return bytes;
+  return fetchChecked({
+    url,
+    what,
+    missing: (gone) => `there is no FirstMate ${version} to install: ${gone} is not there.`,
+    announce: `firstmate: downloading FirstMate ${version} from ${url}`,
+    doing: `downloading FirstMate ${version}`,
+    downloaded: (bytes) =>
+      `downloaded FirstMate ${version}, ${(bytes.length / 1_000_000).toFixed(1)} MB`,
+    startWait,
+  });
 }
 
 /** Windows, as this process reaches it, or a sentence saying there is none. */
@@ -349,53 +345,6 @@ async function readKey(
     values.set(field, value.replace(/\\(.)/g, '$1'));
   }
   return values;
-}
-
-/** The SHA-256 published beside the installer, in lower-case hex. */
-async function publishedChecksum(url: string, version: string): Promise<string> {
-  const text = (await download(url, version)).toString('utf8');
-  const hash = /^([0-9a-f]{64})(?:\s|$)/i.exec(text.trim())?.[1];
-  if (hash === undefined) throw refuse('invalid', `${url} does not hold a SHA-256 checksum.`);
-  return hash.toLowerCase();
-}
-
-/**
- * One file of the Release, whole. A Release that does not hold it is a
- * refusal. With something it is `doing`, the download is shown as it arrives:
- * a progress bar when the Release says its length, a spinner when it does not.
- */
-async function download(url: string, version: string, doing?: string): Promise<Buffer> {
-  let response: Response;
-  try {
-    response = await fetch(url);
-  } catch (fault) {
-    const cause = fault instanceof Error && fault.cause instanceof Error ? fault.cause : fault;
-    const why = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(`${url} could not be downloaded: ${why}.`, { cause: fault });
-  }
-  if (response.status === 404) {
-    throw refuse('missing', `there is no FirstMate ${version} to install: ${url} is not there.`);
-  }
-  if (!response.ok) throw new Error(`${url} answered ${response.status}.`);
-  if (doing === undefined || response.body === null) {
-    return Buffer.from(await response.arrayBuffer());
-  }
-
-  const length = Number(response.headers.get('content-length'));
-  const wait = await startWait(doing, Number.isSafeInteger(length) ? length : undefined);
-  const chunks: Uint8Array[] = [];
-  try {
-    for await (const chunk of response.body) {
-      chunks.push(chunk);
-      wait.advance(chunk.byteLength);
-    }
-  } catch (fault) {
-    wait.failed();
-    throw fault;
-  }
-  const bytes = Buffer.concat(chunks);
-  wait.done(`downloaded FirstMate ${version}, ${(bytes.length / 1_000_000).toFixed(1)} MB`);
-  return bytes;
 }
 
 /** Run the installer silently, for this user alone, and wait for it to finish. */
