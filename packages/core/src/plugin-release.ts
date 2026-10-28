@@ -77,6 +77,16 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
     });
   }
   if (response.status === 404) return undefined;
+  const wait = rateLimitWait(response);
+  if (wait !== undefined) {
+    // Cloning would hide that GitHub is saying no, and a clone of a Plugin
+    // that has a Plugin Release is not the one its author published.
+    throw refuse(
+      'invalid',
+      `GitHub is limiting how often releases are asked for, so ${repository} was not ` +
+        `fetched. Try again ${wait}.`,
+    );
+  }
   if (!response.ok) {
     throw new Error(`GitHub answered ${response.status} for the releases of ${repository}.`);
   }
@@ -99,6 +109,30 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
   return releases.sort((one, other) => compareVersions(other.version, one.version));
 }
 
+/**
+ * When to try again, as a phrase, if GitHub answered with its rate limit, or
+ * nothing for any other answer. GitHub says it with 429, or with 403 and no
+ * requests left, and tells the time in `retry-after` (seconds) or in
+ * `x-ratelimit-reset` (a Unix time in seconds).
+ */
+function rateLimitWait(response: Response): string | undefined {
+  const limited =
+    response.status === 429 ||
+    (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
+  if (!limited) return undefined;
+  const after = Number(response.headers.get('retry-after'));
+  const reset = Number(response.headers.get('x-ratelimit-reset'));
+  const seconds =
+    response.headers.get('retry-after') !== null && Number.isFinite(after)
+      ? after
+      : response.headers.get('x-ratelimit-reset') !== null && Number.isFinite(reset)
+        ? reset - Date.now() / 1000
+        : undefined;
+  if (seconds === undefined) return 'in a few minutes';
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return `in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+}
+
 /** A Release as the GitHub API lists it, as far as a Plugin Release needs it. */
 type GitHubRelease = {
   readonly tag_name?: unknown;
@@ -119,28 +153,53 @@ function compareVersions(one: string, other: string): number {
 }
 
 /**
- * The names an archive of this Plugin Release may have, in the order they are
- * taken. Its name part is the repository's name, which the release workflow
- * names it by.
+ * The platform and arch an archive is for, in Node's names (`linux`, `win32`,
+ * `darwin`; `x64`, `arm64`). It is a parameter and not read from `process`
+ * here, because the Place an install lands in can run on another platform
+ * than the command line does, such as a `wsl` Place.
  */
-function archiveNames(release: PluginRelease): string[] {
-  const name = release.repository.split('/')[1] ?? '';
-  return [`${name}-${release.version}.tar.gz`];
+export type ArchiveTarget = {
+  readonly platform: string;
+  readonly arch: string;
+};
+
+/** The target of the machine this process runs on: the target of a Place that is not another machine's. */
+export function thisMachine(): ArchiveTarget {
+  return { platform: process.platform, arch: process.arch };
 }
 
 /**
- * The archive of this Plugin Release, whole, gzipped, and checked against the
- * `.sha256` beside it. Anything else is a thrown sentence, and nothing was
- * written anywhere.
+ * The names an archive of this Plugin Release may have for this target, in the
+ * order they are taken: the archive for the target's platform and arch first,
+ * and the archive for every platform second. Its name part is the
+ * repository's name, which the release workflow names it by.
  */
-export async function downloadPluginRelease(release: PluginRelease): Promise<Buffer> {
+function archiveNames(release: PluginRelease, target: ArchiveTarget): string[] {
+  const name = release.repository.split('/')[1] ?? '';
+  const base = `${name}-${release.version}`;
+  return [`${base}-${target.platform}-${target.arch}.tar.gz`, `${base}.tar.gz`];
+}
+
+/**
+ * The archive of this Plugin Release for this target, whole, gzipped, and
+ * checked against the `.sha256` beside it. A Plugin Release with no archive
+ * for the target, and none for every platform, is broken for it, and is
+ * refused. Anything else is a thrown sentence, and nothing was written
+ * anywhere.
+ */
+export async function downloadPluginRelease(
+  release: PluginRelease,
+  target: ArchiveTarget,
+): Promise<Buffer> {
   const { repository, version } = release;
-  const archive = archiveNames(release).find((name) => release.assets.includes(name));
+  const names = archiveNames(release, target);
+  const archive = names.find((name) => release.assets.includes(name));
   if (archive === undefined) {
     throw refuse(
       'invalid',
-      `the Plugin Release ${version} of ${repository} holds no archive named ` +
-        `${archiveNames(release).join(' or ')}. Ask the Plugin's author to publish one.`,
+      `the Plugin Release ${version} of ${repository} holds no archive for ` +
+        `${target.platform}-${target.arch} (${names.join(' or ')}). ` +
+        `Ask the Plugin's author to publish one.`,
     );
   }
   const downloads = process.env['FIRSTMATE_GITHUB_URL'] || GITHUB;
