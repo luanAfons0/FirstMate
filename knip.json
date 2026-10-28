@@ -1,6 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "includeEntryExports": true,
+  // Windows ships icacls, and a test runs it to make a directory refuse writes.
+  "ignoreBinaries": ["icacls"],
   "workspaces": {
     ".": {
       // A fixture's mcp.ts is started by the Host, not imported (ADR-0028).
