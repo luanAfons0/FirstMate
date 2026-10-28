@@ -77,6 +77,16 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
     });
   }
   if (response.status === 404) return undefined;
+  const wait = rateLimitWait(response);
+  if (wait !== undefined) {
+    // Cloning would hide that GitHub is saying no, and a clone of a Plugin
+    // that has a Plugin Release is not the one its author published.
+    throw refuse(
+      'invalid',
+      `GitHub is limiting how often releases are asked for, so ${repository} was not ` +
+        `fetched. Try again ${wait}.`,
+    );
+  }
   if (!response.ok) {
     throw new Error(`GitHub answered ${response.status} for the releases of ${repository}.`);
   }
@@ -97,6 +107,30 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
     });
   }
   return releases.sort((one, other) => compareVersions(other.version, one.version));
+}
+
+/**
+ * When to try again, as a phrase, if GitHub answered with its rate limit, or
+ * nothing for any other answer. GitHub says it with 429, or with 403 and no
+ * requests left, and tells the time in `retry-after` (seconds) or in
+ * `x-ratelimit-reset` (a Unix time in seconds).
+ */
+function rateLimitWait(response: Response): string | undefined {
+  const limited =
+    response.status === 429 ||
+    (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
+  if (!limited) return undefined;
+  const after = Number(response.headers.get('retry-after'));
+  const reset = Number(response.headers.get('x-ratelimit-reset'));
+  const seconds =
+    response.headers.get('retry-after') !== null && Number.isFinite(after)
+      ? after
+      : response.headers.get('x-ratelimit-reset') !== null && Number.isFinite(reset)
+        ? reset - Date.now() / 1000
+        : undefined;
+  if (seconds === undefined) return 'in a few minutes';
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return `in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
 }
 
 /** A Release as the GitHub API lists it, as far as a Plugin Release needs it. */

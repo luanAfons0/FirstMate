@@ -32,6 +32,7 @@
  *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import {
   addPlace,
   addPlugin,
@@ -1021,6 +1022,10 @@ async function install(config: Config, argv: readonly string[], place?: string):
     process.stderr.write(held);
     throw fault;
   });
+  // A source that is not a directory and gave no Plugin Release was cloned.
+  if (row.release === undefined && !isAbsolute(source)) {
+    console.log(`firstmate: ${row.name} has no Plugin Release; cloned it instead.`);
+  }
   const version = row.release === undefined ? '' : `, Release Version ${row.release.version}`;
   console.log(
     `firstmate: installed ${row.name} at ${row.directory}${inPlace(row.place)}${version}`,
