@@ -165,15 +165,20 @@ packages/core/src/  what the command line and the Host share. Imports nothing
   logon.ts         the App's logon entry, which the App and setup both write.
   shelf.ts         where a fetched Plugin lands: resolve it, and check one.
   fetch-plugin.ts  put a Plugin's files in the Shelf: copy a directory, clone
-                   a git URL, unpack a Plugin Release with the record of its
-                   Release Files, and run none of what lands.
+                   a git URL, stage a Plugin Release (install and update
+                   both), and run none of what lands.
+  release-files.ts unpack a Plugin Release, and FirstMate's record of its
+                   Release Files, by which update tells them from data.
   release-download.ts download a file of a GitHub Release, checked against
                    the SHA-256 beside it: the App's and a Plugin Release's.
   plugin-release.ts a repository's Plugin Releases on GitHub, newest first,
                    and the checked archive of one (ADR-0033).
-  tar.ts           read a gzipped tar into its entries, with zlib alone.
+  tar.ts           read a gzipped tar into its entries, with zlib alone, and
+                   refuse a path that could land outside the Plugin.
   update-plugin.ts move a Plugin that is a git clone forward, with no merge,
                    through a runner of one git command (ADR-0030).
+  update-release.ts update a Plugin Release: the steps as data, checks that
+                   refuse before any change, and a roll-back (ADR-0033).
   agents.ts        the Agents, as data: names, efforts, models, and what the
                    Mate runs one with (ADR-0031).
   agent-run.ts     run the operator's own Agent: the question on stdin, the

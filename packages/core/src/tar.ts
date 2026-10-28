@@ -27,10 +27,20 @@ import { refuse } from './refusal.ts';
 const BLOCK = 512;
 
 /**
- * FirstMate's record of Release Files, at the top of the Plugin's directory.
- * FirstMate alone writes it, so no archive may hold it (ADR-0033).
+ * The name of FirstMate's record of Release Files, at the top of the Plugin's
+ * directory. FirstMate alone writes it, so no archive may hold it (ADR-0033).
+ * It is here, in the module everything else that reads a Plugin Release
+ * builds on, so that it is written once.
  */
-const RELEASE_RECORD = '.firstmate-release.json';
+export const RELEASE_RECORD = '.firstmate-release.json';
+
+/**
+ * The most bytes an archive may unpack to. A Plugin is far smaller, and a
+ * gzip of a few MB can unpack to more than the memory there is: such an
+ * archive is refused before it takes it all. The download of an archive
+ * stops at the same limit.
+ */
+export const MOST_BYTES = 1024 ** 3;
 
 /** A character no path of an entry holds: a control character, or a backslash. */
 const UNLANDABLE = /[\p{Cc}\\]/u;
@@ -57,8 +67,16 @@ export type TarEntry =
 export function readTar(gzipped: Buffer, from: string): TarEntry[] {
   let tar: Buffer;
   try {
-    tar = gunzipSync(gzipped);
+    tar = gunzipSync(gzipped, { maxOutputLength: MOST_BYTES });
   } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') {
+      throw refuse(
+        'invalid',
+        `${from} unpacks to more than ${MOST_BYTES / 1024 ** 3} GiB, so nothing was unpacked; ` +
+          `ask the Plugin's author to ship a smaller Plugin Release.`,
+        { cause },
+      );
+    }
     throw refuse('invalid', `${from} is not a gzipped archive, so nothing was unpacked.`, {
       cause,
     });
@@ -167,6 +185,23 @@ export function readTar(gzipped: Buffer, from: string): TarEntry[] {
 }
 
 /**
+ * Whether a path is one this reader gives back: relative, with `/` between
+ * parts, none of them empty, `.` or climbing, and not the record itself. The
+ * record of Release Files is checked by it, as `update` moves every path the
+ * record names.
+ */
+export function isLandable(path: string): boolean {
+  if (UNLANDABLE.test(path) || ROOTED.test(path)) return false;
+  const parts = partsOf(path);
+  return (
+    parts !== undefined &&
+    parts.join('/') === path &&
+    path !== '' &&
+    parts.map(folded).join('/') !== RELEASE_RECORD
+  );
+}
+
+/**
  * The parts of an entry's path with no `.` and no empty part, so `./web/` is
  * `web`, or nothing when a part climbs: `..`, or a part of only dots and
  * spaces, which Windows reads as `..` or as nothing once it drops them.
@@ -186,7 +221,7 @@ function partsOf(raw: string): string[] | undefined {
  * form, in one case, and with no dots or spaces at its end, as Windows reads
  * it. Two entries with the same folded path are one file somewhere.
  */
-function folded(part: string): string {
+export function folded(part: string): string {
   return part
     .normalize('NFC')
     .toLowerCase()

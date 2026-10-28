@@ -17,6 +17,13 @@
  * contributor's Windows write different archives, and the tests must read the
  * same bytes the workflow publishes.
  *
+ * It refuses a folder that `install` would refuse, in one sentence and before
+ * it writes anything, so the workflow never publishes an archive that every
+ * install refuses. The rules are the ones of `readTar` in
+ * `packages/core/src/tar.ts`, copied below: the workflow checks out only
+ * `scripts/`, so this file cannot import core. Change `tar.ts` and change the
+ * copy with it.
+ *
  * The archive is the same for the same folder: entries in name order, every
  * time and owner zero. Only the executable bit of a file's mode means
  * anything to `install`, and it is kept as the folder has it.
@@ -62,6 +69,107 @@ async function entriesOf(folder: string, under = ''): Promise<Entry[]> {
     }
   }
   return entries;
+}
+
+/**
+ * FirstMate's record of Release Files, at the top of the Plugin's directory.
+ * FirstMate alone writes it, so no archive may hold it. Copied from `tar.ts`.
+ */
+const RELEASE_RECORD = '.firstmate-release.json';
+
+/** A character no path holds: a control character, or a backslash. Copied from `tar.ts`. */
+const UNLANDABLE = /[\p{Cc}\\]/u;
+
+/** A path that starts at a root: `/`, or a Windows drive. Copied from `tar.ts`. */
+const ROOTED = /^(?:\/|[A-Za-z]:)/;
+
+/**
+ * A target part Windows can read as another name: `NAME~1`, or `name:stream`.
+ * Copied from `tar.ts`.
+ */
+const ANOTHER_NAME = /~\d|:/;
+
+/**
+ * A part of a path by the name every platform knows it by: one Unicode form,
+ * one case, no dots or spaces at its end. Copied from `tar.ts`.
+ */
+function folded(part: string): string {
+  return part
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[. ]+$/, '');
+}
+
+/**
+ * Refuse, in one sentence, an entry that `readTar` would refuse: a name that
+ * does not land the same on every platform, two names that are one name
+ * somewhere, the record of Release Files, or a link that leaves the folder.
+ */
+function checkEntries(entries: readonly Entry[]): void {
+  const refuse = (path: string, why: string): Error =>
+    new Error(
+      `${shown(path)} is ${why}, so \`install\` would refuse this Plugin Release; ` +
+        'rename or remove it in the Release Files.',
+    );
+  const landed = new Map<string, Entry['kind']>();
+  for (const entry of entries) {
+    if (UNLANDABLE.test(entry.path)) {
+      throw refuse(entry.path, 'a name with a backslash or a control character');
+    }
+    const parts = entry.path.split('/');
+    if (parts.some((part) => /^[. ]+$/.test(part))) {
+      throw refuse(entry.path, 'a name made of only dots and spaces');
+    }
+    const key = parts.map(folded).join('/');
+    if (key === RELEASE_RECORD) {
+      throw refuse(entry.path, "the name of FirstMate's own record of Release Files");
+    }
+    if (landed.has(key))
+      throw refuse(entry.path, 'a name that another name equals in case or form');
+    landed.set(key, entry.kind);
+  }
+  for (const entry of entries) {
+    if (entry.kind === 'link' && !staysInside(entry.path, entry.target, landed)) {
+      throw refuse(entry.path, "a link whose target leaves the Release Files' folder");
+    }
+  }
+}
+
+/**
+ * Whether a link at this path, to this target, stays inside the folder: walked
+ * one part at a time, refused once it climbs above the top or goes on past
+ * another link. Copied from `tar.ts`.
+ */
+function staysInside(
+  path: string,
+  target: string,
+  landed: ReadonlyMap<string, Entry['kind']>,
+): boolean {
+  if (target === '' || UNLANDABLE.test(target) || ROOTED.test(target)) return false;
+  if (ANOTHER_NAME.test(target)) return false;
+  const at = path.split('/').map(folded).slice(0, -1);
+  for (const part of target.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (landed.get(at.join('/')) === 'link') return false;
+    if (part === '..') {
+      if (at.pop() === undefined) return false;
+    } else if (/^[. ]+$/.test(part)) {
+      return false;
+    } else {
+      at.push(folded(part));
+    }
+  }
+  return true;
+}
+
+/** A path as a sentence may hold it: control characters written as \`\\uXXXX\`. */
+function shown(path: string): string {
+  if (!/\p{Cc}/u.test(path)) return path;
+  const escaped = path.replace(
+    /\p{Cc}/gu,
+    (control) => `\\u${control.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+  return `"${escaped}"`;
 }
 
 /**
@@ -151,6 +259,7 @@ async function archive(argv: readonly string[]): Promise<string> {
 
   const entries = await entriesOf(resolve(folder));
   if (entries.length === 0) throw new Error(`${folder} is empty, so there is nothing to ship.`);
+  checkEntries(entries);
   const bytes = gzipSync(tarOf(entries), { level: 9 });
   const file = `${name}-${version}${platform === undefined ? '' : `-${platform}`}.tar.gz`;
   await mkdir(out, { recursive: true });

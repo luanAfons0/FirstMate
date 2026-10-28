@@ -56,6 +56,17 @@ test('list and status show the Release Version, clone or copy of each Plugin', a
   assert.match(lineOf(statused.stdout, 'both'), /\b1\.2\.0\b/);
   assert.match(lineOf(statused.stdout, 'cloned'), /\bclone\b/);
   assert.match(lineOf(statused.stdout, 'copied'), /\bcopy\b/);
+
+  // --json says the same, by name, beside what it said before.
+  const updatesIn = (said: string): Record<string, string> =>
+    Object.fromEntries(
+      (JSON.parse(said) as { plugins: { name: string; updates: string }[] }).plugins.map(
+        (plugin) => [plugin.name, plugin.updates],
+      ),
+    );
+  const expected = { both: '1.2.0', cloned: 'clone', copied: 'copy' };
+  assert.deepEqual(updatesIn((await firstmate(home, ['list', '--json'])).stdout), expected);
+  assert.deepEqual(updatesIn((await firstmate(home, ['status', '--json'])).stdout), expected);
 });
 
 test('a Registry written before Plugin Releases shows clone or copy, and is not rewritten', async (t) => {

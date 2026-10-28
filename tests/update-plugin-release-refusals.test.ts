@@ -9,12 +9,23 @@
  * It needs no network: GitHub is the fake in `helpers/github.ts`, and every
  * Plugin Release is made by the archive script the release workflow runs.
  * A move is made to fail with a directory of the Plugin's data that no one
- * may write to: read-only on Linux, an access rule that refuses writes on
- * Windows, where a read-only directory still takes new files.
+ * may add a file to: read-only on Linux, an access rule that refuses new
+ * files and directories on Windows, where a read-only directory still takes
+ * new files.
  */
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { chmod, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
+import {
+  chmod,
+  copyFile,
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { pluginRelease, serveGitHub, type FakeGitHub } from './helpers/github.ts';
@@ -74,8 +85,11 @@ async function everythingIn(home: string): Promise<unknown> {
  */
 async function refuseWritesIn(directory: string): Promise<() => Promise<void>> {
   if (process.platform === 'win32') {
+    // Only the rights to add a file and to add a directory. `(W)` denies
+    // all of write, and with it SYNCHRONIZE, which every open asks for, so
+    // the directory could not be listed or read either.
     const everyone = '*S-1-1-0';
-    execFileSync('icacls', [directory, '/deny', `${everyone}:(W)`]);
+    execFileSync('icacls', [directory, '/deny', `${everyone}:(WD,AD)`]);
     return async () => {
       execFileSync('icacls', [directory, '/remove:d', everyone]);
     };
@@ -84,7 +98,10 @@ async function refuseWritesIn(directory: string): Promise<() => Promise<void>> {
   return () => chmod(directory, 0o755);
 }
 
-/** Whether a directory without write rights can refuse this test: root writes to it all the same. */
+/**
+ * Whether a directory without write rights can refuse this test: root writes
+ * to it all the same.
+ */
 const ROOT = process.platform !== 'win32' && process.getuid?.() === 0;
 
 test('data where the new Plugin Release ships a file is refused, and nothing changes', async (t) => {
@@ -120,6 +137,44 @@ test('a file of data where the new Plugin Release needs a directory is refused t
     updated.stderr,
   );
   assert.deepEqual(await everythingIn(home), before);
+});
+
+test('a file of data where the new Plugin Release has an empty directory is refused', async (t) => {
+  const github = await serveGitHub(t);
+  const { home, plugin } = await installed(t, github);
+  await writeFile(join(plugin, 'logs'), 'the operator’s logs\n');
+  const folder = join(await makeHome(t), 'both');
+  await cp(fixture('both'), folder, { recursive: true });
+  await mkdir(join(folder, 'logs'));
+  await writeFile(join(folder, 'private.txt'), 'new\n');
+  github.publish('someone/both', await pluginRelease(t, folder, 'both', '1.3.0'));
+  const before = await everythingIn(home);
+
+  const updated = await firstmate(home, ['update', 'both'], github.env);
+
+  assert.equal(updated.code, 3, updated.stdout);
+  assert.ok(
+    updated.stderr.includes(`${join(plugin, 'logs')} is the Plugin's data`),
+    updated.stderr,
+  );
+  assert.deepEqual(await everythingIn(home), before);
+  const again = await firstmate(home, ['update', 'both'], github.env);
+  assert.equal(again.code, 3, 'the next update says the same, and nothing is left in its way');
+});
+
+test('an empty directory the new Plugin Release ships is made', async (t) => {
+  const github = await serveGitHub(t);
+  const { home, plugin } = await installed(t, github);
+  const folder = join(await makeHome(t), 'both');
+  await cp(fixture('both'), folder, { recursive: true });
+  await mkdir(join(folder, 'logs'));
+  github.publish('someone/both', await pluginRelease(t, folder, 'both', '1.3.0'));
+
+  const updated = await firstmate(home, ['update', 'both'], github.env);
+
+  assert.equal(updated.code, 0, updated.stderr);
+  assert.ok((await stat(join(plugin, 'logs'))).isDirectory());
+  assert.deepEqual((await readdir(join(home, 'shelf'))).sort(), ['both']);
 });
 
 test('a Release File the operator changed is refused, and nothing changes', async (t) => {
@@ -203,12 +258,42 @@ test(
   },
 );
 
-test(
-  'on Windows, update works while the Plugin Server runs from mcp.exe',
-  {
-    skip:
-      'no fixture ships a real mcp.exe Plugin Server: it needs a native build. ' +
-      'A rename works on a running mcp.exe, and finishUpdate removes the old one after the restart.',
-  },
-  () => {},
-);
+test('update works while mcp.exe runs, and the old one goes once it has ended', async (t) => {
+  // A copy of node.exe is a real mcp.exe. Started with a pipe on stdin, it
+  // waits for its program there, so it runs, and on Windows its file is
+  // locked, as a Plugin Server's is: it can be moved, not removed.
+  const github = await serveGitHub(t);
+  const folder = join(await makeHome(t), 'both');
+  await cp(fixture('both'), folder, { recursive: true });
+  await copyFile(process.execPath, join(folder, 'mcp.exe'));
+  github.publish('someone/both', await pluginRelease(t, folder, 'both', '1.2.0'));
+  const home = await makeHome(t);
+  const done = await firstmate(home, ['install', 'https://github.com/someone/both'], github.env);
+  assert.equal(done.code, 0, done.stderr);
+  const plugin = join(home, 'shelf', 'both');
+  const previous = join(home, 'shelf', '.both.previous');
+  const running = spawn(join(plugin, 'mcp.exe'), [], { stdio: ['pipe', 'ignore', 'ignore'] });
+  const ended = new Promise((end) => running.once('exit', end));
+  t.after(() => running.kill());
+  await new Promise((started, failed) => {
+    running.once('spawn', started);
+    running.once('error', failed);
+  });
+  await writeFile(join(folder, 'private.txt'), 'the new words\n');
+  github.publish('someone/both', await pluginRelease(t, folder, 'both', '1.3.0'));
+
+  const updated = await firstmate(home, ['update', 'both'], github.env);
+
+  assert.equal(updated.code, 0, updated.stderr);
+  assert.match(updated.stdout, /^firstmate: updated both from 1\.2\.0 to 1\.3\.0$/m);
+  assert.equal(await readFile(join(plugin, 'private.txt'), 'utf8'), 'the new words\n');
+  if (process.platform === 'win32') {
+    assert.ok(updated.stderr.includes(`${previous} could not be removed`), updated.stderr);
+  }
+
+  running.kill();
+  await ended;
+  const again = await firstmate(home, ['update', 'both'], github.env);
+  assert.equal(again.code, 0, again.stderr);
+  assert.deepEqual((await readdir(join(home, 'shelf'))).sort(), ['both']);
+});

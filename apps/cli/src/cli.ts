@@ -32,7 +32,6 @@
  *   node apps/cli/src/cli.ts order [<name> <position>] [--json]
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
 import {
   addPlace,
   addPlugin,
@@ -414,7 +413,8 @@ answers.`,
 for a Plugin installed from a Plugin Release; clone, for a git clone of its
 own; copy, for a copied or added directory, which update refuses; or unknown,
 when its Place is gone or its distribution has no git. status shows the same
-column.`,
+column, and with --json each Plugin has it as updates. From a pipe, it is
+the last field of a row.`,
   },
   {
     about: ['usage'],
@@ -449,14 +449,17 @@ a copy. update says nothing else when there is nothing to move, and nothing
 the Plugin ships runs.
 It refuses with exit code 3, and changes nothing, when a Release File was
 changed or is gone, when the Plugin's data sits where a new Release File goes,
-when a left-over .<name>.previous is in the Shelf, when the archive does
+when a .<name>.previous left by an update that did not end is in the Shelf
+(one left by an update that ended is removed), when the archive does
 not match its SHA-256, and when GitHub limits the asking; with exit code 4,
 when the archive or its SHA-256 is not published. It refuses a
 copied Plugin, and a clone that has local changes to tracked files, follows no
 upstream, or has diverged from it. When a move fails half way, update puts the
 old Release Files back and ends with exit code 1, and the Plugin stays on its
-Release Version. With no Host running, a Plugin Server's new code starts with
-the Host.`,
+Release Version. A clean-up that fails after the update is done is a line
+that says what to remove, with exit code 0. In a wsl Place, update takes the
+archive for the distribution's arch and makes its executable files executable
+there. With no Host running, a Plugin Server's new code starts with the Host.`,
   },
   {
     about: ['restart'],
@@ -1054,16 +1057,15 @@ async function install(config: Config, argv: readonly string[], place?: string):
     held = said;
   };
   const words = onTerminal() ? hold : 'shown';
-  const row = await whileWaiting(
+  const { row, fetched } = await whileWaiting(
     `fetching ${source}`,
-    (fetched) => `fetched ${fetched.name}`,
+    (done) => `fetched ${done.row.name}`,
     () => installPlugin(config, source, given, place, words),
   ).catch((fault: unknown) => {
     process.stderr.write(held);
     throw fault;
   });
-  // A source that is not a directory and gave no Plugin Release was cloned.
-  if (row.release === undefined && !isAbsolute(source)) {
+  if (fetched === 'clone') {
     console.log(`firstmate: ${row.name} has no Plugin Release; cloned it instead.`);
   }
   const version = row.release === undefined ? '' : `, Release Version ${row.release.version}`;
@@ -1199,7 +1201,10 @@ async function update(home: string, argv: readonly string[]): Promise<number> {
   } finally {
     // After the restart: on Windows the old Release Files can hold the
     // running mcp.exe, and it can be removed only once the Host stopped it.
-    await finishUpdate(moved);
+    // The update is done, so what stays is said, and the exit is not changed.
+    for (const warning of [...moved.warnings, ...(await finishUpdate(name, moved))]) {
+      console.error(`firstmate: ${warning}`);
+    }
   }
 }
 
@@ -1295,7 +1300,7 @@ async function list(home: string, argv: readonly string[], json: boolean): Promi
   const shortcuts = readSettings(home).shortcuts ?? [];
   if (json) {
     printJson({
-      plugins: rows,
+      plugins: rows.map((row) => ({ ...row, updates: updates.get(row.name) ?? 'unknown' })),
       shortcuts: shortcuts.map((shortcut) => ({
         ...shortcut,
         address: shortcutAddress(shortcut),
@@ -1305,14 +1310,14 @@ async function list(home: string, argv: readonly string[], json: boolean): Promi
   }
   // An empty Registry says nothing, as an empty directory listing says nothing.
   printRows(
-    ['NAME', 'UPDATES', 'PLACE', 'DIRECTORY', 'GRANTS'],
+    ['NAME', 'PLACE', 'DIRECTORY', 'GRANTS', 'UPDATES'],
     rows.map((row) => ({
       cells: [
         row.name,
-        updates.get(row.name) ?? '',
         row.place,
         row.directory,
         row.grants.join(', '),
+        updates.get(row.name) ?? '',
       ],
       plain: describe(row, updates.get(row.name)),
     })),
@@ -1344,7 +1349,14 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
   }
   const updates = await updatesBy(home);
   if (json) {
-    printJson({ running: true, address: seen.address, plugins: seen.plugins });
+    printJson({
+      running: true,
+      address: seen.address,
+      plugins: seen.plugins.map((plugin) => ({
+        ...plugin,
+        updates: updates.get(plugin.name) ?? 'unknown',
+      })),
+    });
     return 0;
   }
   console.log(`firstmate: the Host runs at ${seen.address}`);
@@ -1424,9 +1436,14 @@ function stateWord(state: PluginState): string {
   return state === 'stopped' ? bad(word) : word;
 }
 
+/**
+ * A row of `list` for a pipe: the line it was before the UPDATES column, and
+ * that value last, so a script that reads the fields by place reads the same
+ * ones.
+ */
 function describe(row: PluginRow, updates: string | undefined): string {
   const grants = row.grants.length === 0 ? '' : `  grants: ${row.grants.join(', ')}`;
-  return `${row.name}\t${updates ?? ''}\t${row.place}\t${row.directory}${grants}`;
+  return `${row.name}\t${row.place}\t${row.directory}${grants}\t${updates ?? ''}`;
 }
 
 try {

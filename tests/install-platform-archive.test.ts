@@ -82,7 +82,9 @@ test('with only archives for other platforms, install refuses, naming this one, 
     github.env,
   );
 
-  assert.notEqual(installed.code, 0);
+  // Missing, as a file the release lists but does not serve: one exit code
+  // for "the release does not hold this file".
+  assert.equal(installed.code, 4, installed.stderr);
   assert.ok(installed.stderr.includes(HERE), installed.stderr);
   assert.equal(installed.stderr.trim().split('\n').length, 1, 'one sentence');
   assert.deepEqual(await readdir(join(home, 'shelf')).catch(() => []), [], 'nothing landed');

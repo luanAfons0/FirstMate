@@ -15,7 +15,9 @@
  * one GitHub does not show, and it is cloned with the operator's own login.
  */
 import { refuse } from './refusal.ts';
-import { fetchChecked } from './release-download.ts';
+import { RELEASE_VERSION, REPOSITORY_PART, type PluginReleaseOf } from './registry.ts';
+import { faultReason, fetchChecked } from './release-download.ts';
+import { MOST_BYTES } from './tar.ts';
 
 /** Where the releases of a repository are asked for, unless moved. */
 const GITHUB_API = 'https://api.github.com';
@@ -24,20 +26,12 @@ const GITHUB_API = 'https://api.github.com';
 const GITHUB = 'https://github.com';
 
 /** A GitHub URL, in the form a browser shows and in the form ssh clones. */
-const GITHUB_URL = [
-  /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/i,
-  /^git@github\.com:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/i,
-];
+const GITHUB_URL = ['https://github\\.com/', 'git@github\\.com:'].map(
+  (start) => new RegExp(`^${start}(${REPOSITORY_PART})/(${REPOSITORY_PART}?)(?:\\.git)?/?$`, 'i'),
+);
 
-/** The tag of a Plugin Release, with its Release Version's three numbers. */
-const TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
-/** One Plugin Release, as GitHub lists it. */
-export type PluginRelease = {
-  /** The repository it is in, `owner/repo`. */
-  readonly repository: string;
-  /** Its Release Version, `MAJOR.MINOR.PATCH`. */
-  readonly version: string;
+/** One Plugin Release, as GitHub lists it: which one it is, and its files. */
+export type PluginRelease = PluginReleaseOf & {
   /** The names of the files it holds. */
   readonly assets: readonly string[];
 };
@@ -54,12 +48,42 @@ export function githubRepository(url: string): string | undefined {
 /**
  * The Plugin Releases of a repository, newest first, or nothing when GitHub
  * does not know the repository. A repository GitHub knows with no Plugin
- * Release gives an empty list. GitHub lists the newest hundred Releases on
- * one page, and that is enough to find the newest Plugin Release.
+ * Release gives an empty list. GitHub lists a hundred Releases a page, newest
+ * created first, so every page is read: a fix to an older MAJOR can be past
+ * the first hundred, and a Release Version is not the order it was created
+ * in.
  */
 export async function pluginReleases(repository: string): Promise<PluginRelease[] | undefined> {
   const api = process.env['FIRSTMATE_GITHUB_API_URL'] || GITHUB_API;
-  const url = `${api}/repos/${repository}/releases?per_page=100`;
+  const releases: PluginRelease[] = [];
+  // A page that names a page already read would ask GitHub forever.
+  const read = new Set<string>();
+  let url: string | undefined = `${api}/repos/${repository}/releases?per_page=100`;
+  while (url !== undefined && !read.has(url)) {
+    read.add(url);
+    const response = await askGitHub(url, repository);
+    if (response.status === 404 && read.size === 1) return undefined;
+    if (!response.ok) {
+      throw new Error(`GitHub answered ${response.status} for the releases of ${repository}.`);
+    }
+    const listed = (await response.json()) as unknown;
+    if (!Array.isArray(listed)) {
+      throw new Error(`GitHub did not answer a list of the releases of ${repository}.`);
+    }
+    for (const release of listed as GitHubRelease[]) {
+      const found = pluginReleaseOf(release, repository);
+      if (found !== undefined) releases.push(found);
+    }
+    url = nextPage(response);
+  }
+  return releases.sort((one, other) => compareVersions(other.version, one.version));
+}
+
+/**
+ * GitHub's answer for one page of the releases. Its rate limit is refused
+ * here, and so is a network that does not answer.
+ */
+async function askGitHub(url: string, repository: string): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -70,13 +94,11 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
       },
     });
   } catch (fault) {
-    const cause = fault instanceof Error && fault.cause instanceof Error ? fault.cause : fault;
-    const why = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(`GitHub could not be asked for the releases of ${repository}: ${why}.`, {
-      cause: fault,
-    });
+    throw new Error(
+      `GitHub could not be asked for the releases of ${repository}: ${faultReason(fault)}.`,
+      { cause: fault },
+    );
   }
-  if (response.status === 404) return undefined;
   const wait = rateLimitWait(response);
   if (wait !== undefined) {
     // Cloning would hide that GitHub is saying no, and a clone of a Plugin
@@ -87,38 +109,55 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
         `fetched. Try again ${wait}.`,
     );
   }
-  if (!response.ok) {
-    throw new Error(`GitHub answered ${response.status} for the releases of ${repository}.`);
-  }
-  const listed = (await response.json()) as unknown;
-  if (!Array.isArray(listed)) {
-    throw new Error(`GitHub did not answer a list of the releases of ${repository}.`);
-  }
-  const releases: PluginRelease[] = [];
-  for (const release of listed as GitHubRelease[]) {
-    if (release === null || release.draft === true || release.prerelease === true) continue;
-    const version = TAG.exec(String(release.tag_name))?.[0].slice(1);
-    if (version === undefined) continue;
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    releases.push({
-      repository,
-      version,
-      assets: assets.map((asset) => String(asset?.name)),
-    });
-  }
-  return releases.sort((one, other) => compareVersions(other.version, one.version));
+  return response;
 }
+
+/** The page after this one, as GitHub names it in its `link` header, or nothing on the last. */
+function nextPage(response: Response): string | undefined {
+  const link = response.headers.get('link') ?? '';
+  return /<([^>]+)>\s*;\s*rel="next"/.exec(link)?.[1];
+}
+
+/**
+ * The Plugin Release a GitHub Release is, or nothing when it is none: a
+ * draft, a prerelease, a tag that is not a Release Version, and a Release
+ * that holds no `.tar.gz` at all. That last one is a repository's notes, not
+ * an archive of the Plugin, so a repository with only those is cloned, as
+ * before. The repository is the one GitHub names in the Release's own
+ * address, in its true letter case: the release workflow names the archive
+ * by it, and the operator may have typed the URL in another case.
+ */
+function pluginReleaseOf(release: GitHubRelease, asked: string): PluginRelease | undefined {
+  if (release === null || release.draft === true || release.prerelease === true) return undefined;
+  const tag = String(release.tag_name);
+  const version = tag.slice(1);
+  if (!tag.startsWith('v') || !RELEASE_VERSION.test(version)) return undefined;
+  const assets = (Array.isArray(release.assets) ? release.assets : []).map((asset) =>
+    String(asset?.name),
+  );
+  if (!assets.some((name) => name.endsWith('.tar.gz'))) return undefined;
+  const page = URL.parse(String(release.html_url))?.pathname ?? '';
+  const [, owner, repo] = RELEASE_PAGE.exec(page) ?? [];
+  const repository = owner !== undefined && repo !== undefined ? `${owner}/${repo}` : asked;
+  return { repository, version, assets };
+}
+
+/** The path of a Release's page on GitHub, `/<owner>/<repo>/releases/tag/<tag>`. */
+const RELEASE_PAGE = new RegExp(`^/(${REPOSITORY_PART})/(${REPOSITORY_PART})/releases/`);
 
 /**
  * When to try again, as a phrase, if GitHub answered with its rate limit, or
  * nothing for any other answer. GitHub says it with 429, or with 403 and no
- * requests left, and tells the time in `retry-after` (seconds) or in
- * `x-ratelimit-reset` (a Unix time in seconds).
+ * requests left, or with 403 and `retry-after` for its secondary limit, which
+ * leaves requests and still says no. It tells the time in `retry-after`
+ * (seconds) or in `x-ratelimit-reset` (a Unix time in seconds).
  */
 function rateLimitWait(response: Response): string | undefined {
   const limited =
     response.status === 429 ||
-    (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
+    (response.status === 403 &&
+      (response.headers.get('x-ratelimit-remaining') === '0' ||
+        response.headers.get('retry-after') !== null));
   if (!limited) return undefined;
   const after = Number(response.headers.get('retry-after'));
   const reset = Number(response.headers.get('x-ratelimit-reset'));
@@ -138,6 +177,7 @@ type GitHubRelease = {
   readonly tag_name?: unknown;
   readonly draft?: unknown;
   readonly prerelease?: unknown;
+  readonly html_url?: unknown;
   readonly assets?: readonly { readonly name?: unknown }[];
 } | null;
 
@@ -163,7 +203,10 @@ export type ArchiveTarget = {
   readonly arch: string;
 };
 
-/** The target of the machine this process runs on: the target of a Place that is not another machine's. */
+/**
+ * The target of the machine this process runs on: the target of a Place that
+ * is not another machine's.
+ */
 export function thisMachine(): ArchiveTarget {
   return { platform: process.platform, arch: process.arch };
 }
@@ -183,8 +226,9 @@ function archiveNames(release: PluginRelease, target: ArchiveTarget): string[] {
 /**
  * The archive of this Plugin Release for this target, whole, gzipped, and
  * checked against the `.sha256` beside it. A Plugin Release with no archive
- * for the target, and none for every platform, is broken for it, and is
- * refused. Anything else is a thrown sentence, and nothing was written
+ * for the target, and none for every platform, is refused as missing, the
+ * same kind as a file it lists that is not there to download, so a script
+ * reads one exit code for "the release does not hold this file". Anything else is a thrown sentence, and nothing was written
  * anywhere.
  */
 export async function downloadPluginRelease(
@@ -196,7 +240,7 @@ export async function downloadPluginRelease(
   const archive = names.find((name) => release.assets.includes(name));
   if (archive === undefined) {
     throw refuse(
-      'invalid',
+      'missing',
       `the Plugin Release ${version} of ${repository} holds no archive for ` +
         `${target.platform}-${target.arch} (${names.join(' or ')}). ` +
         `Ask the Plugin's author to publish one.`,
@@ -209,5 +253,7 @@ export async function downloadPluginRelease(
     missing: (url) => `the Plugin Release ${version} of ${repository} holds no ${url}.`,
     doing: `downloading ${archive}`,
     downloaded: () => `downloaded ${archive}`,
+    // No archive that unpacks to no more than the limit is larger than it.
+    mostBytes: MOST_BYTES,
   });
 }

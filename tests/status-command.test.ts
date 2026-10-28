@@ -81,8 +81,8 @@ test('status --json is one JSON value, with a Host and without one', async (t) =
     running: true,
     address: `http://127.0.0.1:${host.port}/`,
     plugins: [
-      { name: 'both', hasPage: true, state: 'running' },
-      { name: 'quitter', hasPage: false, state: 'stopped' },
+      { name: 'both', hasPage: true, state: 'running', updates: 'copy' },
+      { name: 'quitter', hasPage: false, state: 'stopped', updates: 'copy' },
     ],
   });
 });
@@ -99,8 +99,20 @@ test('list, order and shelf say what they read as one JSON value', async (t) => 
   assert.equal(listed.code, 0, listed.stderr);
   assert.deepEqual(JSON.parse(listed.stdout), {
     plugins: [
-      { name: 'both', place: DEFAULT_PLACE, directory: fixture('both'), grants: ['page-only'] },
-      { name: 'page-only', place: DEFAULT_PLACE, directory: fixture('page-only'), grants: [] },
+      {
+        name: 'both',
+        place: DEFAULT_PLACE,
+        directory: fixture('both'),
+        grants: ['page-only'],
+        updates: 'copy',
+      },
+      {
+        name: 'page-only',
+        place: DEFAULT_PLACE,
+        directory: fixture('page-only'),
+        grants: [],
+        updates: 'copy',
+      },
     ],
     shortcuts: [{ keys: 'Ctrl+Alt+N', plugin: 'both', path: 'new', address: '/p/both/new' }],
   });

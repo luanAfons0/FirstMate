@@ -12,10 +12,11 @@
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { once } from 'node:events';
 import { readdir, readFile, readlink, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
-import { gzipSync } from 'node:zlib';
+import { createGzip, gzipSync } from 'node:zlib';
 import { serveGitHub } from './helpers/github.ts';
 import { bootHostIn, canStart, firstmate, fixture, makeHome } from './helpers/host.ts';
 
@@ -106,12 +107,13 @@ async function bothPlugin(): Promise<Raw[]> {
 }
 
 /**
- * Publish these raw entries as the Plugin Release 1.0.0 of `someone/evil`,
- * with the `.sha256` beside it, and install it into a new home.
+ * Publish these raw entries, or this gzipped archive, as the Plugin Release
+ * 1.0.0 of `someone/evil`, with the `.sha256` beside it, and install it into
+ * a new home.
  */
-async function install(t: TestContext, raws: readonly Raw[]) {
+async function install(t: TestContext, raws: readonly Raw[] | Buffer) {
   const github = await serveGitHub(t);
-  const archive = archiveOf(raws);
+  const archive = Buffer.isBuffer(raws) ? raws : archiveOf(raws);
   const hash = createHash('sha256').update(archive).digest('hex');
   github.publish('someone/evil', {
     tag: 'v1.0.0',
@@ -364,4 +366,26 @@ test('a file marked executable in the archive is executable once installed, and 
   const host = await bootHostIn(t, home);
   const page = await (await host.fetch('/')).text();
   assert.ok(page.includes('1 Running'), 'the Host starts the Plugin Server it unpacked');
+});
+
+test('an archive that unpacks to more than 1 GiB is refused before it takes the memory', async (t) => {
+  // A gzip of zeros, a few MB, that unpacks to one byte over the limit.
+  const gzip = createGzip({ level: 1 });
+  const parts: Buffer[] = [];
+  gzip.on('data', (part: Buffer) => parts.push(part));
+  const zeros = Buffer.alloc(1024 * 1024);
+  for (let mib = 0; mib < 1024; mib += 1) {
+    if (!gzip.write(zeros)) await once(gzip, 'drain');
+  }
+  gzip.end(Buffer.alloc(1));
+  await once(gzip, 'end');
+
+  const { home, installed } = await install(t, Buffer.concat(parts));
+
+  assert.equal(installed.code, 3, installed.stdout);
+  assert.match(
+    installed.stderr,
+    /someone\/evil unpacks to more than 1 GiB, so nothing was unpacked/,
+  );
+  assert.deepEqual(await everything(join(home, 'shelf')), []);
 });

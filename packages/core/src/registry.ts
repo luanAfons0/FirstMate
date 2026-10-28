@@ -45,17 +45,33 @@ export type PluginRow = {
   readonly release?: PluginReleaseOf;
 };
 
-/** Which Plugin Release a Plugin is: the repository it is from, and its Release Version. */
-type PluginReleaseOf = {
+/**
+ * Which Plugin Release a Plugin is: the repository it is from, and its Release
+ * Version. The Registry row holds it, and a Plugin Release as GitHub lists it
+ * is one with its files.
+ */
+export type PluginReleaseOf = {
   /** The GitHub repository, `owner/repo`. */
   readonly repository: string;
   /** The Release Version, `MAJOR.MINOR.PATCH`. */
   readonly version: string;
 };
 
-/** A repository as a row holds it, and a Release Version. */
-const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
+/**
+ * One part of a GitHub repository, its owner or its name, as a pattern's
+ * source. A row and a GitHub URL are read by the same one, so a repository
+ * that install finds is one the Registry can hold.
+ */
+export const REPOSITORY_PART = '[A-Za-z0-9_.-]+';
+
+/** A repository as a row holds it, `owner/repo`. */
+const REPOSITORY = new RegExp(`^${REPOSITORY_PART}/${REPOSITORY_PART}$`);
+
+/**
+ * A Release Version, `MAJOR.MINOR.PATCH`, with no leading zero. A Plugin
+ * Release's tag is this with a `v` before it.
+ */
+export const RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 
 /** The path of the Registry file in this home directory. */
 export function registryPath(home: string): string {
@@ -160,7 +176,7 @@ function parseRow(row: unknown, index: number, path: string): PluginRow {
     typeof repository !== 'string' ||
     !REPOSITORY.test(repository) ||
     typeof version !== 'string' ||
-    !VERSION.test(version)
+    !RELEASE_VERSION.test(version)
   ) {
     throw new Error(
       `${where} needs its release as a repository, owner/repo, and a version, MAJOR.MINOR.PATCH.`,
