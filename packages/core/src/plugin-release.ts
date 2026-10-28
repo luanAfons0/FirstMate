@@ -15,7 +15,7 @@
  * one GitHub does not show, and it is cloned with the operator's own login.
  */
 import { refuse } from './refusal.ts';
-import { fetchChecked } from './release-download.ts';
+import { faultReason, fetchChecked } from './release-download.ts';
 
 /** Where the releases of a repository are asked for, unless moved. */
 const GITHUB_API = 'https://api.github.com';
@@ -70,11 +70,10 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
       },
     });
   } catch (fault) {
-    const cause = fault instanceof Error && fault.cause instanceof Error ? fault.cause : fault;
-    const why = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(`GitHub could not be asked for the releases of ${repository}: ${why}.`, {
-      cause: fault,
-    });
+    throw new Error(
+      `GitHub could not be asked for the releases of ${repository}: ${faultReason(fault)}.`,
+      { cause: fault },
+    );
   }
   if (response.status === 404) return undefined;
   const wait = rateLimitWait(response);
