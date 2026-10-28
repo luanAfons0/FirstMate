@@ -51,7 +51,7 @@ import { readTar } from './tar.ts';
 type ReleaseOf = { readonly repository: string; readonly version: string };
 
 /** What an update of a Plugin Release did. */
-export type ReleaseMoved = {
+type ReleaseMoved = {
   /** The Release Version before the update. */
   readonly from: string;
   /** The Release Version after it. */
@@ -62,20 +62,34 @@ export type ReleaseMoved = {
   readonly leftBehind: readonly string[];
 };
 
+/**
+ * What an update of a Plugin Release found: what it moved, if it moved
+ * anything, and the Release Version of a newer MAJOR it left alone.
+ */
+export type ReleaseUpdate = {
+  /** What moved, or nothing when the Plugin was on the Release Version to take already. */
+  readonly moved?: ReleaseMoved;
+  /** The newest Release Version of a newer MAJOR, which only `--major` takes. */
+  readonly ready?: string;
+};
+
 /** One rename of an update, from one path to another, both whole. */
 type Move = { readonly from: string; readonly to: string };
 
 /**
  * Move this Plugin to the newest Plugin Release in its MAJOR, and say from
- * which Release Version to which, or give back nothing when it is on the
- * newest already. Nothing is downloaded then, and nothing changes. `target`
- * picks the archive, as it does for install.
+ * which Release Version to which, or move nothing when it is on the newest
+ * already. Nothing is downloaded then, and nothing changes. With `major` it
+ * takes the newest Plugin Release of all. Without it, a newer MAJOR is never
+ * taken, and the Release Version of the newest one is given back as `ready`.
+ * `target` picks the archive, as it does for install.
  */
 export async function updateRelease(
   plugin: HeldPlugin,
   release: ReleaseOf,
   target: ArchiveTarget,
-): Promise<ReleaseMoved | undefined> {
+  major = false,
+): Promise<ReleaseUpdate> {
   const shelf = dirname(plugin.files);
   const pending = join(shelf, `.${plugin.name}.pending`);
   const previous = join(shelf, `.${plugin.name}.previous`);
@@ -89,8 +103,8 @@ export async function updateRelease(
     );
   }
 
-  const next = await nextRelease(release);
-  if (next === undefined) return undefined;
+  const { next, ready } = await nextRelease(release, major);
+  if (next === undefined) return { ready };
   const old = await readReleaseRecord(plugin.files);
   const unpacked = await stage(next, target, pending);
   try {
@@ -102,19 +116,27 @@ export async function updateRelease(
     throw fault;
   }
   return {
-    from: release.version,
-    to: next.version,
-    release: { repository: next.repository, version: next.version },
-    leftBehind: [pending, previous],
+    moved: {
+      from: release.version,
+      to: next.version,
+      release: { repository: next.repository, version: next.version },
+      leftBehind: [pending, previous],
+    },
+    ready,
   };
 }
 
 /**
  * The Plugin Release to take: the newest with the row's MAJOR, when it is
- * newer than the row's Release Version. A repository GitHub no longer shows
- * is refused, because there is nothing to update from.
+ * newer than the row's Release Version, or with `major` the newest of all.
+ * Beside it, the newest Release Version of a newer MAJOR that was left alone,
+ * if there is one. A repository GitHub no longer shows is refused, because
+ * there is nothing to update from.
  */
-async function nextRelease(release: ReleaseOf): Promise<PluginRelease | undefined> {
+async function nextRelease(
+  release: ReleaseOf,
+  major: boolean,
+): Promise<{ readonly next?: PluginRelease; readonly ready?: string }> {
   const releases = await pluginReleases(release.repository);
   if (releases === undefined) {
     throw refuse(
@@ -123,13 +145,16 @@ async function nextRelease(release: ReleaseOf): Promise<PluginRelease | undefine
         'check that the repository is still there and public.',
     );
   }
-  const major = majorOf(release.version);
-  // Newest first, so the first in the same MAJOR is the newest of it.
-  const newest = releases.find((one) => majorOf(one.version) === major);
-  if (newest === undefined || compareVersions(newest.version, release.version) <= 0) {
-    return undefined;
-  }
-  return newest;
+  const now = majorOf(release.version);
+  // Newest first, so the first of a kind is the newest of it.
+  const newest = major ? releases[0] : releases.find((one) => majorOf(one.version) === now);
+  const next =
+    newest !== undefined && compareVersions(newest.version, release.version) > 0
+      ? newest
+      : undefined;
+  if (major) return { next };
+  const later = releases.find((one) => compareVersions(majorOf(one.version), now) > 0);
+  return { next, ready: later?.version };
 }
 
 /** The MAJOR of a Release Version. */

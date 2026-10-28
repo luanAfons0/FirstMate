@@ -160,7 +160,7 @@ const COMMANDS: readonly Command[] = [
     name: 'update',
     group: 'Plugins',
     short: 'move a Plugin to its newest Plugin Release, or its clone forward',
-    takes: '<name>',
+    takes: '<name> [--major]',
     does: 'move a Plugin to its newest Plugin Release in its MAJOR, or its clone forward, and restart it.',
     run: (argv) => update(home(), argv),
   },
@@ -419,8 +419,10 @@ Every other file in the Plugin's directory is its data, and stays as it is. A
 Plugin that is a git clone is fetched, and its branch moves forward to its
 upstream, with no merge; the files git ignores, where it keeps its data, stay
 as they are. Then update restarts the Plugin Server through the running Host.
-It says nothing when there is nothing to move, and nothing the Plugin ships
-runs. It refuses, and changes nothing, a copied Plugin, and a clone that has
+With --major it takes the newest Plugin Release of all, a new MAJOR too; without
+it, a new MAJOR is never taken, and update says in one line when one is ready.
+--major is refused for a clone and for a copy. It says nothing else when there
+is nothing to move, and nothing the Plugin ships runs. It refuses, and changes nothing, a copied Plugin, and a clone that has
 local changes to tracked files, follows no upstream, or has diverged from it.
 With no Host running, a Plugin Server's new code starts with the Host.`,
   },
@@ -613,6 +615,9 @@ function typedWrong(name: string, sentence: string): number {
 
 /** The word that asks a reading command for one JSON value, wherever it is typed. */
 const JSON_WORD = '--json';
+
+/** The word that lets `update` take a new MAJOR of a Plugin Release. */
+const MAJOR_WORD = '--major';
 
 /** Say one value as JSON, and nothing else, for a script to read. */
 function printJson(value: unknown): void {
@@ -1136,19 +1141,25 @@ async function restart(home: string, argv: readonly string[]): Promise<number> {
  * Host, and a Plugin with none has its new Plugin Page already.
  */
 async function update(home: string, argv: readonly string[]): Promise<number> {
-  const [name] = argv;
-  if (name === undefined || argv.length > 1) {
+  const major = argv.includes(MAJOR_WORD);
+  const [name, ...rest] = argv.filter((word) => word !== MAJOR_WORD);
+  if (name === undefined || rest.length > 0) {
     return typedWrong('update', 'update takes one Plugin Name: name the Plugin to update.');
   }
 
   // git's words are held, and said in the sentence of a failure, so a
   // spinner can turn while it fetches (ADR-0025). Nothing moved, so the
   // spinner goes with no line.
-  const moved = await whileWaiting(
+  const { updated: moved, ready } = await whileWaiting(
     `updating ${name}`,
-    (done) => (done === undefined ? undefined : `fetched ${name}`),
-    () => updatePlugin(home, name),
+    (done) => (done?.updated === undefined ? undefined : `fetched ${name}`),
+    () => updatePlugin(home, name, undefined, major),
   );
+  if (ready !== undefined) {
+    console.log(
+      `firstmate: ${name} has a new MAJOR, ${ready}, ready: run firstmate update ${name} --major to take it.`,
+    );
+  }
   if (moved === undefined) return 0;
   console.log(`firstmate: updated ${name} from ${moved.from} to ${moved.to}`);
   try {
