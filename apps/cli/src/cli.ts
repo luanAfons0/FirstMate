@@ -51,6 +51,7 @@ import {
   finishUpdate,
   takePermission,
   updatePlugin,
+  updatesBy,
   withoutInOrder,
   withShortcuts,
 } from '@firstmate/core/commands';
@@ -1243,11 +1244,12 @@ function logs(home: string, argv: readonly string[]): number | undefined {
 /** How often logs -f looks for new lines. */
 const FOLLOW_MS = 200;
 
-function list(home: string, argv: readonly string[], json: boolean): number {
+async function list(home: string, argv: readonly string[], json: boolean): Promise<number> {
   if (argv.length > 0) {
     return typedWrong('list', 'list takes nothing.');
   }
   const rows = readRegistry(home);
+  const updates = await updatesBy(home);
   const shortcuts = readSettings(home).shortcuts ?? [];
   if (json) {
     printJson({
@@ -1261,10 +1263,16 @@ function list(home: string, argv: readonly string[], json: boolean): number {
   }
   // An empty Registry says nothing, as an empty directory listing says nothing.
   printRows(
-    ['NAME', 'PLACE', 'DIRECTORY', 'GRANTS'],
+    ['NAME', 'UPDATES', 'PLACE', 'DIRECTORY', 'GRANTS'],
     rows.map((row) => ({
-      cells: [row.name, row.place, row.directory, row.grants.join(', ')],
-      plain: describe(row),
+      cells: [
+        row.name,
+        updates.get(row.name) ?? '',
+        row.place,
+        row.directory,
+        row.grants.join(', '),
+      ],
+      plain: describe(row, updates.get(row.name)),
     })),
   );
   printRows(
@@ -1292,14 +1300,17 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
     else console.log(`firstmate: ${await noHost()}`);
     return exit('no-host');
   }
+  const updates = await updatesBy(home);
   if (json) {
     printJson({ running: true, address: seen.address, plugins: seen.plugins });
     return 0;
   }
   console.log(`firstmate: the Host runs at ${seen.address}`);
   printRows(
-    ['PLUGIN', 'STATE'],
-    seen.plugins.map((plugin) => ({ cells: [plugin.name, stateWord(plugin.state)] })),
+    ['PLUGIN', 'STATE', 'UPDATES'],
+    seen.plugins.map((plugin) => ({
+      cells: [plugin.name, stateWord(plugin.state), updates.get(plugin.name) ?? ''],
+    })),
   );
   return 0;
 }
@@ -1371,9 +1382,9 @@ function stateWord(state: PluginState): string {
   return state === 'stopped' ? bad(word) : word;
 }
 
-function describe(row: PluginRow): string {
+function describe(row: PluginRow, updates: string | undefined): string {
   const grants = row.grants.length === 0 ? '' : `  grants: ${row.grants.join(', ')}`;
-  return `${row.name}\t${row.place}\t${row.directory}${grants}`;
+  return `${row.name}\t${updates ?? ''}\t${row.place}\t${row.directory}${grants}`;
 }
 
 try {

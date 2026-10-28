@@ -22,8 +22,8 @@ test('FORCE_COLOR makes the state words of status red and green', async (t) => {
   const said = await firstmate(host.home, ['status'], { FORCE_COLOR: '1', NO_COLOR: undefined });
 
   assert.equal(said.code, 0, said.stderr);
-  assert.ok(said.stdout.includes(`quitter\t${RED('Stopped')}\n`), said.stdout);
-  assert.ok(said.stdout.includes(`both\t${GREEN('Running')}\n`), said.stdout);
+  assert.ok(said.stdout.includes(`quitter\t${RED('Stopped')}\tcopy\n`), said.stdout);
+  assert.ok(said.stdout.includes(`both\t${GREEN('Running')}\tcopy\n`), said.stdout);
 });
 
 test('FORCE_COLOR makes the prefix of a refusal red', async (t) => {
