@@ -15,6 +15,7 @@
  * one GitHub does not show, and it is cloned with the operator's own login.
  */
 import { refuse } from './refusal.ts';
+import { RELEASE_VERSION, REPOSITORY_PART, type PluginReleaseOf } from './registry.ts';
 import { faultReason, fetchChecked } from './release-download.ts';
 
 /** Where the releases of a repository are asked for, unless moved. */
@@ -24,20 +25,12 @@ const GITHUB_API = 'https://api.github.com';
 const GITHUB = 'https://github.com';
 
 /** A GitHub URL, in the form a browser shows and in the form ssh clones. */
-const GITHUB_URL = [
-  /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/i,
-  /^git@github\.com:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/i,
-];
+const GITHUB_URL = ['https://github\\.com/', 'git@github\\.com:'].map(
+  (start) => new RegExp(`^${start}(${REPOSITORY_PART})/(${REPOSITORY_PART}?)(?:\\.git)?/?$`, 'i'),
+);
 
-/** The tag of a Plugin Release, with its Release Version's three numbers. */
-const TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
-/** One Plugin Release, as GitHub lists it. */
-export type PluginRelease = {
-  /** The repository it is in, `owner/repo`. */
-  readonly repository: string;
-  /** Its Release Version, `MAJOR.MINOR.PATCH`. */
-  readonly version: string;
+/** One Plugin Release, as GitHub lists it: which one it is, and its files. */
+export type PluginRelease = PluginReleaseOf & {
   /** The names of the files it holds. */
   readonly assets: readonly string[];
 };
@@ -96,8 +89,9 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
   const releases: PluginRelease[] = [];
   for (const release of listed as GitHubRelease[]) {
     if (release === null || release.draft === true || release.prerelease === true) continue;
-    const version = TAG.exec(String(release.tag_name))?.[0].slice(1);
-    if (version === undefined) continue;
+    const tag = String(release.tag_name);
+    const version = tag.slice(1);
+    if (!tag.startsWith('v') || !RELEASE_VERSION.test(version)) continue;
     const assets = Array.isArray(release.assets) ? release.assets : [];
     releases.push({
       repository,
