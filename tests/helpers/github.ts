@@ -5,7 +5,11 @@
  * FIRSTMATE_GITHUB_API_URL and FIRSTMATE_GITHUB_URL point the command line at
  * it instead of GitHub, so no test reaches the network. It knows only the
  * repositories a test publishes to, answers 404 for every other path, and
- * keeps every path it was asked for, in order.
+ * keeps every path it was asked for, in order. As GitHub does, it reads the
+ * repository in a path in any letter case, and its answer gives the case the
+ * repository was published in, in each Release's `html_url`. Given a page
+ * size, it lists the Releases in pages of that size, and names the next page
+ * in a `link` header, as GitHub does past its hundredth Release.
  *
  * A test makes its Plugin Releases with `pluginRelease`, which runs the same
  * archive script the release workflow runs, so what the workflow makes is what
@@ -61,9 +65,17 @@ export type FakeGitHub = {
   answer(path: string, answer: Answer): void;
 };
 
+/** How a fake GitHub lists Releases. */
+type FakeOptions = {
+  /** How many Releases one page of the list holds. With none, one page holds them all. */
+  readonly pageSize?: number;
+};
+
 /** Start a fake GitHub that knows no repository, and stop it when the test ends. */
-export async function serveGitHub(t: TestContext): Promise<FakeGitHub> {
-  const repositories = new Map<string, FakeRelease[]>();
+export async function serveGitHub(t: TestContext, options: FakeOptions = {}): Promise<FakeGitHub> {
+  // By the repository in lower case, as GitHub finds it, with the case it was
+  // published in.
+  const repositories = new Map<string, { published: string; releases: FakeRelease[] }>();
   const answers = new Map<string, Answer>();
   const asked: string[] = [];
   let origin = '';
@@ -76,28 +88,41 @@ export async function serveGitHub(t: TestContext): Promise<FakeGitHub> {
       response.writeHead(fixed.status, fixed.headers).end(fixed.body);
       return;
     }
-    const api = /^\/repos\/([^/]+\/[^/]+)\/releases(?:\?.*)?$/.exec(path);
-    const releases = api?.[1] === undefined ? undefined : repositories.get(api[1]);
-    if (api !== null && releases !== undefined) {
-      const listed = releases.map((release, index) => ({
+    const api = /^\/repos\/([^/]+\/[^/]+)\/releases(?:\?(.*))?$/.exec(path);
+    const known = api?.[1] === undefined ? undefined : repositories.get(api[1].toLowerCase());
+    if (api !== null && known !== undefined) {
+      const { published } = known;
+      const listed = known.releases.map((release, index) => ({
         id: index + 1,
         tag_name: release.tag,
         draft: release.draft ?? false,
         prerelease: release.prerelease ?? false,
+        html_url: `https://github.com/${published}/releases/tag/${release.tag}`,
         assets: Object.entries(release.assets).map(([name, bytes]) => ({
           name,
           size: bytes.length,
-          browser_download_url: `${origin}/${api[1]}/releases/download/${release.tag}/${name}`,
+          browser_download_url: `${origin}/${published}/releases/download/${release.tag}/${name}`,
         })),
       }));
       // GitHub lists the newest Release first.
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify(listed.reverse()));
+      listed.reverse();
+      const size = options.pageSize ?? Math.max(1, listed.length);
+      const query = new URLSearchParams(api[2] ?? '');
+      const page = Math.max(1, Number(query.get('page') ?? '1'));
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (page * size < listed.length) {
+        query.set('page', String(page + 1));
+        headers['link'] = `<${origin}/repos/${api[1]}/releases?${query}>; rel="next"`;
+      }
+      response.writeHead(200, headers);
+      response.end(JSON.stringify(listed.slice((page - 1) * size, page * size)));
       return;
     }
     const download = /^\/([^/]+\/[^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/.exec(path);
     const [, repository = '', tag, name = ''] = download ?? [];
-    const release = repositories.get(repository)?.find((each) => each.tag === tag);
+    const release = repositories
+      .get(repository.toLowerCase())
+      ?.releases.find((each) => each.tag === tag);
     const bytes = release?.assets[name];
     response.writeHead(bytes === undefined ? 404 : 200).end(bytes);
   });
@@ -109,9 +134,12 @@ export async function serveGitHub(t: TestContext): Promise<FakeGitHub> {
     env: { FIRSTMATE_GITHUB_API_URL: origin, FIRSTMATE_GITHUB_URL: origin },
     asked,
     publish(repository, release) {
-      const releases = repositories.get(repository) ?? [];
-      if (release !== undefined) releases.push(release);
-      repositories.set(repository, releases);
+      const known = repositories.get(repository.toLowerCase()) ?? {
+        published: repository,
+        releases: [],
+      };
+      if (release !== undefined) known.releases.push(release);
+      repositories.set(repository.toLowerCase(), known);
     },
     answer(path, answer) {
       answers.set(path, answer);

@@ -47,13 +47,42 @@ export function githubRepository(url: string): string | undefined {
 /**
  * The Plugin Releases of a repository, newest first, or nothing when GitHub
  * does not know the repository. A repository GitHub knows with no Plugin
- * Release gives an empty list, and so does one whose Releases hold no
- * `.tar.gz` at all. GitHub lists the newest hundred Releases on
- * one page, and that is enough to find the newest Plugin Release.
+ * Release gives an empty list. GitHub lists a hundred Releases a page, newest
+ * created first, so every page is read: a fix to an older MAJOR can be past
+ * the first hundred, and a Release Version is not the order it was created
+ * in.
  */
 export async function pluginReleases(repository: string): Promise<PluginRelease[] | undefined> {
   const api = process.env['FIRSTMATE_GITHUB_API_URL'] || GITHUB_API;
-  const url = `${api}/repos/${repository}/releases?per_page=100`;
+  const releases: PluginRelease[] = [];
+  // A page that names a page already read would ask GitHub forever.
+  const read = new Set<string>();
+  let url: string | undefined = `${api}/repos/${repository}/releases?per_page=100`;
+  while (url !== undefined && !read.has(url)) {
+    read.add(url);
+    const response = await askGitHub(url, repository);
+    if (response.status === 404 && read.size === 1) return undefined;
+    if (!response.ok) {
+      throw new Error(`GitHub answered ${response.status} for the releases of ${repository}.`);
+    }
+    const listed = (await response.json()) as unknown;
+    if (!Array.isArray(listed)) {
+      throw new Error(`GitHub did not answer a list of the releases of ${repository}.`);
+    }
+    for (const release of listed as GitHubRelease[]) {
+      const found = pluginReleaseOf(release, repository);
+      if (found !== undefined) releases.push(found);
+    }
+    url = nextPage(response);
+  }
+  return releases.sort((one, other) => compareVersions(other.version, one.version));
+}
+
+/**
+ * GitHub's answer for one page of the releases. Its rate limit is refused
+ * here, and so is a network that does not answer.
+ */
+async function askGitHub(url: string, repository: string): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -69,7 +98,6 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
       { cause: fault },
     );
   }
-  if (response.status === 404) return undefined;
   const wait = rateLimitWait(response);
   if (wait !== undefined) {
     // Cloning would hide that GitHub is saying no, and a clone of a Plugin
@@ -80,29 +108,41 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
         `fetched. Try again ${wait}.`,
     );
   }
-  if (!response.ok) {
-    throw new Error(`GitHub answered ${response.status} for the releases of ${repository}.`);
-  }
-  const listed = (await response.json()) as unknown;
-  if (!Array.isArray(listed)) {
-    throw new Error(`GitHub did not answer a list of the releases of ${repository}.`);
-  }
-  const releases: PluginRelease[] = [];
-  for (const release of listed as GitHubRelease[]) {
-    if (release === null || release.draft === true || release.prerelease === true) continue;
-    const tag = String(release.tag_name);
-    const version = tag.slice(1);
-    if (!tag.startsWith('v') || !RELEASE_VERSION.test(version)) continue;
-    const assets = (Array.isArray(release.assets) ? release.assets : []).map((asset) =>
-      String(asset?.name),
-    );
-    // A Release with no archive at all is a repository's notes, not an
-    // archive of the Plugin, so a repository with only those is cloned.
-    if (!assets.some((name) => name.endsWith('.tar.gz'))) continue;
-    releases.push({ repository, version, assets });
-  }
-  return releases.sort((one, other) => compareVersions(other.version, one.version));
+  return response;
 }
+
+/** The page after this one, as GitHub names it in its `link` header, or nothing on the last. */
+function nextPage(response: Response): string | undefined {
+  const link = response.headers.get('link') ?? '';
+  return /<([^>]+)>\s*;\s*rel="next"/.exec(link)?.[1];
+}
+
+/**
+ * The Plugin Release a GitHub Release is, or nothing when it is none: a
+ * draft, a prerelease, a tag that is not a Release Version, and a Release
+ * that holds no `.tar.gz` at all. That last one is a repository's notes, not
+ * an archive of the Plugin, so a repository with only those is cloned, as
+ * before. The repository is the one GitHub names in the Release's own
+ * address, in its true letter case: the release workflow names the archive
+ * by it, and the operator may have typed the URL in another case.
+ */
+function pluginReleaseOf(release: GitHubRelease, asked: string): PluginRelease | undefined {
+  if (release === null || release.draft === true || release.prerelease === true) return undefined;
+  const tag = String(release.tag_name);
+  const version = tag.slice(1);
+  if (!tag.startsWith('v') || !RELEASE_VERSION.test(version)) return undefined;
+  const assets = (Array.isArray(release.assets) ? release.assets : []).map((asset) =>
+    String(asset?.name),
+  );
+  if (!assets.some((name) => name.endsWith('.tar.gz'))) return undefined;
+  const page = URL.parse(String(release.html_url))?.pathname ?? '';
+  const [, owner, repo] = RELEASE_PAGE.exec(page) ?? [];
+  const repository = owner !== undefined && repo !== undefined ? `${owner}/${repo}` : asked;
+  return { repository, version, assets };
+}
+
+/** The path of a Release's page on GitHub, `/<owner>/<repo>/releases/tag/<tag>`. */
+const RELEASE_PAGE = new RegExp(`^/(${REPOSITORY_PART})/(${REPOSITORY_PART})/releases/`);
 
 /**
  * When to try again, as a phrase, if GitHub answered with its rate limit, or
@@ -136,6 +176,7 @@ type GitHubRelease = {
   readonly tag_name?: unknown;
   readonly draft?: unknown;
   readonly prerelease?: unknown;
+  readonly html_url?: unknown;
   readonly assets?: readonly { readonly name?: unknown }[];
 } | null;
 
