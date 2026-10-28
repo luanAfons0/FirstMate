@@ -40,4 +40,4 @@ A TypeScript Plugin ships `mcp.js` and never `mcp.ts`, because the Host starts `
 
 The Official Plugins keep their URLs (ADR-0015), and each publishes a Plugin Release before this ships.
 
-FirstMate holds no token. GitHub's limit of 60 calls an hour for one address is refused in one sentence that says when to try again.
+FirstMate holds no token. GitHub's limit of 60 calls an hour for one address, and its secondary limit, which answers 403 with `retry-after`, are refused in one sentence that says when to try again.

@@ -105,13 +105,16 @@ export async function pluginReleases(repository: string): Promise<PluginRelease[
 /**
  * When to try again, as a phrase, if GitHub answered with its rate limit, or
  * nothing for any other answer. GitHub says it with 429, or with 403 and no
- * requests left, and tells the time in `retry-after` (seconds) or in
- * `x-ratelimit-reset` (a Unix time in seconds).
+ * requests left, or with 403 and `retry-after` for its secondary limit, which
+ * leaves requests and still says no. It tells the time in `retry-after`
+ * (seconds) or in `x-ratelimit-reset` (a Unix time in seconds).
  */
 function rateLimitWait(response: Response): string | undefined {
   const limited =
     response.status === 429 ||
-    (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
+    (response.status === 403 &&
+      (response.headers.get('x-ratelimit-remaining') === '0' ||
+        response.headers.get('retry-after') !== null));
   if (!limited) return undefined;
   const after = Number(response.headers.get('retry-after'));
   const reset = Number(response.headers.get('x-ratelimit-reset'));
