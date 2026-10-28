@@ -176,8 +176,9 @@ function archiveNames(release: PluginRelease, target: ArchiveTarget): string[] {
 /**
  * The archive of this Plugin Release for this target, whole, gzipped, and
  * checked against the `.sha256` beside it. A Plugin Release with no archive
- * for the target, and none for every platform, is broken for it, and is
- * refused. Anything else is a thrown sentence, and nothing was written
+ * for the target, and none for every platform, is refused as missing, the
+ * same kind as a file it lists that is not there to download, so a script
+ * reads one exit code for "the release does not hold this file". Anything else is a thrown sentence, and nothing was written
  * anywhere.
  */
 export async function downloadPluginRelease(
@@ -189,7 +190,7 @@ export async function downloadPluginRelease(
   const archive = names.find((name) => release.assets.includes(name));
   if (archive === undefined) {
     throw refuse(
-      'invalid',
+      'missing',
       `the Plugin Release ${version} of ${repository} holds no archive for ` +
         `${target.platform}-${target.arch} (${names.join(' or ')}). ` +
         `Ask the Plugin's author to publish one.`,

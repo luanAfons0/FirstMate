@@ -232,7 +232,7 @@ Cloning needs the `git` binary; nothing else does.
 `install` refuses, and writes nothing, in one sentence that says what to do:
 
 - the Plugin Release holds no archive for this platform and arch, and none for
-  every platform (exit code `3`);
+  every platform (exit code `4`);
 - the archive's SHA-256 does not match, or the `.sha256` file holds no hash
   (exit code `3`), or the Plugin Release does not publish the archive or the
   `.sha256` file at all (exit code `4`);
