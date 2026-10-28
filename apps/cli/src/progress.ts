@@ -15,17 +15,8 @@
  * Clack is loaded when a wait starts on a terminal, and never from a pipe, so
  * a command that waits for nothing loads none of it.
  */
+import type { Wait } from '@firstmate/core/release-download';
 import { onTerminal } from './prompt.ts';
-
-/** A wait as its caller moves it: further along, then done or failed. */
-export type Wait = {
-  /** Count this many more bytes as arrived. */
-  advance(bytes: number): void;
-  /** It ended well, and this says what it did, or nothing is said. */
-  done(said: string | undefined): void;
-  /** It failed. The sentence that says why is the caller's to print. */
-  failed(): void;
-};
 
 /** Move the cursor up one line, and erase that line. */
 const ERASE_LINE_ABOVE = '\x1b[1A\x1b[2K';
