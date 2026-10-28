@@ -400,10 +400,15 @@ const PLUGIN_SERVER_FILES = ['mcp', 'mcp.ts', 'mcp.js', 'mcp.exe', 'mcp.cmd'];
  * newest Plugin Release in its MAJOR, and its Registry row then names it
  * (ADR-0033). Any other Plugin is a git clone moved forward to its upstream,
  * or a copy, which is refused (ADR-0030). The name is checked as `restart`
- * checks it. Restarting the Plugin Server is the caller's, because only a
+ * checks it. `target` picks a Plugin Release's archive, as it does for
+ * install. Restarting the Plugin Server is the caller's, because only a
  * terminal reaches the Host, and so is `finishUpdate` after it.
  */
-export async function updatePlugin(home: string, name: string): Promise<Updated | undefined> {
+export async function updatePlugin(
+  home: string,
+  name: string,
+  target: ArchiveTarget = thisMachine(),
+): Promise<Updated | undefined> {
   if (!isPluginName(name)) throw refuse('invalid', notAPluginName(name));
   const plugin = readPlugins(home).find((row) => row.name === name);
   if (plugin === undefined) throw refuse('missing', `no Plugin named ${name} is registered.`);
@@ -429,7 +434,7 @@ export async function updatePlugin(home: string, name: string): Promise<Updated 
     if (forward === undefined) return undefined;
     moved = { ...forward, leftBehind: [] };
   } else {
-    const taken = await updateRelease(plugin, plugin.release);
+    const taken = await updateRelease(plugin, plugin.release, target);
     if (taken === undefined) return undefined;
     // The files written from Windows lost the executable bit on their way in.
     if (

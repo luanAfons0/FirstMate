@@ -32,6 +32,7 @@ import {
   compareVersions,
   downloadPluginRelease,
   pluginReleases,
+  type ArchiveTarget,
   type PluginRelease,
 } from './plugin-release.ts';
 import { refuse } from './refusal.ts';
@@ -67,11 +68,13 @@ type Move = { readonly from: string; readonly to: string };
 /**
  * Move this Plugin to the newest Plugin Release in its MAJOR, and say from
  * which Release Version to which, or give back nothing when it is on the
- * newest already. Nothing is downloaded then, and nothing changes.
+ * newest already. Nothing is downloaded then, and nothing changes. `target`
+ * picks the archive, as it does for install.
  */
 export async function updateRelease(
   plugin: HeldPlugin,
   release: ReleaseOf,
+  target: ArchiveTarget,
 ): Promise<ReleaseMoved | undefined> {
   const shelf = dirname(plugin.files);
   const pending = join(shelf, `.${plugin.name}.pending`);
@@ -89,7 +92,7 @@ export async function updateRelease(
   const next = await nextRelease(release);
   if (next === undefined) return undefined;
   const old = await readReleaseRecord(plugin.files);
-  const unpacked = await stage(next, pending);
+  const unpacked = await stage(next, target, pending);
   try {
     const moves = planMoves(old, unpacked.record, { plugin: plugin.files, pending, previous });
     await applyMoves(moves);
@@ -135,14 +138,18 @@ function majorOf(version: string): string {
 }
 
 /**
- * Download, check and unpack this Plugin Release into `pending`, and give
+ * Download, check and unpack this Plugin Release's archive for `target` into `pending`, and give
  * back what it holds. One left by an update that failed is taken away first:
  * it holds nothing but a copy of a Plugin Release.
  */
-async function stage(release: PluginRelease, pending: string): Promise<Unpacked> {
+async function stage(
+  release: PluginRelease,
+  target: ArchiveTarget,
+  pending: string,
+): Promise<Unpacked> {
   await rm(pending, { recursive: true, force: true });
   try {
-    const entries = readTar(await downloadPluginRelease(release), release.repository);
+    const entries = readTar(await downloadPluginRelease(release, target), release.repository);
     return await unpackRelease(entries, pending);
   } catch (fault) {
     await rm(pending, { recursive: true, force: true });
