@@ -449,14 +449,17 @@ a copy. update says nothing else when there is nothing to move, and nothing
 the Plugin ships runs.
 It refuses with exit code 3, and changes nothing, when a Release File was
 changed or is gone, when the Plugin's data sits where a new Release File goes,
-when a left-over .<name>.previous is in the Shelf, when the archive does
+when a .<name>.previous left by an update that did not end is in the Shelf
+(one left by an update that ended is removed), when the archive does
 not match its SHA-256, and when GitHub limits the asking; with exit code 4,
 when the archive or its SHA-256 is not published. It refuses a
 copied Plugin, and a clone that has local changes to tracked files, follows no
 upstream, or has diverged from it. When a move fails half way, update puts the
 old Release Files back and ends with exit code 1, and the Plugin stays on its
-Release Version. With no Host running, a Plugin Server's new code starts with
-the Host.`,
+Release Version. A clean-up that fails after the update is done is a line
+that says what to remove, with exit code 0. In a wsl Place, update takes the
+archive for the distribution's arch and makes its executable files executable
+there. With no Host running, a Plugin Server's new code starts with the Host.`,
   },
   {
     about: ['restart'],

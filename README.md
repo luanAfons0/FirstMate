@@ -211,14 +211,18 @@ Registry untouched and the Shelf clean.
 A Plugin Release is a GitHub Release of the Plugin's repository, tagged
 `vMAJOR.MINOR.PATCH`, that is neither a draft nor a prerelease, and that holds
 at least one `.tar.gz`. Its Release Version is the tag without the `v`. A
-Release with no `.tar.gz` at all is not a Plugin Release. `install` asks GitHub for the repository's
-Plugin Releases, takes the newest, and downloads its archive:
+Release with no `.tar.gz` at all is not a Plugin Release. `install` asks
+GitHub for the repository's Plugin Releases, takes the newest, and downloads
+its archive:
 `<repo>-<version>-<platform>-<arch>.tar.gz` for this machine when the Plugin
 Release holds one, else `<repo>-<version>.tar.gz`, which is for every platform.
-In a `wsl` Place the platform and arch are the distribution's own. The archive
-is checked against the SHA-256 in the `.sha256` file beside it, as `desktop`
+In a `wsl` Place the platform and arch are the distribution's own, as
+`uname -m` says them. The archive is checked against the SHA-256 in the `.sha256` file beside it, as `desktop`
 checks the App, before anything is written. Unpacking needs no `git`, and runs
-nothing the archive holds.
+nothing the archive holds. In a `wsl` Place the files are written through the
+Place's root, and one `chmod +x` inside the distribution gives each file the
+archive marks executable its bit back, before the files move into place: a
+`chmod` that fails leaves nothing in the Shelf.
 
 On success `install` says
 `installed <name> at <directory>, Release Version <version>`, and the
@@ -243,7 +247,9 @@ Cloning needs the `git` binary; nothing else does.
 - the archive is not a gzipped tar, or holds a path that could leave the
   Plugin's directory, a link that could, a duplicate path, or a file type
   FirstMate does not read. The whole archive is refused before any file is
-  written (exit code `3`).
+  written (exit code `3`);
+- the archive is larger than 1 GiB, as it downloads or as it unpacks
+  (exit code `3`).
 
 Any other failure, such as GitHub not answering, ends with exit code `1`.
 
@@ -286,6 +292,13 @@ serves its Plugin Page from disk, so the page has changed already, and
 done, and a Plugin Server's new code starts with the Host. When the Plugin is
 on the newest Release Version already, it says nothing and restarts nothing.
 
+In a `wsl` Place, `update` of a Plugin Release works as `install` does there.
+It takes the archive for the distribution's own platform and arch, writes the
+new Release Files through the Place's root into `.<name>.pending`, and gives
+each one the archive marks executable its bit back with one `chmod +x` inside
+the distribution, before any file moves. A `chmod` that fails changes nothing
+in the Plugin. The distribution needs `uname` and `chmod` for it, and no `git`.
+
 A new MAJOR may break the Plugin, so `update` never takes it alone. Before
 anything else it says, whether or not it moved a Plugin:
 `<name> has a new MAJOR, <version>, ready: run firstmate update <name> --major
@@ -299,10 +312,14 @@ or a copy it is refused, with exit code `3`, before git runs.
   `update` would delete the change, or has nothing to go back to. Keep a copy
   of your change outside the Plugin's directory, put back the file of the
   Release Version installed, and run `update` again;
-- the Plugin's data sits where a new Release File goes, at its path or at a
-  directory above it. Move the data out of the Plugin's directory;
+- the Plugin's data sits where a new Release File or directory goes, at its
+  path or at a directory above it. Move the data out of the Plugin's
+  directory. A directory that holds only old Release Files is not data, and
+  neither is an old Release File whose name changes only in case;
 - `.<name>.previous` is still in the Shelf, left by an update that did not end.
-  Put back what it holds, or take it away;
+  Put back what it holds, or take it away. A `.<name>.previous` left by an
+  update that ended, whose clean-up failed, holds only old Release Files, and
+  `update` removes it itself;
 - the archive is refused as in `install`, or its SHA-256 does not match, or
   GitHub is limiting how often releases are asked for. A SHA-256 or an archive
   the Plugin Release does not publish, and a repository GitHub no longer shows,
@@ -313,7 +330,10 @@ the old Release Files back, says so, ends with exit code `1`, and the Plugin
 stays on its Release Version. If putting them back fails too, it says so and
 keeps `.<name>.previous` in the Shelf, which holds the files still missing.
 On Windows, `update` removes the old Release Files once the Plugin Server has
-stopped, because a running `mcp.exe` can be moved but not deleted.
+stopped, because a running `mcp.exe` can be moved but not deleted. Once the
+new record is in place the update is done: a clean-up that fails after it,
+such as an old `mcp.exe` that still runs, is a line that says what to remove,
+and the exit code stays `0`. The next `update` removes what is left.
 
 **A clone.** A Plugin installed from a git URL that had no Plugin Release, or
 an Official Plugin cloned the same way, has a version that is its commit
@@ -346,9 +366,11 @@ registered with `add` inside your own repository is yours to pull.
 
 `list` and `status` show which of the three each Plugin is, in the `UPDATES`
 column: its Release Version, `clone`, `copy`, or `unknown` when its Place is
-gone or its distribution has no git. `list --json` has the row's `release`,
-`{ "repository", "version" }`, for a Plugin Release, and no `release` for the
-others.
+gone or its distribution has no git. `list --json` and `status --json` give
+each Plugin the same value as `updates`, and `list --json` has the row's
+`release`, `{ "repository", "version" }`, for a Plugin Release, and no
+`release` for the others. From a pipe, a `list` row is the line it was before
+this column, with the value as its last field.
 
 `firstmate update` updates Plugins only. The App updates itself
 ([The App](#the-app)), and the command line updates with npm.
