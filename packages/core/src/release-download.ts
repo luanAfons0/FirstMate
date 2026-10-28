@@ -16,6 +16,16 @@
 import { createHash } from 'node:crypto';
 import { refuse } from './refusal.ts';
 
+/**
+ * Why a fetch failed, in the words of what failed under it. Node's `fetch`
+ * throws a bare "fetch failed" and puts the reason, such as a refused
+ * connection, in its cause, so the cause is what the operator is shown.
+ */
+export function faultReason(fault: unknown): string {
+  const cause = fault instanceof Error && fault.cause instanceof Error ? fault.cause : fault;
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 /** A wait as its caller moves it: further along, then done or failed. */
 export type Wait = {
   /** Count this many more bytes as arrived. */
@@ -96,9 +106,7 @@ async function download(
   try {
     response = await fetch(url);
   } catch (fault) {
-    const cause = fault instanceof Error && fault.cause instanceof Error ? fault.cause : fault;
-    const why = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(`${url} could not be downloaded: ${why}.`, { cause: fault });
+    throw new Error(`${url} could not be downloaded: ${faultReason(fault)}.`, { cause: fault });
   }
   if (response.status === 404) throw refuse('missing', missing(url));
   if (!response.ok) throw new Error(`${url} answered ${response.status}.`);
