@@ -4,7 +4,7 @@
   "workspaces": {
     ".": {
       // A fixture's mcp.ts is started by the Host, not imported (ADR-0028).
-      // The archive script is run by the release workflow and the tests, not imported.
+      // The release scripts are run by the release workflow and the tests, not imported.
       "entry": ["tests/**/*.test.ts", "tests/fixtures/*/mcp.ts", "scripts/*.ts"],
       "project": ["tests/**/*.ts", "scripts/**/*.ts"]
     },
