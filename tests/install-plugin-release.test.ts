@@ -209,3 +209,28 @@ test('every later write of the Registry keeps the Plugin Release of a row', asyn
   assert.deepEqual(both?.release, { repository: 'someone/both', version: '1.2.0' });
   assert.equal(marker !== undefined && 'release' in marker, false, 'a copy has no release');
 });
+
+test('an archive larger than 1 GiB is refused before it is downloaded', async (t) => {
+  const github = await serveGitHub(t);
+  github.publish('someone/both', await pluginRelease(t, fixture('both'), 'both', '1.2.0'));
+  const archive = '/someone/both/releases/download/v1.2.0/both-1.2.0.tar.gz';
+  github.answer(archive, {
+    status: 200,
+    headers: { 'content-length': String(2 * 1024 ** 3) },
+    body: 'x',
+  });
+  const home = await makeHome(t);
+
+  const installed = await firstmate(
+    home,
+    ['install', 'https://github.com/someone/both'],
+    github.env,
+  );
+
+  assert.equal(installed.code, 3, installed.stdout);
+  assert.match(
+    installed.stderr,
+    /both-1\.2\.0\.tar\.gz is larger than 1 GiB, so it was not downloaded/,
+  );
+  assert.deepEqual(await readdir(join(home, 'shelf')).catch(() => []), []);
+});

@@ -83,7 +83,10 @@ const UNLANDABLE = /[\p{Cc}\\]/u;
 /** A path that starts at a root: `/`, or a Windows drive. Copied from `tar.ts`. */
 const ROOTED = /^(?:\/|[A-Za-z]:)/;
 
-/** A target part Windows can read as another name: `NAME~1`, or `name:stream`. Copied from `tar.ts`. */
+/**
+ * A target part Windows can read as another name: `NAME~1`, or `name:stream`.
+ * Copied from `tar.ts`.
+ */
 const ANOTHER_NAME = /~\d|:/;
 
 /**

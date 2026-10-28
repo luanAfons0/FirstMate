@@ -17,6 +17,7 @@
 import { refuse } from './refusal.ts';
 import { RELEASE_VERSION, REPOSITORY_PART, type PluginReleaseOf } from './registry.ts';
 import { faultReason, fetchChecked } from './release-download.ts';
+import { MOST_BYTES } from './tar.ts';
 
 /** Where the releases of a repository are asked for, unless moved. */
 const GITHUB_API = 'https://api.github.com';
@@ -202,7 +203,10 @@ export type ArchiveTarget = {
   readonly arch: string;
 };
 
-/** The target of the machine this process runs on: the target of a Place that is not another machine's. */
+/**
+ * The target of the machine this process runs on: the target of a Place that
+ * is not another machine's.
+ */
 export function thisMachine(): ArchiveTarget {
   return { platform: process.platform, arch: process.arch };
 }
@@ -249,5 +253,7 @@ export async function downloadPluginRelease(
     missing: (url) => `the Plugin Release ${version} of ${repository} holds no ${url}.`,
     doing: `downloading ${archive}`,
     downloaded: () => `downloaded ${archive}`,
+    // No archive that unpacks to no more than the limit is larger than it.
+    mostBytes: MOST_BYTES,
   });
 }

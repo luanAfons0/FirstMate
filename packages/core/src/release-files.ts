@@ -26,7 +26,10 @@ export type ReleaseRecord = {
   readonly links?: Readonly<Record<string, string>>;
 };
 
-/** What an unpacked Plugin Release holds: its record, the directories it made, and its executable files. */
+/**
+ * What an unpacked Plugin Release holds: its record, the directories it made,
+ * and its executable files.
+ */
 export type Unpacked = {
   readonly record: ReleaseRecord;
   /** Every directory the archive names or a Release File needs, by its path in the Plugin. */

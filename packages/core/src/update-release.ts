@@ -47,6 +47,7 @@ import {
   type PluginRelease,
 } from './plugin-release.ts';
 import { refuse } from './refusal.ts';
+import type { PluginReleaseOf } from './registry.ts';
 import {
   parentOf,
   readReleaseRecord,
@@ -56,9 +57,6 @@ import {
 } from './release-files.ts';
 import { folded, RELEASE_RECORD } from './tar.ts';
 
-/** Which Plugin Release a Plugin is, as its Registry row says. */
-type ReleaseOf = { readonly repository: string; readonly version: string };
-
 /** What an update of a Plugin Release did. */
 type ReleaseMoved = {
   /** The Release Version before the update. */
@@ -66,7 +64,7 @@ type ReleaseMoved = {
   /** The Release Version after it. */
   readonly to: string;
   /** The Plugin Release the Registry row is to name now. */
-  readonly release: ReleaseOf;
+  readonly release: PluginReleaseOf;
   /** The directories in the Shelf the caller removes once the Plugin Server is restarted. */
   readonly leftBehind: readonly string[];
   /** What the update could not tidy once it was done, each a sentence that says what to do. */
@@ -95,7 +93,7 @@ export type ReleaseUpdate = {
  */
 export async function updateRelease(
   plugin: HeldPlugin,
-  release: ReleaseOf,
+  release: PluginReleaseOf,
   target: ArchiveTarget,
   major = false,
 ): Promise<ReleaseUpdate> {
@@ -184,7 +182,7 @@ async function clearPrevious(plugin: HeldPlugin, previous: string): Promise<void
  * there is nothing to update from.
  */
 async function nextRelease(
-  release: ReleaseOf,
+  release: PluginReleaseOf,
   major: boolean,
 ): Promise<{ readonly next?: PluginRelease; readonly ready?: string }> {
   const releases = await pluginReleases(release.repository);

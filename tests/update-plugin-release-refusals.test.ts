@@ -98,7 +98,10 @@ async function refuseWritesIn(directory: string): Promise<() => Promise<void>> {
   return () => chmod(directory, 0o755);
 }
 
-/** Whether a directory without write rights can refuse this test: root writes to it all the same. */
+/**
+ * Whether a directory without write rights can refuse this test: root writes
+ * to it all the same.
+ */
 const ROOT = process.platform !== 'win32' && process.getuid?.() === 0;
 
 test('data where the new Plugin Release ships a file is refused, and nothing changes', async (t) => {

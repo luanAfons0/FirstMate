@@ -37,9 +37,10 @@ export const RELEASE_RECORD = '.firstmate-release.json';
 /**
  * The most bytes an archive may unpack to. A Plugin is far smaller, and a
  * gzip of a few MB can unpack to more than the memory there is: such an
- * archive is refused before it takes it all.
+ * archive is refused before it takes it all. The download of an archive
+ * stops at the same limit.
  */
-const MOST_BYTES = 1024 ** 3;
+export const MOST_BYTES = 1024 ** 3;
 
 /** A character no path of an entry holds: a control character, or a backslash. */
 const UNLANDABLE = /[\p{Cc}\\]/u;
