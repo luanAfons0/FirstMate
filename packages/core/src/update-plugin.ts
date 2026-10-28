@@ -59,6 +59,17 @@ export function gitHere(directory: string): GitRunner {
 }
 
 /**
+ * Whether the directory this runner works in is the top of a git work tree of
+ * its own, the one thing `update` needs to call a Plugin a clone. Anything
+ * else, git's "not a git repository" included, is a copy.
+ */
+export async function isOwnClone(git: GitRunner): Promise<boolean> {
+  const top = await git([...RUNS_NOTHING, 'rev-parse', '--is-inside-work-tree', '--show-prefix']);
+  const [inside, prefix = ''] = top.stdout.split(/\r?\n/);
+  return top.code === 0 && inside === 'true' && prefix === '';
+}
+
+/**
  * Move this Plugin's clone forward to its upstream, and say from which commit
  * to which, or give back nothing when the clone already holds its upstream:
  * current, or ahead with commits of the operator's own. `directory` is the
