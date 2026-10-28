@@ -106,13 +106,19 @@ export async function unpackPluginRelease(
       }
       // Only the executable bit is the archive's to give. The rest is the
       // usual, so a Plugin Release cannot land a file anyone may write to.
-      await writeFile(path, entry.bytes, { mode: (entry.mode & 0o111) === 0 ? 0o644 : 0o755 });
+      // `wx` makes every file new: the tar reader refuses an archive that
+      // would write over an entry or through a link, and this keeps it so.
+      await writeFile(path, entry.bytes, {
+        mode: (entry.mode & 0o111) === 0 ? 0o644 : 0o755,
+        flag: 'wx',
+      });
       files[entry.path] = createHash('sha256').update(entry.bytes).digest('hex');
     }
     const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)));
     await writeFile(
       join(staging, RELEASE_RECORD),
       `${JSON.stringify({ files: sorted }, null, 2)}\n`,
+      { flag: 'wx' },
     );
   });
 }
