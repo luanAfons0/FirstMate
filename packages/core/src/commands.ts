@@ -18,6 +18,8 @@ import {
   downloadPluginRelease,
   githubRepository,
   pluginReleases,
+  thisMachine,
+  type ArchiveTarget,
   type PluginRelease,
 } from './plugin-release.ts';
 import { readPlugins } from './plugin-places.ts';
@@ -282,7 +284,8 @@ function refuseTaken(rows: readonly PluginRow[], name: string): void {
  * It follows `add` step for step once the files have landed, because a Plugin
  * that was fetched is a Plugin like any other. Nothing the Plugin ships runs
  * here: its executable runs later, when the Host starts it. `words` says
- * where git's words go while it clones.
+ * where git's words go while it clones. `target` is the platform and arch
+ * of the machine the Plugin will run on, which picks its archive.
  */
 export async function installPlugin(
   config: Config,
@@ -290,6 +293,7 @@ export async function installPlugin(
   given?: string,
   placeName = DEFAULT_PLACE,
   words: GitWords = 'shown',
+  target: ArchiveTarget = thisMachine(),
 ): Promise<PluginRow> {
   const official = isGitUrl(source) || isAbsolute(source) ? undefined : officialPlugin(source);
   const name = given ?? official?.name ?? nameOf(source);
@@ -327,7 +331,7 @@ export async function installPlugin(
     release === undefined
       ? await fetchPlugin(from, shelf, name, words, place.kind === 'wsl')
       : await unpackPluginRelease(
-          async () => readTar(await downloadPluginRelease(release), release.repository),
+          async () => readTar(await downloadPluginRelease(release, target), release.repository),
           shelf,
           name,
         );
