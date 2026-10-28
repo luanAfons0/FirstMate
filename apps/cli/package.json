@@ -1,6 +1,6 @@
 {
   "name": "@luan-afonso/firstmate",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "The FirstMate command line: install the App, and manage its Plugins, Places and settings.",
   "license": "MIT",
   "keywords": [
