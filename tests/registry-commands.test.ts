@@ -79,7 +79,7 @@ test('the Registry is listed, and an empty one says nothing', async (t) => {
   const listed = await firstmate(home, ['list']);
 
   assert.equal(listed.code, 0);
-  assert.equal(listed.stdout, `both\tcopy\t${DEFAULT_PLACE}\t${fixture('both')}\n`);
+  assert.equal(listed.stdout, `both\t${DEFAULT_PLACE}\t${fixture('both')}\tcopy\n`);
 });
 
 test('a duplicate Plugin Name is refused', async (t) => {

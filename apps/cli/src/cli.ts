@@ -413,7 +413,8 @@ answers.`,
 for a Plugin installed from a Plugin Release; clone, for a git clone of its
 own; copy, for a copied or added directory, which update refuses; or unknown,
 when its Place is gone or its distribution has no git. status shows the same
-column.`,
+column, and with --json each Plugin has it as updates. From a pipe, it is
+the last field of a row.`,
   },
   {
     about: ['usage'],
@@ -1296,7 +1297,7 @@ async function list(home: string, argv: readonly string[], json: boolean): Promi
   const shortcuts = readSettings(home).shortcuts ?? [];
   if (json) {
     printJson({
-      plugins: rows,
+      plugins: rows.map((row) => ({ ...row, updates: updates.get(row.name) ?? 'unknown' })),
       shortcuts: shortcuts.map((shortcut) => ({
         ...shortcut,
         address: shortcutAddress(shortcut),
@@ -1306,14 +1307,14 @@ async function list(home: string, argv: readonly string[], json: boolean): Promi
   }
   // An empty Registry says nothing, as an empty directory listing says nothing.
   printRows(
-    ['NAME', 'UPDATES', 'PLACE', 'DIRECTORY', 'GRANTS'],
+    ['NAME', 'PLACE', 'DIRECTORY', 'GRANTS', 'UPDATES'],
     rows.map((row) => ({
       cells: [
         row.name,
-        updates.get(row.name) ?? '',
         row.place,
         row.directory,
         row.grants.join(', '),
+        updates.get(row.name) ?? '',
       ],
       plain: describe(row, updates.get(row.name)),
     })),
@@ -1345,7 +1346,14 @@ async function status(home: string, argv: readonly string[], json: boolean): Pro
   }
   const updates = await updatesBy(home);
   if (json) {
-    printJson({ running: true, address: seen.address, plugins: seen.plugins });
+    printJson({
+      running: true,
+      address: seen.address,
+      plugins: seen.plugins.map((plugin) => ({
+        ...plugin,
+        updates: updates.get(plugin.name) ?? 'unknown',
+      })),
+    });
     return 0;
   }
   console.log(`firstmate: the Host runs at ${seen.address}`);
@@ -1425,9 +1433,14 @@ function stateWord(state: PluginState): string {
   return state === 'stopped' ? bad(word) : word;
 }
 
+/**
+ * A row of `list` for a pipe: the line it was before the UPDATES column, and
+ * that value last, so a script that reads the fields by place reads the same
+ * ones.
+ */
 function describe(row: PluginRow, updates: string | undefined): string {
   const grants = row.grants.length === 0 ? '' : `  grants: ${row.grants.join(', ')}`;
-  return `${row.name}\t${updates ?? ''}\t${row.place}\t${row.directory}${grants}`;
+  return `${row.name}\t${row.place}\t${row.directory}${grants}\t${updates ?? ''}`;
 }
 
 try {
